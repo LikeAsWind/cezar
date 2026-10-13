@@ -35,7 +35,7 @@ const numericId = z.string().regex(/^\d+$/).max(64);
 const workspaceSchema = z.object({
   id: numericId,
   name: z.string().min(1),
-  company_id: numericId,
+  status: z.string().optional(),
 }).passthrough();
 const workspaceRowSchema = z.union([workspaceSchema, z.object({ Workspace: workspaceSchema }).passthrough()]);
 const storySchema = z.object({
@@ -82,7 +82,7 @@ function lookupFailure(error: unknown): Extract<TrackerAssociationResult | Track
 }
 
 function sourceChanged(): TrackerRequestError {
-  return new TrackerRequestError('source_changed', 'The saved TAPD company no longer matches the configured credentials. Reconnect the project.');
+  return new TrackerRequestError('source_changed', 'The saved TAPD connection no longer matches the configured token. Reconnect the project.');
 }
 
 function parseWorkspace(value: unknown): z.infer<typeof workspaceSchema> {
@@ -168,25 +168,38 @@ function parsePage(value: string | undefined): number {
 }
 
 export function createTapdClient(
-  config: { companyId: string; apiUser: string; apiPassword: string; timeZone: string },
+  config: { accessToken: string; timeZone: string },
   fetcher: typeof fetch = fetch,
 ): TrackerProvider {
   const http = new TrackerHttp(fetcher);
   const cache = new ResultCache<CachedResult>(200, 60_000);
-  const authorization = `Basic ${Buffer.from(`${config.apiUser}:${config.apiPassword}`, 'utf8').toString('base64')}`;
-  const currentSource: TrackerSource = { id: `tapd-company:${config.companyId}`, webUrl: webOrigin };
+  const authorization = `Bearer ${config.accessToken}`;
+  const currentSource: TrackerSource = { id: 'tapd', webUrl: webOrigin };
+  let nick: string | undefined;
 
   const request = async (path: string, params: Record<string, string>, signal: AbortSignal): Promise<unknown> => {
     const query = new URLSearchParams(params);
+    query.set('s', 'mcp');
     return parseEnvelope(await http.json(`${apiOrigin}${path}?${query}`, {
-      method: 'GET', headers: { Accept: 'application/json', Authorization: authorization },
+      method: 'GET', headers: { Accept: 'application/json', Authorization: authorization, Via: 'mcp' },
     }, signal));
+  };
+
+  const currentNick = async (signal: AbortSignal): Promise<string> => {
+    if (nick) return nick;
+    // `request` already unwraps the envelope to `data`, so this sees `data.User`.
+    const parsed = z.object({ User: z.object({ nick: z.string().min(1) }).passthrough() }).passthrough().safeParse(
+      await request('/users/info', {}, signal),
+    );
+    if (!parsed.success) return invalidResponse();
+    nick = parsed.data.User.nick;
+    return nick;
   };
 
   const verifyWorkspace = async (workspaceId: string, signal: AbortSignal): Promise<z.infer<typeof workspaceSchema>> => {
     const row = parseWorkspace(await request('/workspaces/get_workspace_info', { workspace_id: workspaceId }, signal));
     if (row.id !== workspaceId) return invalidResponse();
-    if (row.company_id !== config.companyId) throw sourceChanged();
+    if (row.status === 'closed' || row.status === 'suspend') throw sourceChanged();
     return row;
   };
 
@@ -203,8 +216,7 @@ export function createTapdClient(
         const position = decodeCursor(scope, query.cursor);
         const offset = position === undefined ? 0 : Number(position);
         if (!Number.isSafeInteger(offset) || offset < 0) throw new TrackerRequestError('invalid_cursor', 'This TAPD project page expired. Start the search again.');
-        const rows = parseWorkspaceCollection(await request('/workspaces/projects', { company_id: config.companyId }, signal));
-        if (rows.some(row => row.company_id !== config.companyId)) throw sourceChanged();
+        const rows = parseWorkspaceCollection(await request('/workspaces/user_participant_projects', { nick: await currentNick(signal) }, signal));
         const term = query.q?.toLocaleLowerCase();
         const matching = term ? rows.filter(row => row.name.toLocaleLowerCase().includes(term) || row.id === query.q) : rows;
         const candidates = matching.slice(offset, offset + query.limit).map(row => ({ id: row.id, name: row.name }));

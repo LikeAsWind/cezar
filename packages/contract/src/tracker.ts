@@ -351,9 +351,7 @@ export const trackerCredentialsSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('linear'), key: trackerSecretSchema }).strict(),
   z.object({
     kind: z.literal('tapd'),
-    companyId: z.string().regex(/^\d+$/).max(64),
-    apiUser: z.string().min(1).max(512).regex(/^[^:\x00-\x1f\x7f]+$/, 'TAPD API user cannot contain a colon or control character'),
-    apiPassword: trackerSecretSchema,
+    accessToken: trackerSecretSchema,
     timeZone: tapdTimeZoneSchema,
   }).strict(),
 ]);

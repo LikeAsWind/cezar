@@ -53,8 +53,8 @@ export function createTrackerService(env: NodeJS.ProcessEnv = process.env, fetch
         },
         tapd: () => {
           if (record?.credentials.kind !== 'tapd') throw new Error('Invalid connection');
-          const { companyId, apiUser, apiPassword, timeZone } = record.credentials;
-          return createTapdClient({ companyId, apiUser, apiPassword, timeZone }, fetcher);
+          const { accessToken, timeZone } = record.credentials;
+          return createTapdClient({ accessToken, timeZone }, fetcher);
         },
       };
       entry = { root, provider: demo ? createDryTrackerClient(kind) : factories[kind]() };

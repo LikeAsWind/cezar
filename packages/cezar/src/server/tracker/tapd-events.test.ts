@@ -10,7 +10,7 @@ import { createEventScanner } from './event-scan.ts';
 
 const association = {
   kind: 'tapd' as const,
-  source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' },
+  source: { id: 'tapd', webUrl: 'https://www.tapd.cn' },
   externalId: '10104802',
   externalName: 'Example',
 };

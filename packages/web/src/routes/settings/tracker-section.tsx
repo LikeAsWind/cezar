@@ -22,10 +22,8 @@ export function TrackerSection() {
   const [origin, setOrigin] = useState('')
   const [email, setEmail] = useState('')
   const [secret, setSecret] = useState('')
-  const [companyId, setCompanyId] = useState('')
-  const [apiUser, setApiUser] = useState('')
   const [timeZone, setTimeZone] = useState('')
-  const resetSecrets = () => { setSecret(''); setEmail(''); setOrigin(''); setCompanyId(''); setApiUser(''); setTimeZone(''); setCredentialKind(null) }
+  const resetSecrets = () => { setSecret(''); setEmail(''); setOrigin(''); setTimeZone(''); setCredentialKind(null) }
   const activeProject = queryScope()
   useEffect(() => { resetSecrets(); setPickerOpen(false); setSelected(null) }, [activeProject])
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -96,7 +94,7 @@ export function TrackerSection() {
         ? { kind: 'jira' as const, origin: origin.trim(), email: email.trim(), token: secret }
         : credentialKind === 'linear'
           ? { kind: 'linear' as const, key: secret }
-          : { kind: 'tapd' as const, companyId: companyId.trim(), apiUser: apiUser.trim(), apiPassword: secret, timeZone: timeZone.trim() }
+          : { kind: 'tapd' as const, accessToken: secret, timeZone: timeZone.trim() }
       const result = await saveTrackerConnection(credentials)
       return { ...result, projectId }
     },
@@ -190,12 +188,10 @@ export function TrackerSection() {
             <label className="mt-3 block text-sm">{t('Account email')}<input aria-label={t('Account email')} type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
           </> : null}
           {credentialKind === 'tapd' ? <>
-            <p className="mt-2 text-xs text-muted-foreground">{t('Use a TAPD Open API account and password, not your ordinary website password.')}</p>
-            <label className="mt-3 block text-sm">{t('Company ID')}<input aria-label={t('Company ID')} required value={companyId} onChange={event => setCompanyId(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
-            <label className="mt-3 block text-sm">{t('API account')}<input aria-label={t('API account')} required value={apiUser} onChange={event => setApiUser(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
+            <p className="mt-2 text-xs text-muted-foreground">{t('Use a TAPD personal access token from the open platform, not your website password.')}</p>
             <label className="mt-3 block text-sm">{t('Timezone')}<input aria-label={t('Timezone')} required value={timeZone} onChange={event => setTimeZone(event.target.value)} placeholder="Asia/Shanghai" className="mt-1 block w-full rounded border bg-background p-2" /></label>
           </> : null}
-          <label className="mt-3 block text-sm">{t(credentialKind === 'tapd' ? 'API password' : 'API token')}<input aria-label={t(credentialKind === 'tapd' ? 'API password' : 'API token')} type="password" autoComplete="new-password" required maxLength={8192} value={secret} onChange={event => setSecret(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
+          <label className="mt-3 block text-sm">{t(credentialKind === 'tapd' ? 'Access token' : 'API token')}<input aria-label={t(credentialKind === 'tapd' ? 'Access token' : 'API token')} type="password" autoComplete="new-password" required maxLength={8192} value={secret} onChange={event => setSecret(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
           <div className="mt-3 flex gap-2"><Button type="submit" disabled={credentialBusy}>{t('Save project credentials')}</Button><Button type="button" variant="outline" disabled={credentialBusy} onClick={resetSecrets}>{t('Cancel')}</Button></div>
         </form>
       ) : null}

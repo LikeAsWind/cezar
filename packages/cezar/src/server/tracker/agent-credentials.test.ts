@@ -50,24 +50,20 @@ it('maps a bound Linear connection', async () => {
 it('maps only a bound TAPD automation connection', async () => {
   const record = await new TrackerConnections(env).write(project, {
     kind: 'tapd',
-    companyId: '10104801',
-    apiUser: 'synthetic-api-user',
-    apiPassword: 'synthetic-api-password',
+    accessToken: 'synthetic-tapd-token',
     timeZone: 'Asia/Shanghai',
   });
   const tapd = {
     ...association,
     kind: 'tapd' as const,
-    source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' },
+    source: { id: 'tapd', webUrl: 'https://www.tapd.cn' },
     externalId: '10104802',
     connectionId: record!.id,
   };
   await writeTrackerAssociation(join(project, '.ai/cezar'), tapd);
 
   expect(await resolveTrackerAgentEnv(project, tapd, env)).toEqual({
-    TAPD_COMPANY_ID: '10104801',
-    TAPD_API_USER: 'synthetic-api-user',
-    TAPD_API_PASSWORD: 'synthetic-api-password',
+    TAPD_ACCESS_TOKEN: 'synthetic-tapd-token',
     TAPD_TIME_ZONE: 'Asia/Shanghai',
   });
 });

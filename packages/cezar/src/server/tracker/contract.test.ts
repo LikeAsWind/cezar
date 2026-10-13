@@ -43,11 +43,10 @@ const item = {
 };
 
 describe('tracker entity schemas', () => {
-  it('accepts TAPD credentials and rejects invalid Basic-auth identities', () => {
-    const valid = { kind: 'tapd', companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic-password', timeZone: 'Asia/Shanghai' };
+  it('accepts TAPD credentials and rejects invalid token/timezone', () => {
+    const valid = { kind: 'tapd', accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' };
     expect(trackerCredentialsSchema.safeParse(valid).success).toBe(true);
-    expect(trackerCredentialsSchema.safeParse({ ...valid, companyId: 'company-1' }).success).toBe(false);
-    expect(trackerCredentialsSchema.safeParse({ ...valid, apiUser: 'test:api' }).success).toBe(false);
+    expect(trackerCredentialsSchema.safeParse({ ...valid, accessToken: '' }).success).toBe(false);
     expect(trackerCredentialsSchema.safeParse({ ...valid, timeZone: 'Not/AZone' }).success).toBe(false);
   });
 
@@ -187,7 +186,7 @@ describe('tracker query and parameter schemas', () => {
     expect(trackerListQuerySchema.parse({ itemType: 'bug' })).toEqual({ limit: 50, state: 'active', itemType: 'bug' });
     expect(trackerSearchQuerySchema.parse({ q: 'Unicode', itemType: 'story' })).toEqual({ q: 'Unicode', limit: 50, state: 'all', itemType: 'story' });
     expect(trackerWatchInputSchema.safeParse({
-      association: { kind: 'tapd', source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' },
+      association: { kind: 'tapd', source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' },
       query: '', state: 'active', labels: [], itemType: 'bug',
     }).success).toBe(true);
   });

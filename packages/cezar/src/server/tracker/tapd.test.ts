@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTapdClient } from './tapd.ts';
 
-const companyId = '10104801';
 const workspaceId = '10104802';
-const source = { id: `tapd-company:${companyId}`, webUrl: 'https://www.tapd.cn' };
+const source = { id: 'tapd', webUrl: 'https://www.tapd.cn' };
 const association = { kind: 'tapd' as const, source, externalId: workspaceId, externalName: '示例项目' };
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...headers } });
+}
+
+function userInfo(): unknown {
+  return { status: 1, data: { User: { nick: 'me' } }, info: 'success' };
+}
+function workspaceInfo(id: string = workspaceId, name: string = '示例项目', extra: Record<string, unknown> = {}): unknown {
+  return { status: 1, data: { Workspace: { id, name, ...extra } }, info: 'success' };
 }
 
 function story(id: string, overrides: Record<string, unknown> = {}) {
@@ -26,27 +32,30 @@ function bug(id: string, overrides: Record<string, unknown> = {}) {
 }
 
 function client(fetcher: typeof fetch) {
-  return createTapdClient({ companyId, apiUser: 'api-user', apiPassword: 'synthetic-password', timeZone: 'Asia/Shanghai' }, fetcher);
+  return createTapdClient({ accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' }, fetcher);
 }
 
 describe('createTapdClient', () => {
-  it('discovers only company workspaces over fixed-origin authenticated GET requests', async () => {
+  it('discovers the user\'s workspaces over fixed-origin Bearer-authenticated GET requests', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));
       expect(url.origin).toBe('https://api.tapd.cn');
-      expect(url.pathname).toBe('/workspaces/projects');
-      expect(url.searchParams.get('company_id')).toBe(companyId);
+      expect(url.searchParams.get('s')).toBe('mcp');
       expect(init?.method).toBe('GET');
-      expect(new Headers(init?.headers).get('authorization')).toBe(`Basic ${Buffer.from('api-user:synthetic-password').toString('base64')}`);
-      return json({ status: 1, data: [{ Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } }], info: 'success' });
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer synthetic-tapd-token');
+      expect(new Headers(init?.headers).get('via')).toBe('mcp');
+      if (url.pathname === '/users/info') return json(userInfo());
+      expect(url.pathname).toBe('/workspaces/user_participant_projects');
+      expect(url.searchParams.get('nick')).toBe('me');
+      return json({ status: 1, data: [{ id: workspaceId, name: '示例项目' }], info: 'success' });
     });
 
     const result = await client(fetcher).listCandidates({ kind: 'tapd', limit: 50 });
     expect(result).toEqual({ available: true, source, candidates: [{ id: workspaceId, name: '示例项目' }], truncated: false });
   });
 
-  it('rejects a workspace whose verified company differs from configured company', async () => {
-    const fetcher = vi.fn<typeof fetch>(async () => json({ status: 1, data: { Workspace: { id: workspaceId, name: 'foreign', company_id: '999' } }, info: 'success' }));
+  it('rejects a closed or suspended workspace', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => json(workspaceInfo(workspaceId, '示例项目', { status: 'closed' })));
     const result = await client(fetcher).resolveAssociation({ kind: 'tapd', sourceId: source.id, externalId: workspaceId });
     expect(result).toMatchObject({ available: false, code: 'source_changed' });
   });
@@ -55,7 +64,7 @@ describe('createTapdClient', () => {
     const first = Array.from({ length: 200 }, (_, index) => story(String(1000 + index), { label: 'backend' }));
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       expect(url.pathname).toBe('/stories');
       expect(url.searchParams.get('workspace_id')).toBe(workspaceId);
       expect(url.searchParams.get('limit')).toBe('200');
@@ -80,7 +89,7 @@ describe('createTapdClient', () => {
     const pages = ['1', '2'];
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       expect(url.pathname).toBe('/stories');
       const page = url.searchParams.get('page') ?? '1';
       expect(pages).toContain(page);
@@ -104,7 +113,7 @@ describe('createTapdClient', () => {
   it('uses typed IDs and rejects a foreign-workspace detail response', async () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       expect(url.pathname).toBe('/bugs');
       expect(url.searchParams.get('id')).toBe('1234567890123456789');
       return json({ status: 1, data: [bug('1234567890123456789', { workspace_id: '999' })] });
@@ -116,7 +125,7 @@ describe('createTapdClient', () => {
   it('uses type-specific workflow metadata instead of guessing active status', async () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       if (url.pathname === '/stories') return json({ status: 1, data: [story('1'), story('2', { status: 'done' })] });
       if (url.pathname === '/workflows/status_map') {
         expect(url.searchParams.get('system')).toBe('story');
@@ -133,7 +142,7 @@ describe('createTapdClient', () => {
   it('withholds active filtering when terminal workflow metadata is incomplete', async () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       if (url.pathname === '/stories') return json({ status: 1, data: [story('1')] });
       if (url.pathname === '/workflows/status_map') return json({ status: 1, data: {} });
       if (url.pathname === '/workflows/last_steps') return json({ status: 1, data: [] });
@@ -147,7 +156,7 @@ describe('createTapdClient', () => {
     let reads = 0;
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       reads++;
       return json({ status: 1, data: [story('123', { description: `<p>${'x'.repeat(60_010 + reads)}</p>` })] });
     });
@@ -180,7 +189,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       expect(url.pathname).toBe('/workspaces/get_workspace_info');
-      return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } }, info: 'success' });
+      return json(workspaceInfo());
     });
     const driver = client(fetcher).driver(association);
     const options = await driver.automationOptions!({ itemType: 'bug' });
@@ -194,10 +203,9 @@ describe('createTapdClient', () => {
   });
 
   it('rejects status events and discovers created items through the event scanner', async () => {
-    const workspace = { status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } }, info: 'success' };
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json(workspace);
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       expect(url.pathname).toBe('/stories');
       expect(url.searchParams.get('order')).toBe('created desc');
       return json({ status: 1, data: [story('42'), story('7', { created: '2026-10-12 07:00:00' })], info: 'success' });
@@ -218,10 +226,9 @@ describe('createTapdClient', () => {
   });
 
   it('resets the event checkpoint when the item type changes', async () => {
-    const workspace = { status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } }, info: 'success' };
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
-      if (url.pathname === '/workspaces/get_workspace_info') return json(workspace);
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
       expect(url.pathname).toBe('/stories');
       return json({ status: 1, data: [], info: 'success' });
     });

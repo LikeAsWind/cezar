@@ -253,7 +253,7 @@ describe('tracker automation task templates (2026-09-19)', () => {
 
   it('names the complete TAPD credential hint for a TAPD candidate', () => {
     const task = renderTrackerTask(trackerDefinition, { ...trackerCandidate, provider: 'tapd', key: 'story:1010104801124922063' });
-    expect(task).toContain('$TAPD_COMPANY_ID, $TAPD_API_USER, $TAPD_API_PASSWORD, $TAPD_TIME_ZONE');
+    expect(task).toContain('$TAPD_ACCESS_TOKEN, $TAPD_TIME_ZONE');
     expect(task).not.toContain('$LINEAR_API_KEY');
   });
 

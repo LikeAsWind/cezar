@@ -16,15 +16,13 @@ it('round trips Jira metadata and credentials', () => {
 });
 it('round trips TAPD metadata and literal credentials', () => {
   const record = { id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd' as const,
-    companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic#=password', timeZone: 'Asia/Shanghai' } };
+    accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' } };
   expect(decodeConnectionEnv(encodeConnectionEnv(record))).toEqual(record);
 });
 it.each([
-  { companyId: 'not-numeric', apiUser: 'test-api', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
-  { companyId: '10104801', apiUser: 'test:api', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
-  { companyId: '10104801', apiUser: 'test\napi', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
-  { companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic', timeZone: 'Not/AZone' },
-])('rejects invalid TAPD connection metadata: $companyId $apiUser $timeZone', credentials => {
+  { accessToken: '', timeZone: 'Asia/Shanghai' },
+  { accessToken: 'synthetic', timeZone: 'Not/AZone' },
+])('rejects invalid TAPD connection metadata: timeZone=$timeZone', credentials => {
   expect(() => encodeConnectionEnv({ id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd', ...credentials } })).toThrow();
 });
 it('rejects unsupported and control characters without printing input in errors', () => {
@@ -42,10 +40,10 @@ it('rejects duplicate keys, invalid lines, unknown fields, two providers and uns
 });
 it('rejects mixed TAPD keys and invalidates secret-only manual edits', () => {
   const record = { id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd' as const,
-    companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic-password', timeZone: 'Asia/Shanghai' } };
+    accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' } };
   const text = encodeConnectionEnv(record);
   expect(() => decodeConnectionEnv(text + 'LINEAR_API_KEY=synthetic\n')).toThrow();
-  expect(() => decodeConnectionEnv(text.replace('synthetic-password', 'rotated-password'))).toThrow('Connection needs saving again');
+  expect(() => decodeConnectionEnv(text.replace('synthetic-tapd-token', 'rotated-token'))).toThrow('Connection needs saving again');
   expect(() => decodeConnectionEnv(text.replace('Asia/Shanghai', 'Asia/Tokyo'))).toThrow('Connection needs saving again');
 });
 it('accepts comments and CRLF without changing the credential revision', () => {

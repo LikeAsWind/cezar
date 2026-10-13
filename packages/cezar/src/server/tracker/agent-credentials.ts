@@ -26,9 +26,7 @@ export async function resolveTrackerAgentEnv(
   }
   if (record.credentials.kind === 'linear') return { LINEAR_API_KEY: record.credentials.key };
   return {
-    TAPD_COMPANY_ID: record.credentials.companyId,
-    TAPD_API_USER: record.credentials.apiUser,
-    TAPD_API_PASSWORD: record.credentials.apiPassword,
+    TAPD_ACCESS_TOKEN: record.credentials.accessToken,
     TAPD_TIME_ZONE: record.credentials.timeZone,
   };
 }

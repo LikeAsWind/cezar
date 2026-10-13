@@ -113,7 +113,7 @@ it('clears hidden status filters when removing the status event while preserving
 })
 
 it('labels a TAPD association as TAPD rather than falling through to another provider', async () => {
-  const tapd = { kind: 'tapd' as const, source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: '示例项目' }
+  const tapd = { kind: 'tapd' as const, source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: '示例项目' }
   vi.mocked(getTrackerAutomationOptions).mockResolvedValue({ ...data, association: tapd, events: ['issue.opened'] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><EditorTrackerFields trigger={undefined} intervalSeconds={1800} onChange={vi.fn()} onValid={vi.fn()} /></QueryClientProvider>)
@@ -123,7 +123,7 @@ it('labels a TAPD association as TAPD rather than falling through to another pro
 })
 
 it('lets a TAPD trigger choose between stories and bugs and echoes the type in options requests', async () => {
-  const tapd = { kind: 'tapd' as const, source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: '示例项目' }
+  const tapd = { kind: 'tapd' as const, source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: '示例项目' }
   vi.mocked(getTrackerAutomationOptions).mockImplementation(async query => ({ ...data, association: tapd, events: ['issue.opened'], ...(query?.itemType ? { itemType: query.itemType } : {}) }))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onChange = vi.fn()

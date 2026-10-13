@@ -4,7 +4,7 @@
 
 **Goal:** Add public-cloud standard-project TAPD as a third issue-tracker provider with story/bug tabs, correct filtering, detail handoff, and evidence-gated event automation.
 
-**Architecture:** Implement the existing TrackerProvider seam and reuse generic project routes, credentials, watch, composer and automation engine. One local project binds one TAPD workspace; story/bug are explicit query dimensions, not separate credential providers. Persist only validated identities and signed pagination positions; preserve Jira/Linear behavior.
+**Architecture:** Implement the existing TrackerProvider seam and reuse generic project routes, credentials, watch, composer and automation engine. One local project binds one TAPD workspace; story/bug are explicit query dimensions, not separate credential providers. Persist only validated identities and signed pagination positions; preserve Jira/Linear behavior. Authentication is a Bearer personal access token (`?s=mcp` + `Via: mcp`); project discovery is `users/info` → `user_participant_projects`.
 
 **Tech Stack:** TypeScript, Zod, Hono, React, TanStack Query, Vitest/node:test. Use a maintained server-side HTML parser as a direct dependency of the server workspace if none is already directly declared; do not render vendor HTML or use regex as an HTML sanitizer.
 
@@ -28,23 +28,23 @@
 
 **Files:** Modify `packages/contract/src/tracker.ts`, `packages/cezar/src/server/tracker/connection-env.ts`, `packages/web/src/lib/tracker-providers.ts`; test `packages/cezar/src/server/tracker/connection-env.test.ts` and contract consumers.
 
-**Interfaces:** Add `TrackerKind` value `tapd`. Add `tapd` credentials with `companyId`, `apiUser`, `apiPassword`, and an explicitly selected vendor `timeZone` if real evidence cannot establish it. Add optional `itemType: 'story' | 'bug'` to tracker list/search/watch inputs, and optional display metadata to TrackerItem. Existing Jira/Linear requests remain unchanged.
+**Interfaces:** Add `TrackerKind` value `tapd`. Add `tapd` credentials with `accessToken` (Bearer personal access token) and an explicitly selected vendor `timeZone`. Add optional `itemType: 'story' | 'bug'` to tracker list/search/watch inputs, and optional display metadata to TrackerItem. Existing Jira/Linear requests remain unchanged.
 
 - [x] Write failing storage/contract tests. Use literal credentials, never actual secrets:
 
 ```ts
 const record = {
   id: randomUUID(), projectRoot: '/tmp/tapd-project',
-  credentials: { kind: 'tapd' as const, companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic#=password', timeZone: 'Asia/Shanghai' },
+  credentials: { kind: 'tapd' as const, accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' },
 };
 expect(decodeConnectionEnv(encodeConnectionEnv(record))).toEqual(record);
-expect(trackerWatchInputSchema.safeParse({ association: { kind: 'tapd', source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' }, query: '', state: 'active', labels: [], itemType: 'bug' }).success).toBe(true);
+expect(trackerWatchInputSchema.safeParse({ association: { kind: 'tapd', source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' }, query: '', state: 'active', labels: [], itemType: 'bug' }).success).toBe(true);
 ```
 
-Also test apiUser colon/control rejection, invalid company ID, invalid timezone, unknown dotenv keys, mixed provider keys, secret-only manual edits and revision invalidation. Preserve existing Jira/Linear digest byte order.
+Also test accessToken control/empty rejection, invalid timezone, unknown dotenv keys, mixed provider keys, secret-only manual edits and revision invalidation. Preserve existing Jira/Linear digest byte order.
 
 - [x] Run `npm test -- packages/cezar/src/server/tracker/connection-env.test.ts --maxWorkers=2`, confirm TAPD fails for unsupported credentials rather than test syntax.
-- [x] Add finite Zod variants and explicit three-way credential codec branches. Managed keys: `TAPD_COMPANY_ID`, `TAPD_API_USER`, `TAPD_API_PASSWORD`, `TAPD_TIME_ZONE`. Preserve previous format version and old strict inventories. Keep timezone nonsecret but revision-bound.
+- [x] Add finite Zod variants and explicit three-way credential codec branches. Managed keys: `TAPD_ACCESS_TOKEN`, `TAPD_TIME_ZONE`. Preserve previous format version and old strict inventories. Keep timezone nonsecret but revision-bound.
 - [x] Add TAPD metadata with translated scope terminology. Register a credential-free TAPD dry fixture in `dry-run.ts`; story and bug rows must have distinct typed IDs, over 50 rows and lossy/long detail fixtures. Do not map every non-Jira branch to Linear.
 - [x] Run storage and dry-run tests. Typecheck failures from the newly exhaustive enum identify remaining registration/automation sites; resolve them in Tasks 2/4 before declaring this task integrated.
 
@@ -54,7 +54,7 @@ Also test apiUser colon/control rejection, invalid company ID, invalid timezone,
 
 **Interfaces:** `createTapdClient(config, fetcher): TrackerProvider`, where config is the TAPD credential variant without `kind`. Consume TrackerHttp, ResultCache, runOperation, requestFailure and signed cursors. HTML converter returns `{ body: string; unsupportedContent: boolean }`, then descriptionBody applies existing caps.
 
-- [x] Write a protocol-aware fetch fixture that checks fixed URL, GET method, Basic auth, query scope and response envelope. Use official shapes:
+- [x] Write a protocol-aware fetch fixture that checks fixed URL, GET method, Bearer auth (`Authorization: Bearer <token>`), `s=mcp`/`Via: mcp`, query scope and response envelope. Use official shapes:
 
 ```ts
 const story = { id: '1010104801124922063', workspace_id: '10104801', workitem_type_id: '1010104801000022091', name: 'Unicode 需求', description: '<p>Acceptance</p>', creator: 'test', created: '2026-10-13 08:00:00', modified: '2026-10-13 09:00:00', status: 'planning', label: 'backend|urgent' };
@@ -63,8 +63,8 @@ const response = new Response(JSON.stringify({ status: 1, data: [{ Story: story 
 
 Test empty vs unauthorized, HTTP 200 business failure, malformed schema, foreign workspace, expired/cross-type cursors, label AND match after an entire nonmatching page, Unicode, duplicate boundary IDs, full detail freshness, over-cap body, redirects and cooldown.
 
-- [x] Run the new tests and confirm the adapter is absent, then add implementation using explicit GET paths: `/workspaces/projects`, `/workspaces/get_workspace_info`, `/stories`, `/bugs`, `/workflows/status_map`, `/workflows/last_steps`, and verified story-type metadata. Workspace lookup revalidates `company_id` before accepting association or reads.
-- [x] Validate envelope success with `status === 1`; never pass `info` or authentication-test payload to UI/logs. Avoid `/quickstart/testauth` unless its entire password-echoing payload can be discarded. Bound metadata reads by the same operation deadline and cache generation.
+- [x] Run the new tests and confirm the adapter is absent, then add implementation using explicit GET paths: `/users/info`, `/workspaces/user_participant_projects`, `/workspaces/get_workspace_info`, `/stories`, `/bugs`, `/workflows/status_map`, `/workflows/last_steps`, and verified story-type metadata. Workspace lookup revalidates membership before accepting association or reads.
+- [x] Validate envelope success with `status === 1`; never pass `info` or authentication-test payload to UI/logs. Bound metadata reads by the same operation deadline and cache generation.
 - [x] Implement signed per-type page/row-position cursors. Prefer upstream filters; for label AND or type-specific Active filtering, scan further pages server-side until a displayed page fills or the upstream finishes. Persist safe scan continuation when the soft budget runs out. If no existing response field correctly represents scan-incomplete status, add a bounded optional field in the contract and explicit Continue scanning UI; never return a completed empty result.
 - [x] Keep search semantics honest: ID search is exact; title and description searches must not be combined as AND while labeled full-text OR. Implement explicit search-field selection if the vendor cannot express the expected union without a new multi-stream query.
 - [x] Map status per workspace/system/workitem type. Read `last_steps` for terminal codes; unsupported or missing metadata produces a controlled failure rather than guessed Active status. Decode pipe-delimited labels only after fixture validation; preserve exact names and reject ambiguous unsafe filter syntax.
@@ -80,7 +80,7 @@ Test empty vs unauthorized, HTTP 200 business failure, malformed schema, foreign
 - [x] Write a settings test selecting TAPD and posting typed credentials, asserting GET never contains them and the password clears after failure/save/cancel/project switch.
 - [x] Write a route test switching story→bug with one workspace, confirming separate HTTP queries and keys; a delayed story response cannot populate the bug list. Changing type resets paging and selected labels, while per-ID instruction drafts cannot cross types.
 - [x] Write a handoff regression against actual `extractTaskRefs`: `tracker ticket [bug:1010104801124922063]` must not become a GitHub issue reference. Legitimate GitHub references in user text remain unchanged. Verify long detail, acknowledgment and final user instruction order.
-- [x] Implement translated form fields API account, API password, company ID and explicit timezone; do not ask for ordinary website password. Show API prerequisite help without embedding secrets in links.
+- [x] Implement translated form fields access token and explicit timezone; do not ask for ordinary website password. Show API prerequisite help without embedding secrets in links.
 - [x] Implement story/bug tabs, type-aware requests and watch checks. Preserve the 60-second visible first-page checks, Load more/Show changes semantics and no periodic full-detail refresh.
 - [x] Use verified canonical public story/bug URLs. Before live validation, mark URL compatibility unverified in handoff docs instead of claiming tested links; do not shorten long IDs.
 - [x] Run `npm test -- packages/web/src/routes/settings/tracker-section.test.tsx packages/web/src/routes/tracker packages/web/src/lib/tracker-task.test.ts packages/cezar/src/server/tracker/watch.test.ts --maxWorkers=2 --testTimeout=15000`. Run scoped API/contract parity and isolation tests.
@@ -96,7 +96,7 @@ Test empty vs unauthorized, HTTP 200 business failure, malformed schema, foreign
 - [x] Persist successful page progress on budget yield; advance watermark only after the interval completes. Source/auth/cancel failure cannot masquerade as successful partial progress. Compose event identity from provider/company/workspace/type/item/history/field; no numeric coercion.
 - [x] Reuse TrackerPoller requiredLabels AND and targetStatusIds filtering. Give type-specific states compound identity when raw codes collide. Maintain preview no-launch behavior, enable current-time baseline, receipts, definition edits, pause/re-enable and checkpoint recovery.
 - [x] Add capability gates: creation requires trustworthy timestamps and page discovery; status requires complete history evidence; label transitions remain unavailable without verified history encoding. Synthetic mapper tests alone must not unlock unsupported capabilities.
-- [x] Replace two-provider ternaries in the options editor, environment resolver and task-template hints with exhaustive provider handling. Only a captured, revalidated automation connection may provide `TAPD_API_USER`/`TAPD_API_PASSWORD`/company/timezone to its agent. Manual handoff stays credential-free. Add both secrets to known-secret redaction paths; no credential fallback on rotation.
+- [x] Replace two-provider ternaries in the options editor, environment resolver and task-template hints with exhaustive provider handling. Only a captured, revalidated automation connection may provide `TAPD_ACCESS_TOKEN`/timezone to its agent. Manual handoff stays credential-free. Add the token to known-secret redaction paths; no credential fallback on rotation.
 - [x] Run tracker/automation option, poller, receipt, project-isolation and credentials/redaction tests. Test old Jira/Linear saved definitions without type fields.
 
 ## Task 5: Verification, documentation and live acceptance
@@ -106,7 +106,7 @@ Test empty vs unauthorized, HTTP 200 business failure, malformed schema, foreign
 - [x] Document actual implemented search semantics, scan-incomplete continuation, API permissions, project category, timezone configuration, loss disclosure and event limitations. Document only capabilities the adapter advertises.
 - [x] Run `npm run typecheck`, focused tracker/contract/automation/UI regression, `npm run build`, `npm run check:pack`; separately report Windows POSIX baseline failures without weakening assertions.
 - [x] Test the real local UI with synthetic credentials in an isolated CEZ_HOME/dry-run instance: configure, bind, switch types, search, load more, read details, handoff draft, disconnect; verify Chinese labels and no browser secret persistence. Never create an actual paid agent task during UI validation.
-- [x] With user-provided credentials entered through Settings, perform authorized read-only probes: workspace/company, one story and bug, more than one page, exact links, label readback, terminal metadata and known timestamp. Do not create records or enable real automations without separate user authorization.
+- [x] With user-provided credentials entered through Settings, perform authorized read-only probes: user projects, one story and bug, more than one page, exact links, label readback, terminal metadata and known timestamp. Do not create records or enable real automations without separate user authorization.
 - [x] Record offline vs live results. If tenant access is unavailable, deliver implementation with explicit unverified capabilities; do not mark status-event parity complete. Leave changes on the feature branch for review; do not push or merge without user request.
 
 ## Execution checks

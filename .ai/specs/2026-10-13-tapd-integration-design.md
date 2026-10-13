@@ -43,8 +43,8 @@ Linear 的事件限制不是实现遗漏：官方说明创建后三分钟内的�
 
 | 现有能力 | TAPD 对应接口 | 设计要点 |
 | --- | --- | --- |
-| 认证 | Basic Auth：`api_user`、`api_password`；`quickstart/testauth` 可检验账号 | 官方示例会回显密码，整份响应不得日志/返回/持久化；密码不是网站登录密码；固定 API origin 为 `https://api.tapd.cn` |
-| 公司内项目发现 | `GET /workspaces/projects?company_id=...` | 官方为无分页完整集合；可在完整且有响应上限的集合上本地搜索、切片，然后签名分页；不能截断后伪称全集 |
+| 认证 | Bearer 个人访问令牌（`Authorization: Bearer <token>`） | 令牌是 write-only 秘密，整份响应不得日志/返回/持久化；固定 API origin 为 `https://api.tapd.cn`；每请求附带 `?s=mcp` 与 `Via: mcp` |
+| 参与项目发现 | `GET users/info` 取 `nick` → `GET workspaces/user_participant_projects?nick=...` | 用户参与的项目集合；无分页；可在完整且有响应上限的集合上本地搜索、切片，然后签名分页；不能截断后伪称全集 |
 | 项目身份校验 | `GET /workspaces/get_workspace_info` | 读取项目规范名称、company_id；拒绝其他公司的 workspace、错误 source 和已不匹配的凭据 |
 | 需求列表/详情 | `GET /stories?workspace_id=...`，可传 `id` | 标题字段 `name`；字符串 ID 必须完整保留，不能转 JS Number |
 | 缺陷列表/详情 | `GET /bugs?workspace_id=...`，可传 `id` | 标题字段 `title`；独立资源接口，必须区分需求 ID 和缺陷 ID |
@@ -65,15 +65,15 @@ Linear 的事件限制不是实现遗漏：官方说明创建后三分钟内的�
 | 拆成 TAPD需求 / TAPD缺陷 两个 provider | 单列表 adapter 简单 | 当前一个仓库只能绑定一个 tracker，用户无法同时访问同一项目两种工单；重复账号配置 | 不采用 |
 | 一个混合“全部”列表，跨 API 合并排序 | 可混合浏览 | 双流排序、类型化状态、跨流剩余位置和分页变动更复杂；不是 Jira/Linear 基线所要求的功能 | 本次不增加 |
 
-推荐 UI：Settings → 工单提供商 → TAPD → 填入 API 账号、API 密码、公司 ID → 保存 → 浏览项目 → 绑定。在工单页切换“需求 / 缺陷”，两者各有搜索、Active/All、标签、详情和发起任务。密码清空、连接替换、断开、离线恢复行为沿用现有流程。切换类型清理当前列表页，但按带类型 ID 保持详情身份和草稿隔离，不能把需求草稿投到缺陷。
+推荐 UI：Settings → 工单提供商 → TAPD → 填入个人访问令牌与显式时区 → 保存 → 浏览项目 → 绑定。在工单页切换“需求 / 缺陷”，两者各有搜索、Active/All、标签、详情和发起任务。令牌清空、连接替换、断开、离线恢复行为沿用现有流程。切换类型清理当前列表页，但按带类型 ID 保持详情身份和草稿隔离，不能把需求草稿投到缺陷。
 
 ## 4. 数据和接口适配
 
 ### 身份与合同
 
 - 增加有限枚举 `tapd`，不将 `TrackerKind` 改为任意字符串。
-- 增加 write-only credentials variant `{kind:'tapd', companyId, apiUser, apiPassword}`；严格校验数字 ID、长度、控制字符及 Basic username 分隔符。公司 ID 是配置定位信息，不充当秘密。
-- API 网页 origin 固定；source 标识拟为 `tapd-company:<companyId>`，须以厂商项目信息验证该公司及 workspace 归属，不相信浏览器提交的名称或 URL。
+- 增加 write-only credentials variant `{kind:'tapd', accessToken, timeZone}`；严格校验令牌长度与控制字符。令牌是唯一秘密。
+- API 网页 origin 固定；source 标识拟为 `tapd`，凭据轮换由 connection revision 保证，不相信浏览器提交的名称或 URL。
 - `externalId` 仍为 workspace ID，`externalName` 仍为厂商规范项目名称；不把类别拼入 scope 名称。
 - 工单内部 ID 用 `story:<原始字符串ID>` / `bug:<原始字符串ID>`；原始长整型字符串不丢精度、不误识别为 GitHub #number。通用 `kind:'issue'` 保持兼容，可增加可选 `itemType` 和展示编号字段以避免 UI 解析私有 ID。
 - 列表、搜索、watch、automation options 与 trackerTrigger 引入可选类型字段，TAPD 要求明确 story/bug；Jira/Linear 老请求无需此字段且行为不变。watch query key、签名 cursor、预览扫描 checkpoint 和自动化基线都包括类型。类型改变视为事件来源改变，清理不兼容 progress 并重新基线。
@@ -107,7 +107,7 @@ Linear 的事件限制不是实现遗漏：官方说明创建后三分钟内的�
 
 默认沿用保存暂停、预览、30 分钟检查和启用时当前基线。跨日 history 扫描按厂商可查询日期切片，分页/日期/当前 issue 均可 checkpoint；用重叠窗口和 durable receipt 去重。用时间预算而不仅是请求次数；预算耗尽不重置页一。凭据旋转、切换类型、source 改变、禁用、掉线和迟到响应均沿用现有 isolation。
 
-凭据注入与现有自动化保持一致，但必须独立扩展 `resolveTrackerAgentEnv`、`renderTrackerTask` 的 TAPD 分支；不能让“非 Jira 就是 Linear”的三元表达式把 TAPD 密码当 Linear key。现有秘密脱敏清单也须覆盖两个 TAPD 秘密。只读凭据无法完成任务指令里的回写，UI/文档应解释权限边界；本次不新增自动写回 API。
+凭据注入与现有自动化保持一致，但必须独立扩展 `resolveTrackerAgentEnv`、`renderTrackerTask` 的 TAPD 分支；不能让“非 Jira 就是 Linear”的三元表达式把 TAPD 令牌当 Linear key。现有秘密脱敏清单也须覆盖 TAPD 令牌。只读凭据无法完成任务指令里的回写，UI/文档应解释权限边界；本次不新增自动写回 API。
 
 **能力对标不等于虚假齐全**：若真实 API/权限不能证明历史完整，就在 options 中返回 limitations 并拒绝启用对应事件，报告尚未达到该项 Jira 等价能力。浏览和创建事件可以单独验收，但不能把未开放的状态事件写成“已全部对标”。
 

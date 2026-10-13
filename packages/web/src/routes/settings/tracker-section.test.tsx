@@ -262,18 +262,14 @@ it('posts TAPD API credentials and clears the password after a failed save', asy
   const configure = await screen.findByRole('button', { name: 'Configure TAPD credentials' })
   await waitFor(() => expect((configure as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(configure)
-  fireEvent.change(screen.getByLabelText('Company ID'), { target: { value: '10104801' } })
-  fireEvent.change(screen.getByLabelText('API account'), { target: { value: 'tapd-api-user' } })
-  fireEvent.change(screen.getByLabelText('API password'), { target: { value: 'tapd-private-password' } })
+  fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'tapd-private-token' } })
   fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Shanghai' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save project credentials' }))
 
-  await waitFor(() => expect(writes).toEqual([{ kind: 'tapd', companyId: '10104801', apiUser: 'tapd-api-user', apiPassword: 'tapd-private-password', timeZone: 'Asia/Shanghai' }]))
-  await waitFor(() => expect((screen.getByLabelText('API password') as HTMLInputElement).value).toBe(''))
-  expect((screen.getByLabelText('Company ID') as HTMLInputElement).value).toBe('10104801')
-  expect((screen.getByLabelText('API account') as HTMLInputElement).value).toBe('tapd-api-user')
+  await waitFor(() => expect(writes).toEqual([{ kind: 'tapd', accessToken: 'tapd-private-token', timeZone: 'Asia/Shanghai' }]))
+  await waitFor(() => expect((screen.getByLabelText('Access token') as HTMLInputElement).value).toBe(''))
   expect((screen.getByLabelText('Timezone') as HTMLInputElement).value).toBe('Asia/Shanghai')
-  expect(JSON.stringify(client.getQueryCache().getAll().map(query => query.state.data))).not.toContain('tapd-private-password')
+  expect(JSON.stringify(client.getQueryCache().getAll().map(query => query.state.data))).not.toContain('tapd-private-token')
 })
 
 it('discards unsaved credentials and picker state when switching project', async () => {

@@ -9,15 +9,17 @@ Browsing performs no vendor writes. Enabled event automations can launch agent w
 
 Open the project's **Settings → Issue tracker**, then **Configure Jira credentials**,
 **Configure Linear credentials** or **Configure TAPD credentials**. Jira needs the site URL, account email and API token;
-Linear needs an API key. TAPD needs the Company ID, an Open API account and password, and a
+Linear needs an API key. TAPD needs a personal access token from the open platform, and a
 timezone. Use a token with read access restricted to the intended data.
 Save it, choose **Browse**, search for the project/team/workspace, then **Connect**. Discovery is
 paginated; **Load more** reaches later results. No server restart or environment editing
 is needed. Saving credentials is local; Browse/Connect verifies vendor access.
 
-For TAPD, the Company ID is the numeric company identifier shown in TAPD. The API account
-and password are the **TAPD Open API** credentials, not your ordinary website login
-password. The timezone is a user-selected IANA zone (for example `Asia/Shanghai`) used to
+For TAPD, the access token is a **personal access token** created in TAPD's open platform,
+not your ordinary website login password. Cezar authenticates with
+`Authorization: Bearer <token>` and discovers your workspaces through
+`users/info` → `workspaces/user_participant_projects`, so no company ID is required. The
+timezone is a user-selected IANA zone (for example `Asia/Shanghai`) used to
 convert TAPD's offset-less `created`/`modified` timestamps; it is never guessed from the
 host clock or the tapd.cn domain. One cezar project binds one TAPD workspace; the browser
 shows **Stories** and **Bugs** tabs for that workspace, each with its own search,
@@ -96,8 +98,8 @@ project where it was explicitly configured. Separate narrowly scoped tokens are 
 
 ### Existing environment-based connections
 
-`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `LINEAR_API_KEY`, `TAPD_COMPANY_ID`,
-`TAPD_API_USER`, `TAPD_API_PASSWORD` and `TAPD_TIME_ZONE` in the server
+`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `LINEAR_API_KEY`, `TAPD_ACCESS_TOKEN`
+and `TAPD_TIME_ZONE` in the server
 environment or a repository `.env` are not read by this integration. These names are used only
 inside the managed per-project credential file. Existing saved scopes stay visible, but reads fail closed until you configure
 credentials and reconnect in that project's Settings. There is no silent migration or fallback
@@ -139,18 +141,18 @@ and the issue's state, creator and labels. No create/update/admin permission is 
 The [GraphQL API](https://linear.app/developers/graphql) describes key authentication and
 [rate limits](https://linear.app/developers/rate-limiting).
 
-For TAPD, create an Open API account (`api_user`/`api_password`) under your company and
-use HTTP Basic authentication against the fixed origin `https://api.tapd.cn`. The account
-password is the Open API account password, **not** the website login password; create and
+For TAPD, create a personal access token in TAPD's open platform and use HTTP Bearer
+authentication (`Authorization: Bearer <token>`) against the fixed origin `https://api.tapd.cn`.
+The token is the open-platform access token, **not** the website login password; create and
 revoke it in TAPD's API configuration. The adapter performs only these reads:
-workspace discovery (`GET /workspaces/projects?company_id=…`), workspace identity
-(`GET /workspaces/get_workspace_info`), story and bug lists/details (`GET /stories`,
-`GET /bugs`), and workflow metadata (`GET /workflows/status_map`,
+identity (`GET /users/info`), workspace discovery (`GET /workspaces/user_participant_projects`),
+workspace identity (`GET /workspaces/get_workspace_info`), story and bug lists/details
+(`GET /stories`, `GET /bugs`), and workflow metadata (`GET /workflows/status_map`,
 `GET /workflows/last_steps`). It never writes to TAPD. The official documentation lives
 under [open.tapd.cn](https://open.tapd.cn/document/api-doc/API%E6%96%87%E6%A1%A3/API%E9%85%8D%E7%BD%AE%E6%8C%87%E5%BC%95.html).
 
 Rotate or renew an expired token using Replace credentials in project Settings, then reconnect the scope.
-Changing the Jira site, Linear organization or TAPD company requires explicitly reconnecting the project;
+Changing the Jira site, Linear organization or TAPD token requires explicitly reconnecting the project;
 saved IDs are never silently retargeted.
 
 ## Agent context
