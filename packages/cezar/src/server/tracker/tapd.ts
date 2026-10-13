@@ -54,6 +54,7 @@ const bugRowSchema = z.object({ Bug: bugSchema }).passthrough();
 const iterationSchema = z.object({
   id: numericId, name: z.string().min(1),
   startdate: z.string().nullish().optional(), enddate: z.string().nullish().optional(),
+  status: z.string().optional(),
 }).passthrough();
 const iterationRowSchema = z.object({ Iteration: iterationSchema }).passthrough();
 
@@ -250,7 +251,14 @@ export function createTapdClient(
       const parsed = z.array(iterationRowSchema).safeParse(await request('/iterations', { workspace_id: association.externalId, limit: '200', page: '1' }, signal));
       if (!parsed.success) return invalidResponse();
       const rows = parsed.data.map(row => row.Iteration);
-      return new Map(rows.map(row => [row.id, { id: row.id, name: row.name, ...(row.startdate ? { start: row.startdate } : {}), ...(row.enddate ? { end: row.enddate } : {}) }]));
+      // The iteration view lists only the current year and only non-terminal iterations;
+      // completed (`done`) iterations are historical and stay out of the picker/groups.
+      // The iteration's own startdate is the year signal — a 2025 week that merely ends in
+      // early 2026 is still last year's iteration.
+      const year = String(new Date().getFullYear());
+      return new Map(rows
+        .filter(row => row.status !== 'done' && (!row.startdate || row.startdate.startsWith(year)))
+        .map(row => [row.id, { id: row.id, name: row.name, ...(row.startdate ? { start: row.startdate } : {}), ...(row.enddate ? { end: row.enddate } : {}) }]));
     };
 
     const workflow = async (type: ItemType, workitemTypeId: string | undefined, signal: AbortSignal) => {
