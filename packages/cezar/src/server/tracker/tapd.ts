@@ -246,10 +246,12 @@ export function createTapdClient(
         ...(workitemTypeId === undefined ? {} : { workitem_type_id: workitemTypeId }),
       };
       const statusMap = z.record(z.string(), z.string()).safeParse(await request('/workflows/status_map', params, signal));
-      const terminal = z.array(z.string()).safeParse(await request('/workflows/last_steps', params, signal));
-      if (!statusMap.success || !terminal.success || terminal.data.length === 0
-        || terminal.data.some(status => statusMap.data[status] === undefined)) return invalidResponse();
-      return { names: statusMap.data, terminal: new Set(terminal.data) };
+      // `last_steps` returns an object keyed by terminal status code (not an array).
+      const terminalRaw = z.record(z.string(), z.string()).safeParse(await request('/workflows/last_steps', params, signal));
+      if (!statusMap.success || !terminalRaw.success) return invalidResponse();
+      const terminal = Object.keys(terminalRaw.data);
+      if (terminal.length === 0 || terminal.some(status => statusMap.data[status] === undefined)) return invalidResponse();
+      return { names: statusMap.data, terminal: new Set(terminal) };
     };
 
     const readItems = async (query: TrackerListQuery | TrackerSearchQuery): Promise<TrackerItemsResult> => {

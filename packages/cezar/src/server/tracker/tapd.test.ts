@@ -132,7 +132,7 @@ describe('createTapdClient', () => {
         expect(url.searchParams.get('workitem_type_id')).toBe('1010104801000022091');
         return json({ status: 1, data: { planning: '规划中', done: '已完成' } });
       }
-      if (url.pathname === '/workflows/last_steps') return json({ status: 1, data: ['done'] });
+      if (url.pathname === '/workflows/last_steps') return json({ status: 1, data: { done: '已完成' } });
       throw new Error(`unexpected ${url}`);
     });
     const result = await client(fetcher).driver(association).listIssues({ limit: 50, state: 'active', labels: [], itemType: 'story' });
