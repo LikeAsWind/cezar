@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMemo, type CSSProperties, type ReactNode, type Ref } from 'react'
 
 import { useSkills } from '@/api/queries'
@@ -53,6 +54,8 @@ export function TaskComposer({
   /** Passed to the chips — see `DiffCommentChips.onOpen`. */
   onOpenComment?: (comment: DiffComment) => void
 }) {
+  useLocale()
+
   // The legacy session-open rule (web/app.js `updateDetail`): the composer can deliver while the
   // engine owns a live session — running queues the message, waiting answers it. A queued run's
   // prompt is still authorable (#472), and a closed run whose session can be reopened continues.
@@ -90,9 +93,7 @@ export function TaskComposer({
   const footerStatus = continuable ? continueAction.pills : (
     <>
       {providerBlocked && !continueAction.providerPending ? (
-        <Link to="/settings/agents#providers" className="text-xs font-medium text-foreground underline underline-offset-4">
-          Configure providers
-        </Link>
+        <Link to="/settings/agents#providers" className="text-xs font-medium text-foreground underline underline-offset-4">{t('Configure providers')}</Link>
       ) : null}
       <RunEnginePills run={run} />
     </>
@@ -147,7 +148,7 @@ export function TaskComposer({
         disabled={providerBlocked || (!sessionOpen && !queued && !continuable)}
         // Only reachable now by a closed run with NO session to resume — which is exactly the one
         // case where Continue is not on offer either.
-        disabledReason={providerBlocked ? providerReason : 'Session closed — no session to resume.'}
+        disabledReason={providerBlocked ? providerReason : t('Session closed — no session to resume.')}
         // The engine pills ride the enabled footer, so the picked runner/model and the typed prompt
         // reach `POST /continue` in one request.
         footerEnd={footerStatus}
@@ -155,12 +156,12 @@ export function TaskComposer({
         // are a message on their own.
         allowEmptySubmit={continuable || hasDiffComments}
         sendAriaLabel={continuable ? 'Continue' : 'Send'}
-        stop={stoppable ? { label: 'Stop the run', onStop: stopRun.request, pending: stopRun.pending } : undefined}
+        stop={stoppable ? { label: t('Stop the run'), onStop: stopRun.request, pending: stopRun.pending } : undefined}
         placeholder={
-          queued ? 'Add to the prompt — sent when the run starts…'
-          : continuable ? 'Continue — add a prompt, or send to just reopen the session…'
-          : run.status === 'waiting' ? 'Reply — / for skills, @ for files…'
-          : 'Message the agent — / for skills, @ for files…'
+          queued ? t('Add to the prompt — sent when the run starts…')
+          : continuable ? t('Continue — add a prompt, or send to just reopen the session…')
+          : run.status === 'waiting' ? t('Reply — / for skills, @ for files…')
+          : t('Message the agent — / for skills, @ for files…')
         }
         autocompleteSkills
         quickReplies
@@ -195,6 +196,8 @@ export function TaskDock({
   style?: CSSProperties
   ref?: Ref<HTMLDivElement>
 }) {
+  useLocale()
+
   return (
     <div
       ref={ref}

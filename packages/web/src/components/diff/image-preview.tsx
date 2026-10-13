@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ZoomableImage } from '@/components/zoomable-image'
 
 import type { DiffFileChange } from './types'
@@ -38,11 +39,13 @@ export function ImagePreview({
   imageSrc?: (path: string) => string
   onOpenInApp?: (path: string) => void
 }) {
+  useLocale()
+
   if (file.status === 'deleted') {
-    return <ImageNote>Image deleted — only the new side can be previewed.</ImageNote>
+    return <ImageNote>{t('Image deleted — only the new side can be previewed.')}</ImageNote>
   }
   if (!imageSrc) {
-    return <ImageNote>Binary file — no text diff.</ImageNote>
+    return <ImageNote>{t('Binary file — no text diff.')}</ImageNote>
   }
   return (
     <div data-slot="diff-image-preview" className="flex flex-col items-center gap-2 p-4">
@@ -53,14 +56,14 @@ export function ImagePreview({
           data-slot="diff-image-open"
           onClick={() => onOpenInApp(file.path)}
           className="text-[11px] font-medium text-soft-foreground hover:text-foreground hover:underline"
-        >
-          Open in default app
-        </button>
+        >{t('Open in default app')}</button>
       ) : null}
     </div>
   )
 }
 
 function ImageNote({ children }: { children: React.ReactNode }) {
+  useLocale()
+
   return <p className="px-4 py-2.5 text-xs text-soft-foreground">{children}</p>
 }

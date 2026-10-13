@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useQueryClient } from '@tanstack/react-query'
 import * as React from 'react'
 
@@ -30,6 +31,8 @@ import {
  *    per-browser) — the section then says plainly that this browser is blocking delivery.
  */
 export function NotificationsSection() {
+  useLocale()
+
   const queryClient = useQueryClient()
   const uiState = useWorkspaceUiState()
 
@@ -91,12 +94,9 @@ export function NotificationsSection() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-foreground">
-              <label htmlFor="notifications-enabled">Notify when an agent needs you</label>
+              <label htmlFor="notifications-enabled">{t('Notify when an agent needs you')}</label>
             </h2>
-            <p className="text-[13px] text-muted-foreground">
-              A browser notification when a task starts waiting, asks for review, or fails —
-              only while this tab is in the background. Off by default.
-            </p>
+            <p className="text-[13px] text-muted-foreground">{t('A browser notification when a task starts waiting, asks for review, or fails — only while this tab is in the background. Off by default.')}</p>
           </div>
           <Switch
             id="notifications-enabled"
@@ -108,17 +108,11 @@ export function NotificationsSection() {
         </div>
 
         {unsupported ? (
-          <p data-slot="notifications-unsupported" className="text-[13px] text-muted-foreground">
-            This browser does not support notifications, so the toggle is unavailable here.
-          </p>
+          <p data-slot="notifications-unsupported" className="text-[13px] text-muted-foreground">{t('This browser does not support notifications, so the toggle is unavailable here.')}</p>
         ) : null}
 
         {!unsupported && enabled && permission === 'denied' ? (
-          <p data-slot="notifications-denied" className="text-[13px] text-danger">
-            This browser is blocking notifications for the cockpit. The preference is saved, but
-            nothing will be delivered here until you allow notifications in the browser&apos;s
-            site settings.
-          </p>
+          <p data-slot="notifications-denied" className="text-[13px] text-danger">{t('This browser is blocking notifications for the cockpit. The preference is saved, but nothing will be delivered here until you allow notifications in the browser\'s site settings.')}</p>
         ) : null}
       </section>
     </div>

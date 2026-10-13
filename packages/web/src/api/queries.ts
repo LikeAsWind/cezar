@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
@@ -475,7 +476,7 @@ export function useRunnerModels(runner: Runner, enabled = true) {
     queryFn: ({ signal }) =>
       runnerDiscoversModels(runner)
         ? getRunnerModels(runner, { signal })
-        : Promise.reject(new Error(`${runner} has no host model catalog`)),
+        : Promise.reject(new Error(t('{0} has no host model catalog', { 0: runner }))),
     staleTime: 5 * 60 * 1_000,
     enabled: enabled && runnerDiscoversModels(runner),
   })

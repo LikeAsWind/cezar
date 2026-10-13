@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 /** Stable ids persisted in `~/.cezar/ui-state.json`; never derive them from labels. */
 export const TASK_COLUMN_IDS = [
   'status',
@@ -42,11 +43,11 @@ export interface TaskColumnDefinition {
  * this list so capability-hidden and folded columns cannot drift structurally.
  */
 export const TASK_COLUMNS = [
-  { id: 'status', label: 'Status', canFold: false, defaultExpanded: true, align: 'left', width: '116px' },
-  { id: 'task', label: 'Task', canFold: false, defaultExpanded: true, align: 'left' },
+  { id: 'status', get label() { return t('Status') }, canFold: false, defaultExpanded: true, align: 'left', width: '116px' },
+  { id: 'task', get label() { return t('Task') }, canFold: false, defaultExpanded: true, align: 'left' },
   {
     id: 'workflow',
-    label: 'Workflow',
+    get label() { return t('Workflow') },
     canFold: true,
     defaultExpanded: true,
     align: 'left',
@@ -55,7 +56,7 @@ export const TASK_COLUMNS = [
   },
   {
     id: 'branch',
-    label: 'Branch',
+    get label() { return t('Branch') },
     canFold: true,
     defaultExpanded: false,
     align: 'left',
@@ -65,7 +66,7 @@ export const TASK_COLUMNS = [
   { id: 'diff', label: '±', canFold: true, defaultExpanded: true, align: 'left', width: '78px', icon: 'diff' },
   {
     id: 'reference',
-    label: 'Ref',
+    get label() { return t('Ref') },
     canFold: true,
     defaultExpanded: true,
     align: 'left',
@@ -74,7 +75,7 @@ export const TASK_COLUMNS = [
   },
   {
     id: 'tokens',
-    label: 'IN / OUT',
+    get label() { return t('IN / OUT') },
     canFold: true,
     defaultExpanded: true,
     align: 'right',
@@ -84,7 +85,7 @@ export const TASK_COLUMNS = [
   },
   {
     id: 'cost',
-    label: 'Cost',
+    get label() { return t('Cost') },
     canFold: true,
     defaultExpanded: true,
     align: 'right',
@@ -92,10 +93,10 @@ export const TASK_COLUMNS = [
     icon: 'cost',
     capability: 'cost',
   },
-  { id: 'cpu', label: 'CPU', canFold: true, defaultExpanded: true, align: 'right', width: '68px', icon: 'cpu' },
+  { id: 'cpu', get label() { return t('CPU') }, canFold: true, defaultExpanded: true, align: 'right', width: '68px', icon: 'cpu' },
   {
     id: 'memory',
-    label: 'Mem',
+    get label() { return t('Mem') },
     canFold: true,
     defaultExpanded: true,
     align: 'right',
@@ -104,7 +105,7 @@ export const TASK_COLUMNS = [
   },
   {
     id: 'started',
-    label: 'Started',
+    get label() { return t('Started') },
     canFold: true,
     defaultExpanded: true,
     align: 'right',

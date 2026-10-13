@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useEffect, useState } from 'react'
 
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
@@ -253,6 +254,8 @@ export function EnginePills({
    */
   accounts?: boolean
 }) {
+  useLocale()
+
   const resolved = useResolvedEngine(pick)
   const { runner, model, runners, canRun, modelsLocked } = resolved
   const config = useConfig()
@@ -291,14 +294,14 @@ export function EnginePills({
       ) : null}
       <PickerPill
         slot="model-pill"
-        ariaLabel="Model"
+        ariaLabel={t('Model')}
         // `resolveModel` only ever returns a member of `models` ('' is the auto preset), so
         // the lookup cannot miss.
         label={models.find((m) => m.id === model)!.label}
         value={model}
         disabled={unavailable}
         readOnly={modelsLocked === true}
-        disabledHint={modelsLocked ? 'Model selection is locked to native coding-agent settings.' : undefined}
+        disabledHint={modelsLocked ? t('Model selection is locked to native coding-agent settings.') : undefined}
         onPick={(next) => onChange({ ...pick, model: next })}
         options={models.map((m) => ({ value: m.id, label: m.label, desc: m.desc }))}
         status={modelCatalogStatus(runner, catalog.data, catalog.isError)}

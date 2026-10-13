@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { RunRecord } from '@open-mercato/cezar-api-client'
 
 /**
@@ -123,7 +124,7 @@ export function isNeedsYouStatus(run: Pick<RunRecord, 'status' | 'awaitingAnswer
  */
 export function deriveAttention(run: AttentionInput): Attention {
   if (hasPendingPermission(run)) {
-    return { bucket: 'permission', tone: 'violet', pulse: true, label: 'needs permission' }
+    return { bucket: 'permission', tone: 'violet', pulse: true, label: t('needs permission') }
   }
   // A run a provider usage limit stopped is `failed` on the record, but it is not an outcome —
   // it is a task with an appointment (spec 2026-08-03-auto-resume-after-usage-limit). Painting
@@ -132,48 +133,48 @@ export function deriveAttention(run: AttentionInput): Attention {
   // like `queued`: amber, still, and asking for nothing. Ahead of the `failed` rung because the
   // chain is first-match-wins.
   if (run.status === 'failed' && run.autoResumeAt) {
-    return { bucket: 'none', tone: 'pending', pulse: false, label: 'scheduled' }
+    return { bucket: 'none', tone: 'pending', pulse: false, label: t('scheduled') }
   }
   // A session that closed on an unanswered `CEZ:ASK` — the inactivity timer, a crash, a restart —
   // is `failed` on the record because the process is gone, but the question is still the user's to
   // answer. Reporting it as a failure (or, before that, as done) hid a task that was waiting on
   // you; it wears the `waiting` rung instead, and the answer reopens the session.
   if (isAwaitingAnswer(run)) {
-    return { bucket: 'waiting', tone: 'pending', pulse: true, label: 'needs you' }
+    return { bucket: 'waiting', tone: 'pending', pulse: true, label: t('needs you') }
   }
   if (run.status === 'failed') {
-    return { bucket: 'error', tone: 'danger', pulse: false, label: 'failed' }
+    return { bucket: 'error', tone: 'danger', pulse: false, label: t('failed') }
   }
   if (run.status === 'waiting') {
     return {
       bucket: 'waiting',
       tone: 'pending',
       pulse: true,
-      label: budgetStop(run)?.ceiling !== undefined ? 'budget reached' : 'needs you',
+      label: budgetStop(run)?.ceiling !== undefined ? t('budget reached') : t('needs you'),
     }
   }
   if (run.status === 'review') {
-    return { bucket: 'waiting', tone: 'violet', pulse: true, label: 'needs review' }
+    return { bucket: 'waiting', tone: 'violet', pulse: true, label: t('needs review') }
   }
   if (run.status === 'running' && run.activity === 'monitoring') {
     // Still working, but on its OWN downstream work (a sub-agent / a monitored
     // command), not on you (#490). A sub-state of `running`, so it stays in the
     // `running` bucket — no notification, no "Needs you" — with its own label.
-    return { bucket: 'running', tone: 'violet', pulse: true, label: 'monitoring' }
+    return { bucket: 'running', tone: 'violet', pulse: true, label: t('monitoring') }
   }
   if (run.status === 'running') {
-    return { bucket: 'running', tone: 'violet', pulse: true, label: 'running' }
+    return { bucket: 'running', tone: 'violet', pulse: true, label: t('running') }
   }
   if (isUnseen(run)) {
-    return { bucket: 'unseen', tone: 'violet', pulse: false, label: 'unseen' }
+    return { bucket: 'unseen', tone: 'violet', pulse: false, label: t('unseen') }
   }
   if (run.status === 'queued') {
-    return { bucket: 'none', tone: 'neutral', pulse: false, label: 'queued' }
+    return { bucket: 'none', tone: 'neutral', pulse: false, label: t('queued') }
   }
   if (run.status === 'done') {
-    return { bucket: 'none', tone: 'success', pulse: false, label: 'done' }
+    return { bucket: 'none', tone: 'success', pulse: false, label: t('done') }
   }
-  return { bucket: 'none', tone: 'neutral', pulse: false, label: 'cancelled' }
+  return { bucket: 'none', tone: 'neutral', pulse: false, label: t('cancelled') }
 }
 
 /**

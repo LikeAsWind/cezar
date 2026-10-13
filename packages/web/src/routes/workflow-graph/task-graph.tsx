@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import '@xyflow/react/dist/style.css'
 
 import {
@@ -46,6 +47,8 @@ import { FloatingPanel } from './workflow-graph'
 type LiveNodeData = { node: WorkflowGraphNode; state: NodeRunState; childRunId?: string }
 
 function LiveNodeCard({ data }: NodeProps<Node<LiveNodeData>>) {
+  useLocale()
+
   const { node, state, childRunId } = data
   return childRunId ? (
     <SubtaskNodeCard node={node} state={state} childRunId={childRunId} />
@@ -67,6 +70,8 @@ function LiveNodeCard({ data }: NodeProps<Node<LiveNodeData>>) {
  * run and its real cost, and links through to it.
  */
 function SubtaskNodeCard({ node, state, childRunId }: { node: WorkflowGraphNode; state: NodeRunState; childRunId: string }) {
+  useLocale()
+
   const child = useRun(childRunId).data
   // A multi-step child (a sub-workflow) shows its steps; a single-step one is the node itself.
   const inner = child && child.steps.length > 1 ? child.steps.map((s) => ({ id: s.id, name: s.name ?? s.id, status: s.status })) : undefined
@@ -85,6 +90,8 @@ function SubtaskNodeCard({ node, state, childRunId }: { node: WorkflowGraphNode;
 const nodeTypes = { live: LiveNodeCard }
 
 export function TaskGraphRoute() {
+  useLocale()
+
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
   if (run.isPending) return <GitTabLoading tab="changes" />
@@ -97,6 +104,8 @@ export function TaskGraphRoute() {
 }
 
 function TaskGraphView({ run }: { run: ApiRun }) {
+  const locale = useLocale()
+
   const def = run.workflowDef
   const graph = useMemo(() => (def ? graphForWorkflow(def) : null), [def])
   const overlay = useMemo(() => (graph ? runOverlay(graph, run) : null), [graph, run])
@@ -155,7 +164,7 @@ function TaskGraphView({ run }: { run: ApiRun }) {
         ]
       }),
     )
-  }, [graph, overlay, loops, lanes])
+  }, [graph, overlay, loops, lanes, locale])
 
   return (
     <div data-route="task-graph" className="flex h-full min-h-0 flex-col">
@@ -164,8 +173,8 @@ function TaskGraphView({ run }: { run: ApiRun }) {
         <CenteredState
           icon={<WorkflowIcon />}
           tone="neutral"
-          title="No workflow graph"
-          subtitle="This task has no stored workflow definition to draw."
+          title={t('No workflow graph')}
+          subtitle={t('This task has no stored workflow definition to draw.')}
         />
       ) : (
         <div className="relative min-h-[420px] flex-1">
@@ -189,7 +198,7 @@ function TaskGraphView({ run }: { run: ApiRun }) {
             <Controls showInteractive={false} />
           </ReactFlow>
           {selected && overlay ? (
-            <FloatingPanel side="right" label="Node details" title={selected.name ?? selected.id} onClose={() => setSelectedId(null)}>
+            <FloatingPanel side="right" label={t('Node details')} title={selected.name ?? selected.id} onClose={() => setSelectedId(null)}>
               <NodeDetails
                 state={overlay.nodes.get(selected.id) ?? { status: 'pending' }}
                 outputs={run.graphState?.outputs?.[selected.id]}
@@ -222,6 +231,8 @@ function NodeDetails({
   loopMax?: number
   childRunId?: string
 }) {
+  useLocale()
+
   const rows: [string, string][] = [['status', state.status === 'reached' ? 'passed through' : state.status]]
   if (state.iterations) rows.push(['runs', String(state.iterations)])
   if (state.costUsd) rows.push(['cost', `$${state.costUsd.toFixed(2)}`])
@@ -238,14 +249,13 @@ function NodeDetails({
         ))}
       </dl>
       {childRunId ? (
-        <Link to={`/tasks/${childRunId}`} className="inline-flex items-center gap-1 text-primary hover:underline">
-          Open the subtask <ExternalLinkIcon className="size-3" />
+        <Link to={`/tasks/${childRunId}`} className="inline-flex items-center gap-1 text-primary hover:underline">{t('Open the subtask')}{' '}<ExternalLinkIcon className="size-3" />
         </Link>
       ) : null}
       <div>
-        <div className="mb-1 text-[11px] text-muted-foreground uppercase">Outputs</div>
+        <div className="mb-1 text-[11px] text-muted-foreground uppercase">{t('Outputs')}</div>
         {fields.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">Nothing yet — outputs appear once the node has run.</p>
+          <p className="text-[11px] text-muted-foreground">{t('Nothing yet — outputs appear once the node has run.')}</p>
         ) : (
           fields.map(([k, v]) => (
             <div key={k} className="mb-2">

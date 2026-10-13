@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useEffect, useState } from 'react'
 
 import { useHostHistory, useHostLastFrameAt, useHostTransport, useHostUsage } from '@/api/host-usage'
@@ -60,6 +61,8 @@ const meterLevel = (pct: number | undefined): MeterLevel =>
       : 'critical'
 
 export function HostUsageWidget() {
+  useLocale()
+
   const desktop = useIsDesktop()
   const transport = useHostTransport()
   if (!desktop || transport !== 'local') return null
@@ -67,6 +70,8 @@ export function HostUsageWidget() {
 }
 
 function HostUsageWidgetRow() {
+  useLocale()
+
   const sample = useHostUsage()
   const history = useHostHistory()
   const lastFrameAt = useHostLastFrameAt()
@@ -112,7 +117,7 @@ function HostUsageWidgetRow() {
   // and the effective-core count have now, and a hovering user and a screen-reader user must not
   // get different readings of the same row. Comma-separated rather than `·`-separated for the
   // same reason - a middle dot is announced as "middle dot" by readers that do not drop it.
-  const summary =`CPU ${cpuText}${cpuCores === undefined ? '' : ` of ${cpuCores}`}, RAM ${memPctText} (${memText})`
+  const summary =t('CPU {0}{1}, RAM {2} ({3})', { 0: cpuText, 1: cpuCores === undefined ? '' : ` of ${cpuCores}`, 2: memPctText, 3: memText })
 
   return (
     <Link
@@ -121,7 +126,7 @@ function HostUsageWidgetRow() {
       data-state={stale ? 'stale' : 'live'}
       // How many frames the store holds - the e2e proof that the root writer keeps feeding it.
       data-frames={history.length}
-      aria-label={`Machine usage: ${summary}. Open Settings, Resources.`}
+      aria-label={t('Machine usage: {0}. Open Settings, Resources.', { 0: summary })}
       title={summary}
       className={cn(
         // Six columns on ONE 14px line: label · bar · value, twice. The two `minmax(0,1fr)`
@@ -134,13 +139,13 @@ function HostUsageWidgetRow() {
       )}
     >
       <Meter
-        label="CPU"
+        label={t('CPU')}
         pct={stale ? undefined : cpuPct}
         valueSlot="host-usage-widget-cpu"
         value={cpuText}
       />
       <Meter
-        label="RAM"
+        label={t('RAM')}
         pct={stale ? undefined : memPct}
         valueSlot="host-usage-widget-mem-pct"
         value={memPctText}
@@ -166,6 +171,8 @@ interface MeterProps {
  * size against its own content, and the two bars would stop matching each other.
  */
 function Meter({ label, pct, valueSlot, value, gutter }: MeterProps) {
+  useLocale()
+
   const level = meterLevel(pct)
   return (
     <>

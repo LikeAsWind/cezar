@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { WorktreeEntry } from '@open-mercato/cezar-api-client'
 
 /**
@@ -34,7 +35,7 @@ export function previewKind(entry: Extract<WorktreeEntry, { type: 'file' }>): Pr
 /** `312 B` / `4.6 kB` / `1.2 MB` — file sizes, where sub-kB honesty matters (formatMem in
  *  tasks-table.ts rounds to whole kB because RSS never needs bytes). */
 export function formatFileSize(bytes: number): string {
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} kB`
-  return `${bytes} B`
+  if (bytes >= 1024 ** 2) return t('{0} MB', { 0: (bytes / 1024 ** 2).toFixed(1) })
+  if (bytes >= 1024) return t('{0} kB', { 0: (bytes / 1024).toFixed(1) })
+  return t('{0} B', { 0: bytes })
 }

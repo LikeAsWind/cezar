@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { AutomationSchedule } from '@open-mercato/cezar-api-client'
 
 import { EditorScheduleFields } from './editor-schedule-fields'
+import { setLocale } from '@/lib/i18n'
 
 afterEach(cleanup)
 
@@ -16,6 +17,18 @@ function Harness({ initial }: { initial: AutomationSchedule }) {
 const cron = () => document.querySelector('[data-slot="editor-cron"]')?.textContent
 
 describe('EditorScheduleFields', () => {
+  it('translates schedule and weekday choices without changing the schedule', () => {
+    render(<Harness initial={{ type: 'weekly', day: 5, hour: 16, minute: 0 }} />)
+    act(() => setLocale('zh-CN'))
+    expect(screen.getByRole('button', { name: '每周' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '周五' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '每天' })).toBeTruthy()
+    expect(cron()).toBe('0 16 * * 5')
+    act(() => setLocale('en'))
+    expect(screen.getByRole('button', { name: 'Fri' }).getAttribute('aria-pressed')).toBe('true')
+    expect(cron()).toBe('0 16 * * 5')
+  })
+
   it('shows the time row, the zone and the derived cron for a daily schedule', () => {
     render(<Harness initial={{ type: 'daily', hour: 4, minute: 0 }} />)
     expect(screen.getByRole('button', { name: 'Every day' }).getAttribute('aria-pressed')).toBe('true')

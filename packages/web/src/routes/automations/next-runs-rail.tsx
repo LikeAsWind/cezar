@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { CalendarClockIcon } from 'lucide-react'
 import { occurrencesBetween, zonedParts, type AutomationListEntry } from '@open-mercato/cezar-api-client'
 
@@ -51,6 +52,8 @@ export function NextRunsRail({
   timeZone: string
   now: number
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const today = zonedParts(now, timeZone)
   return (
@@ -63,10 +66,8 @@ export function NextRunsRail({
       >
         <SheetHeader className="px-4 pt-4 pb-2">
           <SheetTitle className="inline-flex items-center gap-2 text-sm">
-            <CalendarClockIcon className="size-4" />
-            Next runs
-          </SheetTitle>
-          <SheetDescription className="sr-only">Upcoming scheduled runs, soonest first.</SheetDescription>
+            <CalendarClockIcon className="size-4" />{t('Next runs')}</SheetTitle>
+          <SheetDescription className="sr-only">{t('Upcoming scheduled runs, soonest first.')}</SheetDescription>
         </SheetHeader>
         <div className="overflow-y-auto">
           {upcoming.map((run, index) => {
@@ -93,15 +94,14 @@ export function NextRunsRail({
             )
           })}
           {upcoming.length === 0 ? (
-            <p className="px-4 py-2 text-[12.5px] text-soft-foreground">No scheduled runs in the next two weeks.</p>
+            <p className="px-4 py-2 text-[12.5px] text-soft-foreground">{t('No scheduled runs in the next two weeks.')}</p>
           ) : null}
           <div
             data-slot="next-runs-footer"
             className="mt-1.5 flex items-center gap-2 border-t border-border px-3.5 pt-2.5 pb-1 text-xs text-muted-foreground"
           >
             <StatusDot tone="pending" pulse />
-            {pollCount} GitHub polls running continuously
-          </div>
+            {pollCount}{' '}{t('GitHub polls running continuously')}</div>
         </div>
       </SheetContent>
     </Sheet>

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { CheckIcon, ShieldCheckIcon, XIcon } from 'lucide-react'
@@ -55,20 +56,20 @@ export function useSetTelemetryConsent() {
 type Answer = 'granted' | 'denied'
 
 function AnswerButtons({ busy, onAnswer, size }: { busy: boolean; onAnswer: (c: Answer) => void; size: 'sm' | 'lg' }) {
+  useLocale()
+
   const cls = size === 'lg' ? 'min-h-11' : 'h-9'
   return (
     <>
-      <Button variant="outline" className={cls} disabled={busy} data-slot="telemetry-deny" onClick={() => onAnswer('denied')}>
-        Don’t share
-      </Button>
-      <Button className={cls} disabled={busy} data-slot="telemetry-grant" onClick={() => onAnswer('granted')}>
-        Share usage data
-      </Button>
+      <Button variant="outline" className={cls} disabled={busy} data-slot="telemetry-deny" onClick={() => onAnswer('denied')}>{t('Don’t share')}</Button>
+      <Button className={cls} disabled={busy} data-slot="telemetry-grant" onClick={() => onAnswer('granted')}>{t('Share usage data')}</Button>
     </>
   )
 }
 
 export function TelemetryConsentBanner() {
+  useLocale()
+
   const consent = useTelemetryConsent()
   const setConsent = useSetTelemetryConsent()
   const [busy, setBusy] = useState(false)
@@ -87,17 +88,13 @@ export function TelemetryConsentBanner() {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border bg-card px-4 py-3 shadow-lg">
         <ShieldCheckIcon className="hidden size-[18px] shrink-0 text-violet sm:block" aria-hidden="true" />
         <p className="min-w-0 flex-1 basis-[280px] text-[13px] leading-relaxed text-muted-foreground">
-          <span className="font-medium text-foreground">Help improve cezar?</span> With your OK we send task
-          counts and crash reports to the maintainers — never prompts, code, paths or repo names. Change it
-          anytime in Settings → Privacy.{' '}
+          <span className="font-medium text-foreground">{t('Help improve cezar?')}</span>{' '}{t('With your OK we send task counts and crash reports to the maintainers — never prompts, code, paths or repo names. Change it anytime in Settings → Privacy.')}{' '}
           <button
             type="button"
             data-slot="telemetry-details"
             className="underline underline-offset-2 hover:text-foreground"
             onClick={() => setDetails(true)}
-          >
-            Details
-          </button>
+          >{t('Details')}</button>
         </p>
         <div className="flex gap-2">
           <AnswerButtons busy={busy} onAnswer={(c) => void answer(c)} size="sm" />
@@ -109,6 +106,8 @@ export function TelemetryConsentBanner() {
 }
 
 function ConsentList({ title, tone, items }: { title: string; tone: 'ok' | 'no'; items: string[] }) {
+  useLocale()
+
   const Icon = tone === 'ok' ? CheckIcon : XIcon
   return (
     <div>
@@ -120,7 +119,7 @@ function ConsentList({ title, tone, items }: { title: string; tone: 'ok' | 'no';
               className={`mt-0.5 size-3.5 shrink-0 ${tone === 'ok' ? 'text-success' : 'text-soft-foreground'}`}
               aria-hidden="true"
             />
-            {item}
+            {t(item)}
           </li>
         ))}
       </ul>
@@ -140,6 +139,8 @@ export function TelemetryDetailsDialog({
   busy: boolean
   onAnswer: (c: Answer) => void
 }) {
+  useLocale()
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -153,31 +154,20 @@ export function TelemetryDetailsDialog({
       >
         <div className="space-y-5 p-6">
           <div className="space-y-1.5">
-            <span className="block font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              What is sent
-            </span>
-            <DialogTitle className="text-xl font-semibold tracking-tight">Usage data, in full</DialogTitle>
-            <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-              Counts of what you use and reports of what broke, so cezar’s maintainers at Open Mercato
-              can fix bugs without you filing them. Off until you say yes.
-            </DialogDescription>
+            <span className="block font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('What is sent')}</span>
+            <DialogTitle className="text-xl font-semibold tracking-tight">{t('Usage data, in full')}</DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed text-muted-foreground">{t('Counts of what you use and reports of what broke, so cezar’s maintainers at Open Mercato can fix bugs without you filing them. Off until you say yes.')}</DialogDescription>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <ConsentList title="Shared" tone="ok" items={SHARED} />
-            <ConsentList title="Never shared" tone="no" items={NEVER} />
+            <ConsentList title={t('Shared')} tone="ok" items={SHARED} />
+            <ConsentList title={t('Never shared')} tone="no" items={NEVER} />
           </div>
 
-          <p className="text-xs leading-relaxed text-soft-foreground">
-            Every label is a closed list the server enforces. Withdraw anytime in Settings → Privacy or
-            with <code className="font-mono">cezar telemetry disable</code> — the install id is deleted.{' '}
-            <a href={TELEMETRY_CODE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-              Read the code
-            </a>
+          <p className="text-xs leading-relaxed text-soft-foreground">{t('Every label is a closed list the server enforces. Withdraw anytime in Settings → Privacy or with')}{' '}<code className="font-mono">cezar telemetry disable</code>{' '}{t('— the install id is deleted.')}{' '}
+            <a href={TELEMETRY_CODE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">{t('Read the code')}</a>
             {' · '}
-            <a href={TELEMETRY_DOC_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-              Privacy notice
-            </a>
+            <a href={TELEMETRY_DOC_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">{t('Privacy notice')}</a>
           </p>
 
           <div className="grid grid-cols-2 gap-2">

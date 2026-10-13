@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from '@/lib/i18n'
 import { DisclosureChevron, disclosureSummary, widgetHeading } from './presentation'
 import { ExportRows } from './export-rows'
 import { useContext, useLayoutEffect, useMemo, useRef } from 'react'
@@ -10,12 +11,12 @@ import { shortAge } from '@/lib/format'
 import { TaskRow, Coverage } from './rows'
 import { DashboardEntryContext, readPanel, savePanel, useStagedRows } from './state'
 function sourceLabel(key: string) {
-  if (!key.startsWith('github:')) return key === 'tasks' ? 'Task results' : key
+  if (!key.startsWith('github:')) return key === 'tasks' ? t('Task results') : key
   const parts = key.slice(7).split(':')
-  const kind = parts.pop() === 'pr' ? 'Pull requests' : 'Issues'
+  const kind = parts.pop() === 'pr' ? t('Pull requests') : t('Issues')
   const name = parts
     .join(':')
-    .replace(/^project:/, 'Project ')
+    .replace(/^project:/, t('Project '))
     .replace(/^github.com\//, '')
   return `${name} · ${kind}`
 }
@@ -31,6 +32,8 @@ export function Feed({
   count: number
   more: () => void
 }) {
+  useLocale()
+
   const query = useDashboardFeed(filter, true)
   const staged = useStagedRows(
     query.data?.rows, feedKey, `feed:${filter}`, 0,
@@ -75,14 +78,14 @@ export function Feed({
       <div className="space-y-2 border-b px-4 pt-2.5 pb-2">
         <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
           <h2 ref={heading} tabIndex={-1} className={widgetHeading}>
-            {tasksOnly ? 'Recent results' : 'Recent results & GitHub'}
+            {tasksOnly ? t('Recent results') : t('Recent results & GitHub')}
           </h2>
-          <span className="font-mono text-[11px] text-soft-foreground">Last 7 days</span>
+          <span className="font-mono text-[11px] text-soft-foreground">{t('Last 7 days')}</span>
         </div>
         {!tasksOnly && (
           <SegmentedControl
             slot="dashboard-feed"
-            label="Results source"
+            label={t('Results source')}
             value={filter}
             options={[
               { value: 'all', label: 'All' },
@@ -93,9 +96,7 @@ export function Feed({
           />
         )}
         {tasksOnly && (
-          <p className="text-xs text-muted-foreground">
-            Task results · No GitHub repositories configured
-          </p>
+          <p className="text-xs text-muted-foreground">{t('Task results · No GitHub repositories configured')}</p>
         )}
         {filter !== 'tasks' && !tasksOnly && (
           <details
@@ -105,28 +106,28 @@ export function Feed({
             <summary className={`${disclosureSummary} py-1.5`}>
               <DisclosureChevron />
               {errors.length || githubFailed
-                ? 'GitHub needs attention'
+                ? t('GitHub needs attention')
                 : loading
-                  ? 'Checking GitHub…'
+                  ? t('Checking GitHub…')
                   : noGithub
-                    ? 'GitHub not configured'
+                    ? t('GitHub not configured')
                     : fetched
-                      ? `GitHub checked ${shortAge(fetched)} ago`
-                      : 'GitHub source'}
+                      ? t('GitHub checked {0} ago', { 0: shortAge(fetched) })
+                      : t('GitHub source')}
             </summary>
             <div className="flex flex-wrap items-center justify-between gap-x-3">
               <p>
                 {errors.length || githubFailed
                   ? fetched
-                    ? `Could not refresh GitHub. Showing results from ${new Date(fetched).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
-                    : 'Could not load one or more GitHub sources.'
+                    ? t('Could not refresh GitHub. Showing results from {0}.', { 0: new Date(fetched).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' }) })
+                    : t('Could not load one or more GitHub sources.')
                   : loading
-                    ? 'Checking repository sources. Available results remain visible.'
+                    ? t('Checking repository sources. Available results remain visible.')
                     : noGithub
-                      ? 'No GitHub repositories configured. Select Tasks to see task results.'
+                      ? t('No GitHub repositories configured. Select Tasks to see task results.')
                       : fetched
-                        ? `GitHub checked ${shortAge(fetched)} ago`
-                        : 'GitHub snapshot'}
+                        ? t('GitHub checked {0} ago', { 0: shortAge(fetched) })
+                        : t('GitHub snapshot')}
               </p>
               {!noGithub && (
                 <Button
@@ -138,10 +139,10 @@ export function Feed({
                   }}
                 >
                   {query.githubFetching
-                    ? 'Refreshing…'
+                    ? t('Refreshing…')
                     : errors.length || githubFailed
-                      ? 'Retry GitHub'
-                      : 'Refresh GitHub'}
+                      ? t('Retry GitHub')
+                      : t('Refresh GitHub')}
                 </Button>
               )}
             </div>
@@ -150,7 +151,7 @@ export function Feed({
       </div>
       <div
         role="region"
-        aria-label="Recent results list"
+        aria-label={t('Recent results list')}
         ref={list}
         onWheel={() => { restore.done = true }}
         onTouchStart={() => { restore.done = true }}
@@ -163,19 +164,16 @@ export function Feed({
         className="max-h-80 overflow-y-auto overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {query.isError && (
-          <p role="alert" className="p-4 text-sm">
-            Could not load results.{' '}
+          <p role="alert" className="p-4 text-sm">{t('Could not load results.')}{' '}
             <Button
               className="min-h-11"
               onClick={() => {
                 void query.retryFailed()
               }}
-            >
-              Retry
-            </Button>
+            >{t('Retry')}</Button>
           </p>
         )}
-        {query.isPending && <p className="p-4 text-sm">Loading results…</p>}
+        {query.isPending && <p className="p-4 text-sm">{t('Loading results…')}</p>}
         {updates > 0 && (
           <Button
             variant="ghost"
@@ -185,8 +183,7 @@ export function Feed({
               heading.current?.focus()
             }}
           >
-            {updates} updates — Show
-          </Button>
+            {updates}{' '}{t('updates — Show')}</Button>
         )}
         {rows.slice(0, count).map(({ row, removed }) =>
           row.kind === 'task-result' ? (
@@ -195,7 +192,7 @@ export function Feed({
               row={row.run}
               kicker={
                 removed
-                  ? 'Outside current results'
+                  ? t('Outside current results')
                   : `Latest result: ${row.run.status === 'failed' ? 'Failed' : 'Completed'}`
               }
             />
@@ -222,7 +219,7 @@ export function Feed({
                 {row.title}
               </a>
               <p className="mt-1 text-xs text-muted-foreground">
-                {row.repo} · {row.itemKind === 'pr' ? 'PR' : 'Issue'} #{row.number} created ·{' '}
+                {row.repo} · {row.itemKind === 'pr' ? t('PR') : t('Issue')} #{row.number}{' '}{t('created ·')}{' '}
                 {shortAge(row.at)}
               </p>
             </div>
@@ -236,14 +233,12 @@ export function Feed({
           !errors.length &&
           !loading &&
           query.data.coverage.projects.every((p) => p.state === 'complete') && (
-            <p className="px-4 py-8 text-sm text-muted-foreground">No results in the last 7 days</p>
+            <p className="px-4 py-8 text-sm text-muted-foreground">{t('No results in the last 7 days')}</p>
           )}
         {count < rows.length && (
-          <Button variant="ghost" className="m-2 min-h-11" onClick={more}>
-            Show {Math.min(20, rows.length - count)} more results
-          </Button>
+          <Button variant="ghost" className="m-2 min-h-11" onClick={more}>{t('Show')}{' '}{Math.min(20, rows.length - count)}{' '}{t('more results')}</Button>
         )}
-        {query.data?.truncated && <p className="p-4 text-xs">Showing the latest 60 results</p>}
+        {query.data?.truncated && <p className="p-4 text-xs">{t('Showing the latest 60 results')}</p>}
         {query.data && (
           <Coverage
             coverage={query.data.coverage}
@@ -255,19 +250,17 @@ export function Feed({
         {!tasksOnly && query.data?.sources.some((s) => s.state !== 'ready' || s.truncated) && (
           <details className="p-4 text-xs">
             <summary className={`${disclosureSummary} min-h-11`}>
-              <DisclosureChevron />
-              Source details
-            </summary>
+              <DisclosureChevron />{t('Source details')}</summary>
             {query.data.sources.map((s) => (
               <p className="break-words py-1" key={s.key}>
                 {sourceLabel(s.key)}:{' '}
                 {s.reason === 'No GitHub remote'
-                  ? 'Not configured'
+                  ? t('Not configured')
                   : s.reason === 'Still loading GitHub'
-                    ? 'Checking…'
-                    : (s.reason ?? (s.state === 'ready' ? 'Up to date' : s.state))}
-                {s.truncated ? ' · capped' : ''}
-                {s.fetchedAt ? ` · checked ${shortAge(s.fetchedAt)}` : ''}
+                    ? t('Checking…')
+                    : (s.reason ?? (s.state === 'ready' ? t('Up to date') : s.state))}
+                {s.truncated ? t(' · capped') : ''}
+                {s.fetchedAt ? t(' · checked {0}', { 0: shortAge(s.fetchedAt) }) : ''}
               </p>
             ))}
           </details>

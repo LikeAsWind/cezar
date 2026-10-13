@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronRightIcon, FileIcon, FolderIcon, ImageIcon } from 'lucide-react'
 import { useState } from 'react'
 
@@ -22,8 +23,10 @@ export function FilesTree({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  useLocale()
+
   return (
-    <nav data-slot="files-tree" aria-label="Worktree files" className="min-w-0 text-[13px]">
+    <nav data-slot="files-tree" aria-label={t('Worktree files')} className="min-w-0 text-[13px]">
       <ul className="flex flex-col gap-px">
         <DirChildren runId={runId} path="" depth={0} selected={selected} onSelect={onSelect} />
       </ul>
@@ -45,13 +48,13 @@ function DirChildren({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  useLocale()
+
   const entry = useRunFile(runId, path)
 
   if (entry.isPending) {
     return (
-      <li data-slot="files-tree-loading" className="px-1.5 py-1 text-xs text-soft-foreground" style={{ paddingLeft: `${24 + depth * 14}px` }}>
-        Loading…
-      </li>
+      <li data-slot="files-tree-loading" className="px-1.5 py-1 text-xs text-soft-foreground" style={{ paddingLeft: `${24 + depth * 14}px` }}>{t('Loading…')}</li>
     )
   }
   if (entry.isError) {
@@ -64,9 +67,7 @@ function DirChildren({
   if (entry.data.type !== 'dir') return null
   if (entry.data.entries.length === 0) {
     return (
-      <li data-slot="files-tree-empty" className="px-1.5 py-1 text-xs text-soft-foreground" style={{ paddingLeft: `${24 + depth * 14}px` }}>
-        Empty directory
-      </li>
+      <li data-slot="files-tree-empty" className="px-1.5 py-1 text-xs text-soft-foreground" style={{ paddingLeft: `${24 + depth * 14}px` }}>{t('Empty directory')}</li>
     )
   }
 
@@ -115,6 +116,8 @@ function DirNode({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   return (
     <li>
@@ -159,6 +162,8 @@ function FileNode({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  useLocale()
+
   const active = selected === path
   const Icon = isImagePath(path) ? ImageIcon : FileIcon
   return (

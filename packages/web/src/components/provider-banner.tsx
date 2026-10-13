@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { XIcon } from 'lucide-react'
 
 import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
@@ -26,6 +27,8 @@ export function ProviderBanner({
   dismissals,
   onDismissAuthFailures,
 }: ProviderBannerProps) {
+  useLocale()
+
   if (pending || !status) return null
   let normalized: ProviderStatusResponse
   try {
@@ -43,19 +46,16 @@ export function ProviderBanner({
         className="flex min-h-9 items-center gap-2 border-b border-border bg-destructive/10 px-4 text-sm text-foreground"
       >
         <StatusDot tone="danger" />
-        <span>
-          Provider authentication failed during a task:{' '}
+        <span>{t('Provider authentication failed during a task:')}{' '}
           {incidents.map(({ label }) => label).join(', ')}.
         </span>
         <Link
           to="/settings/agents#providers"
           className="ml-auto shrink-0 font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Open agent settings
-        </Link>
+        >{t('Open agent settings')}</Link>
         <button
           type="button"
-          aria-label="Dismiss provider authentication alert"
+          aria-label={t('Dismiss provider authentication alert')}
           onClick={() => onDismissAuthFailures(incidents)}
           className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -75,10 +75,10 @@ export function ProviderBanner({
   )
   const uncertain = normalized.providers.some((row) => row.status === 'unknown')
   const message = credentialsExist
-    ? 'No agent provider is enabled.'
+    ? t('No agent provider is enabled.')
     : uncertain
-      ? 'No connected provider could be verified.'
-      : 'No agent provider credentials were found.'
+      ? t('No connected provider could be verified.')
+      : t('No agent provider credentials were found.')
 
   return (
     <div
@@ -91,9 +91,7 @@ export function ProviderBanner({
       <Link
         to="/settings/agents#providers"
         className="ml-auto shrink-0 font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Configure providers
-      </Link>
+      >{t('Configure providers')}</Link>
     </div>
   )
 }

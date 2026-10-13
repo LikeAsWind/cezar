@@ -10,6 +10,7 @@ export default mergeConfig(
     test: {
       name: 'web',
       environment: 'jsdom',
+      setupFiles: ['src/test/i18n-setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
     },
   }),

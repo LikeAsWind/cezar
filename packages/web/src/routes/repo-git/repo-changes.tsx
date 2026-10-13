@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { FileDiffIcon, TriangleAlertIcon } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
@@ -23,6 +24,8 @@ import { AnimatedDiffStat } from '../task-git/git-toolbar'
  * per-file sticky headers carry the names.
  */
 export function RepoChangesSection() {
+  useLocale()
+
   const changes = useRepoChanges()
   const desktop = useIsDesktop()
 
@@ -54,7 +57,7 @@ export function RepoChangesSection() {
         data-slot="repo-changes-toolbar"
         className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6"
       >
-        <span className="text-xs text-muted-foreground">Uncommitted changes</span>
+        <span className="text-xs text-muted-foreground">{t('Uncommitted changes')}</span>
         {changes.data ? <AnimatedDiffStat stat={changes.data.stat} /> : null}
         {/* Same rule as the task toolbar: toggles exist ≥md only — phones force unified+wrap. */}
         <span className="ml-auto hidden items-center gap-1 md:flex">
@@ -70,15 +73,13 @@ export function RepoChangesSection() {
       </div>
 
       {changes.isPending ? (
-        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading changes…
-        </p>
+        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">{t('Loading changes…')}</p>
       ) : changes.isError ? (
         <CenteredState
           icon={refused ? <FileDiffIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'No changes to show' : 'Could not load the changes'}
+          title={refused ? t('No changes to show') : t('Could not load the changes')}
           subtitle={changes.error.message}
         />
       ) : files.length === 0 ? (
@@ -86,8 +87,8 @@ export function RepoChangesSection() {
           icon={<FileDiffIcon />}
           tone="neutral"
           heading="h2"
-          title="Working tree clean"
-          subtitle="No uncommitted changes in the main working tree. Edits show up here as they happen."
+          title={t('Working tree clean')}
+          subtitle={t('No uncommitted changes in the main working tree. Edits show up here as they happen.')}
         />
       ) : (
         // Below md the diff scrolls in `main` under the repo header, which (unlike the task tabs'

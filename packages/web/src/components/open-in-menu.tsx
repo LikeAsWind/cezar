@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   BotIcon,
   BoxesIcon,
@@ -114,7 +115,7 @@ export interface OpenInChoice {
 export function OpenInMenu({
   choices,
   onPick,
-  label = 'Open in…',
+  label = t('Open in…'),
   title,
   triggerVariant = 'ghost',
   disabled = false,
@@ -134,6 +135,8 @@ export function OpenInMenu({
   trailing?: ReactNode
   slot?: string
 }) {
+  useLocale()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

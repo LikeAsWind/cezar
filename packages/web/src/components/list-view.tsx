@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import * as React from 'react'
 import type { ReactNode } from 'react'
 
@@ -18,6 +19,8 @@ import type { ListView } from '@/lib/task-groups'
 const ListViewContext = React.createContext<[ListView, (view: ListView) => void] | null>(null)
 
 export function ListViewProvider({ children }: { children: ReactNode }) {
+  useLocale()
+
   const [view, setView] = React.useState<ListView>('active')
   // The tuple is memoized so a re-render of the provider (which sits high in the tree) does not
   // invalidate the context for every consumer below it.
@@ -29,6 +32,6 @@ export function ListViewProvider({ children }: { children: ReactNode }) {
  *  and quietly keep its own private filter — the exact desync this context exists to prevent. */
 export function useListView(): [ListView, (view: ListView) => void] {
   const value = React.useContext(ListViewContext)
-  if (!value) throw new Error('useListView must be used inside a <ListViewProvider>')
+  if (!value) throw new Error(t('useListView must be used inside a <ListViewProvider>'))
   return value
 }

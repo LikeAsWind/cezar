@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import type { LinkSafetyModalProps } from 'streamdown'
 
 import {
@@ -39,6 +40,8 @@ import {
  * guard (#431) and display-only tool issue links (#538).
  */
 export function LinkSafetyDialog({ isOpen, onClose, onConfirm, url }: LinkSafetyModalProps) {
+  useLocale()
+
   return (
     <AlertDialog
       open={isOpen}
@@ -48,16 +51,13 @@ export function LinkSafetyDialog({ isOpen, onClose, onConfirm, url }: LinkSafety
     >
       <AlertDialogContent data-slot="link-safety-dialog">
         <AlertDialogHeader>
-          <AlertDialogTitle>Open this link?</AlertDialogTitle>
+          <AlertDialogTitle>{t('Open this link?')}</AlertDialogTitle>
           {/* The address rides INSIDE the description on purpose: Radix points the dialog's
               `aria-describedby` at this node, and the address is the whole reason the prompt
               exists — a screen reader that announced only the sentence would leave its user
               with exactly the question the dialog was opened to answer. A <span> (block only
               by CSS) because the description renders a <p>, which cannot contain a <div>. */}
-          <AlertDialogDescription>
-            It leaves cezar in a new tab. The words of a link in a transcript are the
-            agent&apos;s — the address below is where it actually goes.
-            {/* The full URL, never truncated: a shortened address is exactly the one a reader
+          <AlertDialogDescription>{t('It leaves cezar in a new tab. The words of a link in a transcript are the agent\'s — the address below is where it actually goes.')}{/* The full URL, never truncated: a shortened address is exactly the one a reader
                 cannot check. `wrap-anywhere` keeps a long one inside the dialog. */}
             <span
               data-slot="link-safety-url"
@@ -68,10 +68,10 @@ export function LinkSafetyDialog({ isOpen, onClose, onConfirm, url }: LinkSafety
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
           {/* Streamdown's `onConfirm` is the one that opens the tab (`_blank`, `noreferrer`);
               the Action also closes the dialog, which is what fires `onClose`. */}
-          <AlertDialogAction onClick={onConfirm}>Open link</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm}>{t('Open link')}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

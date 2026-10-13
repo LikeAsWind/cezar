@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 
 import { useTheme } from '@/components/theme-provider'
@@ -12,9 +13,11 @@ import type { Theme } from '@/lib/theme'
  *  one order, defined once. */
 export const NEXT_THEME: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
 const ICON = { light: SunIcon, dark: MoonIcon, system: MonitorIcon } as const
-const LABEL: Record<Theme, string> = { light: 'light', dark: 'dark', system: 'system' }
+const LABEL: Record<Theme, string> = { get light() { return t('light') }, get dark() { return t('dark') }, get system() { return t('system') } }
 
 export function ThemeToggle({ className }: { className?: string }) {
+  useLocale()
+
   const { theme, setTheme } = useTheme()
   const next = NEXT_THEME[theme]
   const Icon = ICON[theme]
@@ -27,8 +30,8 @@ export function ThemeToggle({ className }: { className?: string }) {
       className={className}
       data-slot="theme-toggle"
       data-theme-pref={theme}
-      title={`Theme: ${LABEL[theme]}`}
-      aria-label={`Theme: ${LABEL[theme]}. Switch to ${LABEL[next]}.`}
+      title={t('Theme: {0}', { 0: LABEL[theme] })}
+      aria-label={t('Theme: {0}. Switch to {1}.', { 0: LABEL[theme], 1: LABEL[next] })}
       onClick={() => setTheme(next)}
     >
       <Icon aria-hidden="true" />

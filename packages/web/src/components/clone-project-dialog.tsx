@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { SettingsIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router'
@@ -68,6 +69,8 @@ export function CloneProjectDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  useLocale()
+
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
   const [progress, setProgress] = useState<string | null>(null)
@@ -162,19 +165,17 @@ export function CloneProjectDialog({
         className="min-w-0 max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-lg"
       >
         <DialogHeader>
-          <DialogTitle>Clone from GitHub</DialogTitle>
-          <DialogDescription>
-            The service clones with <code>gh</code> into your checkout root and adds the result as a project.
-          </DialogDescription>
+          <DialogTitle>{t('Clone from GitHub')}</DialogTitle>
+          <DialogDescription>{t('The service clones with')}{' '}<code>gh</code>{' '}{t('into your checkout root and adds the result as a project.')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="clone-url">Repository</Label>
+          <Label htmlFor="clone-url">{t('Repository')}</Label>
           <Input
             id="clone-url"
             data-slot="clone-url"
             autoFocus
-            placeholder="owner/repo or https://github.com/owner/repo"
+            placeholder={t('owner/repo or https://github.com/owner/repo')}
             value={url}
             disabled={checkout.isPending}
             onChange={(event) => setUrl(event.target.value)}
@@ -185,11 +186,11 @@ export function CloneProjectDialog({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="clone-name">Folder name</Label>
+          <Label htmlFor="clone-name">{t('Folder name')}</Label>
           <Input
             id="clone-name"
             data-slot="clone-name"
-            placeholder={derivedName === '' ? 'repo' : derivedName}
+            placeholder={derivedName === '' ? t('repo') : derivedName}
             value={name}
             disabled={checkout.isPending}
             onChange={(event) => setName(event.target.value)}
@@ -208,8 +209,8 @@ export function CloneProjectDialog({
                 variant="ghost"
                 size="icon-sm"
                 className="size-7"
-                aria-label="Edit checkout root"
-                title="Edit checkout root"
+                aria-label={t('Edit checkout root')}
+                title={t('Edit checkout root')}
                 disabled
               >
                 <SettingsIcon className="size-3.5" aria-hidden="true" />
@@ -219,8 +220,8 @@ export function CloneProjectDialog({
                 <RouterLink
                   to="/settings/global/projects"
                   data-slot="clone-root-settings"
-                  aria-label="Edit checkout root"
-                  title="Edit checkout root"
+                  aria-label={t('Edit checkout root')}
+                  title={t('Edit checkout root')}
                 >
                   <SettingsIcon className="size-3.5" aria-hidden="true" />
                 </RouterLink>
@@ -233,7 +234,7 @@ export function CloneProjectDialog({
             and a growing log would scroll a dialog that is otherwise a form. */}
         {checkout.isPending ? (
           <p data-slot="clone-progress" className="truncate font-mono text-[11.5px] text-muted-foreground">
-            {progress ?? 'Starting the clone…'}
+            {progress ?? t('Starting the clone…')}
           </p>
         ) : null}
 
@@ -241,7 +242,7 @@ export function CloneProjectDialog({
           <div data-slot="clone-error" className="grid min-w-0 gap-1.5 text-[13px] text-danger">
             {ssoUrl ? (
               <>
-                <p>GitHub requires SAML authorization for this organization.</p>
+                <p>{t('GitHub requires SAML authorization for this organization.')}</p>
                 <p>
                   <a
                     data-slot="clone-sso-link"
@@ -253,15 +254,13 @@ export function CloneProjectDialog({
                       ssoRetryArmed.current = true
                       setAwaitingSso(true)
                     }}
-                  >
-                    Authorize this GitHub organization
-                  </a>
+                  >{t('Authorize this GitHub organization')}</a>
                   {awaitingSso
-                    ? ' — return here after authorizing, or choose Retry clone.'
-                    : ' — return to this tab to retry, or choose Retry clone.'}
+                    ? t(' — return here after authorizing, or choose Retry clone.')
+                    : t(' — return to this tab to retry, or choose Retry clone.')}
                 </p>
                 <details className="min-w-0">
-                  <summary>Error details</summary>
+                  <summary>{t('Error details')}</summary>
                   <p className="whitespace-pre-wrap break-all">
                     {checkout.error instanceof Error ? checkout.error.message : null}
                   </p>
@@ -269,22 +268,20 @@ export function CloneProjectDialog({
               </>
             ) : (
               <p className="min-w-0 whitespace-pre-wrap break-all">
-                {checkout.error instanceof Error ? checkout.error.message : 'could not clone that repository'}
+                {checkout.error instanceof Error ? checkout.error.message : t('could not clone that repository')}
               </p>
             )}
           </div>
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" disabled={checkout.isPending} onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <Button variant="outline" disabled={checkout.isPending} onClick={() => onOpenChange(false)}>{t('Cancel')}</Button>
           <Button
             data-slot="clone-confirm"
             disabled={url.trim() === '' || effectiveName === '' || checkout.isPending}
             onClick={clone}
           >
-            {checkout.isPending ? 'Cloning…' : checkout.isError ? 'Retry clone' : 'Clone'}
+            {checkout.isPending ? t('Cloning…') : checkout.isError ? t('Retry clone') : t('Clone')}
           </Button>
         </DialogFooter>
       </DialogContent>

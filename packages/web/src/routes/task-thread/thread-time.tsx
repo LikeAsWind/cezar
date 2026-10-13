@@ -1,3 +1,4 @@
+import { t, useLocale, dateTimeFormat } from '@/lib/i18n'
 /**
  * The thread's clock (#941): the small, always-visible time on a conversation turn, the day
  * separators between turns, and the turn duration.
@@ -19,16 +20,16 @@
 import { useEffect, useState } from 'react'
 
 /** One formatter per shape, built once: hundreds of thread rows format on every paint. */
-const CLOCK = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
-const EXACT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
-const DAY = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-const DAY_WITH_YEAR = new Intl.DateTimeFormat(undefined, {
+const CLOCK = { get format() { return dateTimeFormat({ hour: 'numeric', minute: '2-digit' }).format } }
+const EXACT = { get format() { return dateTimeFormat({ dateStyle: 'medium', timeStyle: 'medium' }).format } }
+const DAY = { get format() { return dateTimeFormat({ weekday: 'short', month: 'short', day: 'numeric' }).format } }
+const DAY_WITH_YEAR = { get format() { return dateTimeFormat({
   weekday: 'short',
   year: 'numeric',
   month: 'short',
   day: 'numeric',
-})
-const FULL_DAY = new Intl.DateTimeFormat(undefined, { dateStyle: 'full' })
+}).format } }
+const FULL_DAY = { get format() { return dateTimeFormat({ dateStyle: 'full' }).format } }
 
 /** The one gate every export goes through: a `Date` worth formatting, or nothing. The same test
  *  runs one layer earlier, at `stamp()` in `thread-state.ts`, which keeps the raw string instead:
@@ -75,8 +76,8 @@ export function dayLabel(ts: string | undefined, now: Date = new Date()): string
   const at = parse(ts)
   if (at === undefined) return undefined
   const key = keyOf(at)
-  if (key === keyOf(now)) return 'Today'
-  if (key === keyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return 'Yesterday'
+  if (key === keyOf(now)) return t('Today')
+  if (key === keyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return t('Yesterday')
   return (at.getFullYear() === now.getFullYear() ? DAY : DAY_WITH_YEAR).format(at)
 }
 
@@ -104,8 +105,8 @@ function formatSeconds(seconds: number): string | undefined {
   if (seconds < 0) return undefined
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+  if (minutes < 60) return t('{0}m {1}s', { 0: minutes, 1: String(seconds % 60).padStart(2, '0') })
+  return t('{0}h {1}m', { 0: Math.floor(minutes / 60), 1: String(minutes % 60).padStart(2, '0') })
 }
 
 /**
@@ -124,6 +125,8 @@ export function useNow(intervalMs = 1000): number {
 
 /** The stamp on a user bubble: short local time, exact instant on hover. */
 export function MessageTime({ ts }: { ts: string }) {
+  useLocale()
+
   const label = clockLabel(ts)
   if (label === undefined) return null
   return (
@@ -144,6 +147,8 @@ export function MessageTime({ ts }: { ts: string }) {
  * jump when it fills in.
  */
 export function TurnTime({ startedAt, completedAt }: { startedAt?: string; completedAt: string }) {
+  useLocale()
+
   const label = clockLabel(completedAt)
   if (label === undefined) return null
   const duration = turnDuration(startedAt, completedAt)
@@ -155,7 +160,7 @@ export function TurnTime({ startedAt, completedAt }: { startedAt?: string; compl
       <time dateTime={completedAt} title={exactLabel(completedAt)}>
         {label}
       </time>
-      {duration !== undefined ? <span title={`Replied in ${duration}`}>· {duration}</span> : null}
+      {duration !== undefined ? <span title={t('Replied in {0}', { 0: duration })}>· {duration}</span> : null}
     </div>
   )
 }
@@ -169,6 +174,8 @@ export function TurnTime({ startedAt, completedAt }: { startedAt?: string; compl
  *  behind "Today"/"Yesterday" when `dayLabel` returned one of those, since a relative word alone
  *  is not an anchor and the date alone loses the very cue a returning reader wants. */
 export function DaySeparator({ ts }: { ts: string }) {
+  useLocale()
+
   const label = dayLabel(ts)
   const at = parse(ts)
   if (label === undefined || at === undefined) return null

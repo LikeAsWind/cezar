@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArchiveIcon,
@@ -158,6 +159,8 @@ export function TasksOverview({
    *  automation, or automations off) is shown as itself. */
   automationNames?: ReadonlyMap<string, string>
 }) {
+  useLocale()
+
   const [query, setQuery] = React.useState('')
   // The subtask accordion (#1110): ids of the parents whose dispatched rows are unfolded.
   // Empty on arrival — collapsed is the default, and the chip on the parent row is the handle.
@@ -207,14 +210,10 @@ export function TasksOverview({
       {/* Desktop header. Below `md` the shell's top bar already says "Tasks", and the drawer
           carries the shared Active/Archived tabs — repeating them here would be a third copy. */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">Tasks</h1>
+        <h1 className="text-base font-semibold">{t('Tasks')}</h1>
         <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
-          <OverviewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>
-            Active
-          </OverviewTab>
-          <OverviewTab view="archived" current={view} onSelect={onViewChange} count={counts.archived}>
-            Archived
-          </OverviewTab>
+          <OverviewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>{t('Active')}</OverviewTab>
+          <OverviewTab view="archived" current={view} onSelect={onViewChange} count={counts.archived}>{t('Archived')}</OverviewTab>
         </div>
         <div className="flex-1" />
         {/* Count-gated, like the broom beside it: offered only while there is unread history to
@@ -228,9 +227,7 @@ export function TasksOverview({
             data-slot="mark-all-read"
             onClick={onMarkAllRead}
           >
-            <CheckCheckIcon className="size-3.5" aria-hidden="true" />
-            Mark all read
-          </Button>
+            <CheckCheckIcon className="size-3.5" aria-hidden="true" />{t('Mark all read')}</Button>
         ) : null}
         {/* Only when there is something to sweep, like the legacy header's count-gated broom. */}
         {view === 'active' && finished > 0 ? (
@@ -241,9 +238,7 @@ export function TasksOverview({
             data-slot="archive-finished"
             onClick={onArchiveFinished}
           >
-            <ArchiveIcon className="size-3.5" aria-hidden="true" />
-            Archive finished
-          </Button>
+            <ArchiveIcon className="size-3.5" aria-hidden="true" />{t('Archive finished')}</Button>
         ) : null}
         <div className="relative w-60">
           <SearchIcon
@@ -254,8 +249,8 @@ export function TasksOverview({
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tasks…"
-            aria-label="Search tasks"
+            placeholder={t('Search tasks…')}
+            aria-label={t('Search tasks')}
             className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-[13px] text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
         </div>
@@ -381,11 +376,9 @@ export function TasksOverview({
           >
             <ScaleIcon className="size-[15px] shrink-0 text-soft-foreground" aria-hidden="true" />
             <span>
-              <strong className="font-semibold text-foreground">{group.title}</strong> — {group.count} variants
-              finished
-            </span>
+              <strong className="font-semibold text-foreground">{group.title}</strong> — {group.count}{' '}{t('variants finished')}</span>
             <Button asChild variant="outline" size="sm" className="md:ml-auto">
-              <Link to={`/compare/${group.groupId}`}>Compare</Link>
+              <Link to={`/compare/${group.groupId}`}>{t('Compare')}</Link>
             </Button>
           </div>
         ))}
@@ -396,7 +389,7 @@ export function TasksOverview({
       <Link
         to="/new"
         data-slot="new-task-fab"
-        aria-label="New task"
+        aria-label={t('New task')}
         className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-20 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-modal md:hidden"
       >
         <PlusIcon className="size-[22px]" aria-hidden="true" />
@@ -430,6 +423,8 @@ function TasksEmptyState({
   hiddenByOrigin?: boolean
   onShowAll?: () => void
 }) {
+  useLocale()
+
   const needle = query.trim()
   const kind = needle
     ? 'search-miss'
@@ -447,11 +442,9 @@ function TasksEmptyState({
           heading="h2"
           icon={<SearchXIcon />}
           tone="neutral"
-          title="No tasks match these filters"
+          title={t('No tasks match these filters')}
           actions={
-            <Button type="button" variant="outline" onClick={onClearFilters}>
-              Clear filters
-            </Button>
+            <Button type="button" variant="outline" onClick={onClearFilters}>{t('Clear filters')}</Button>
           }
         />
       ) : kind === 'origin-hidden' ? (
@@ -459,16 +452,14 @@ function TasksEmptyState({
           heading="h2"
           icon={<WorkflowIcon />}
           tone="neutral"
-          title={origin === 'regular' ? 'No regular tasks here' : 'No automation tasks here'}
+          title={origin === 'regular' ? t('No regular tasks here') : t('No automation tasks here')}
           subtitle={
             origin === 'regular'
-              ? 'Tasks started by automations are hidden.'
-              : 'Only tasks started by automations are shown.'
+              ? t('Tasks started by automations are hidden.')
+              : t('Only tasks started by automations are shown.')
           }
           actions={
-            <Button type="button" variant="outline" onClick={onShowAll}>
-              Show all tasks
-            </Button>
+            <Button type="button" variant="outline" onClick={onShowAll}>{t('Show all tasks')}</Button>
           }
         />
       ) : kind === 'search-miss' ? (
@@ -476,16 +467,16 @@ function TasksEmptyState({
           heading="h2"
           icon={<SearchXIcon />}
           tone="neutral"
-          title="No matching tasks"
-          subtitle={`No tasks match “${needle}”.`}
+          title={t('No matching tasks')}
+          subtitle={t('No tasks match “{0}”.', { 0: needle })}
         />
       ) : kind === 'archive' ? (
         <CenteredState
           heading="h2"
           icon={<ArchiveIcon />}
           tone="neutral"
-          title="Nothing archived yet"
-          subtitle="Finished tasks you archive land here."
+          title={t('Nothing archived yet')}
+          subtitle={t('Finished tasks you archive land here.')}
         />
       ) : (
         <CenteredState
@@ -493,14 +484,12 @@ function TasksEmptyState({
           icon={<ListChecksIcon />}
           tone="primary"
           backdrop
-          title="No tasks yet"
-          subtitle="Describe a task to get started."
+          title={t('No tasks yet')}
+          subtitle={t('Describe a task to get started.')}
           actions={
             <Button asChild>
               <Link to="/new">
-                <PlusIcon aria-hidden="true" />
-                New task
-              </Link>
+                <PlusIcon aria-hidden="true" />{t('New task')}</Link>
             </Button>
           }
         />
@@ -537,6 +526,8 @@ function TasksFilterBar({
   automations: ReadonlyMap<string, string | undefined>
   automationNames?: ReadonlyMap<string, string>
 }) {
+  useLocale()
+
   const inView = React.useMemo(
     () => runs.filter((run) => (view === 'archived' ? run.archived : !run.archived)),
     [runs, view],
@@ -561,7 +552,7 @@ function TasksFilterBar({
     <div data-slot="tasks-filters" className="mb-3 flex flex-wrap items-center gap-1.5">
       <Segmented
         slot="task-origin"
-        label="Show tasks started by"
+        label={t('Show tasks started by')}
         value={origin}
         options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, count: perOrigin[option.value] }))}
         onChange={onOriginChange}
@@ -569,7 +560,7 @@ function TasksFilterBar({
       <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
       <FacetFilter
         slot="status"
-        label="Status"
+        label={t('Status')}
         selected={filters.statuses}
         onToggle={(value) => toggle('statuses', value)}
         onClear={() => clear('statuses')}
@@ -578,11 +569,11 @@ function TasksFilterBar({
           label: status,
           count: statusCounts.get(status) ?? 0,
         }))}
-        emptyLabel="No tasks to filter"
+        emptyLabel={t('No tasks to filter')}
       />
       <FacetFilter
         slot="workflow"
-        label="Workflow"
+        label={t('Workflow')}
         selected={filters.workflows}
         onToggle={(value) => toggle('workflows', value)}
         onClear={() => clear('workflows')}
@@ -591,12 +582,12 @@ function TasksFilterBar({
           label: workflow,
           count: workflowCounts.get(workflow) ?? 0,
         }))}
-        emptyLabel="No tasks to filter"
+        emptyLabel={t('No tasks to filter')}
       />
       {origin !== 'regular' && automationIds.length > 0 ? (
         <FacetFilter
           slot="automation"
-          label="Automation"
+          label={t('Automation')}
           selected={filters.automations}
           onToggle={(value) => toggle('automations', value)}
           onClear={() => clear('automations')}
@@ -605,7 +596,7 @@ function TasksFilterBar({
             label: automationNames?.get(id) ?? id,
             count: automationCounts.get(id) ?? 0,
           }))}
-          emptyLabel="No automation tasks"
+          emptyLabel={t('No automation tasks')}
         />
       ) : null}
       {active > 0 ? (
@@ -615,8 +606,7 @@ function TasksFilterBar({
           onClick={() => onFiltersChange(() => NO_TASK_FILTERS)}
           className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
         >
-          <XIcon className="size-3" aria-hidden="true" />
-          Clear ({active})
+          <XIcon className="size-3" aria-hidden="true" />{t('Clear (')}{active})
         </button>
       ) : null}
     </div>
@@ -636,6 +626,8 @@ function OverviewTab({
   count: number
   children: React.ReactNode
 }) {
+  useLocale()
+
   const isActive = view === current
   return (
     <button
@@ -668,6 +660,8 @@ function Th({
   columnId: TaskColumnId
   folded?: boolean
 }) {
+  useLocale()
+
   return (
     <th
       scope="col"
@@ -695,6 +689,8 @@ function TaskColumnHeader({
   onToggle: (id: TaskColumnId) => void
   disabled: boolean
 }) {
+  useLocale()
+
   if (!column.canFold) {
     return (
       <Th columnId={column.id} right={column.align === 'right'}>
@@ -710,7 +706,7 @@ function TaskColumnHeader({
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label={`${action} ${column.label} column`}
+            aria-label={t('{0} {1} column', { 0: action, 1: column.label })}
             aria-pressed={expanded}
             disabled={disabled}
             onClick={() => onToggle(column.id)}
@@ -733,13 +729,15 @@ function TaskColumnHeader({
             )}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top">{column.label} · {action} column</TooltipContent>
+        <TooltipContent side="top">{column.label} · {action}{' '}{t('column')}</TooltipContent>
       </Tooltip>
     </Th>
   )
 }
 
 function TaskColumnIconView({ icon }: { icon?: TaskColumnIcon }) {
+  useLocale()
+
   const className = 'size-3.5'
   switch (icon) {
     case 'workflow':
@@ -805,6 +803,8 @@ function TableRow({
   expandedColumns: NormalizedExpandedColumns
   gitRepo: boolean
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const attention = deriveAttention(run)
   const scheduled = scheduledResume(run)
@@ -841,8 +841,7 @@ function TableRow({
               colSpan={2}
               className={cn(TD_BASE, 'text-right font-mono text-[11.5px] text-soft-foreground')}
             >
-              #{queuePosition} in queue
-            </td>
+              #{queuePosition}{' '}{t('in queue')}</td>
           ) : (
             <UsageTds
               key={column.id}
@@ -913,6 +912,8 @@ function TaskTableCell({
   now: number
   gitRepo: boolean
 }) {
+  useLocale()
+
   if (!expanded) return <FoldedTd column={column.id} />
 
   switch (column.id) {
@@ -999,6 +1000,8 @@ function TaskTableCell({
 }
 
 function FoldedTd({ column }: { column: TaskColumnId }) {
+  useLocale()
+
   return (
     <td
       role="presentation"
@@ -1035,6 +1038,8 @@ function TitleCell({
   onRename: (id: string, title: string) => void
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  useLocale()
+
   const title = runTitle(run)
   const editor = useTitleEditor(title, (next) => onRename(run.id, next))
   // Read/unread (#unread-done-items): promote an unread done item (bright + semibold)
@@ -1102,7 +1107,7 @@ function TitleCell({
       <button
         type="button"
         data-slot="row-rename"
-        aria-label="Rename task"
+        aria-label={t('Rename task')}
         onClick={editor.begin}
         className="shrink-0 rounded-sm p-0.5 text-soft-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
@@ -1140,6 +1145,8 @@ function UsageTds({
   cpuExpanded: boolean
   memoryExpanded: boolean
 }) {
+  useLocale()
+
   const sample = useRunUsage(run.id)
   const cells = usageCells(run, sample)
   return (
@@ -1151,6 +1158,8 @@ function UsageTds({
 }
 
 function UsageTd({ column, cell }: { column: 'cpu' | 'memory'; cell: UsageCell }) {
+  useLocale()
+
   return (
     <td
       data-usage={column === 'memory' ? 'mem' : column}
@@ -1198,6 +1207,8 @@ function TaskCard({
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
   gitRepo: boolean
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const attention = deriveAttention(run)
   const scheduled = scheduledResume(run)
@@ -1279,7 +1290,7 @@ function TaskCard({
         {queuePosition !== null ? (
           <>
             <Sep />
-            <span data-slot="queue-note">#{queuePosition} in queue</span>
+            <span data-slot="queue-note">#{queuePosition}{' '}{t('in queue')}</span>
           </>
         ) : (
           <>
@@ -1325,10 +1336,14 @@ function TaskCard({
 
 /** An honest em dash: this cell has nothing true to show. */
 function Dash() {
+  useLocale()
+
   return <span className="text-xs text-soft-foreground">—</span>
 }
 
 function Sep() {
+  useLocale()
+
   return (
     <span className="text-soft-foreground" aria-hidden="true">
       ·
@@ -1337,6 +1352,8 @@ function Sep() {
 }
 
 function BranchChip({ branch }: { branch: string }) {
+  useLocale()
+
   return (
     <span className="rounded-[6px] bg-muted px-1.5 py-0.5 font-mono text-[11.5px] font-medium text-muted-foreground">
       {branch}
@@ -1352,11 +1369,13 @@ function branchPending(run: RunRecord, gitRepo: boolean): boolean {
 }
 
 function BranchSkeleton() {
+  useLocale()
+
   return (
     <Skeleton
       data-slot="branch-skeleton"
       role="status"
-      aria-label="naming branch"
+      aria-label={t('naming branch')}
       className="inline-block h-4 w-24 align-middle"
     />
   )
@@ -1369,6 +1388,8 @@ function BranchSkeleton() {
  * likely have patched each archived run already, but the endpoint's answer is the truth.
  */
 export function TasksOverviewRoute() {
+  useLocale()
+
   const runs = useRuns()
   const health = useHealth()
   const metricVisibility = usageMetricVisibility(health.data)

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon, CircleCheckIcon, CircleIcon, CircleXIcon, LoaderCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 
@@ -49,6 +50,8 @@ export function railProgress(steps: ReadonlyArray<Pick<StepState, 'status'>>): n
 }
 
 export function StepRail({ steps }: { steps: StepState[] }) {
+  useLocale()
+
   if (steps.length === 0) return null
   const pct = railProgress(steps) * 100
   return (
@@ -68,7 +71,7 @@ export function StepRail({ steps }: { steps: StepState[] }) {
             </span>
           ) : null}
           <span className="ml-auto shrink-0 pl-2 text-[11.5px] text-soft-foreground tabular-nums">
-            {step.kind} · step {index + 1} of {steps.length}
+            {step.kind}{' '}{t('· step')}{' '}{index + 1}{' '}{t('of')}{' '}{steps.length}
           </span>
         </div>
       ))}
@@ -80,6 +83,8 @@ export function StepRail({ steps }: { steps: StepState[] }) {
 }
 
 function RailIcon({ visual }: { visual: RailVisual }) {
+  useLocale()
+
   const base = 'size-[13px] shrink-0'
   switch (visual) {
     case 'done':
@@ -88,7 +93,7 @@ function RailIcon({ visual }: { visual: RailVisual }) {
       return (
         <LoaderCircleIcon
           role="status"
-          aria-label="Step running"
+          aria-label={t('Step running')}
           // stroke-pending, not text-*: amber is a dot & spinner color only (guardian rule).
           className={cn(base, 'animate-spin stroke-pending motion-reduce:animate-none')}
         />
@@ -116,6 +121,8 @@ export function activeStepIndex(steps: ReadonlyArray<Pick<StepState, 'status'>>)
 /** One status dot in the collapsed summary — the rail's four glyphs compressed to a color.
  *  Amber (`bg-pending`) stays a dot-only color per the guardian rule. */
 function StepDot({ visual }: { visual: RailVisual }) {
+  useLocale()
+
   const tone =
     visual === 'done'
       ? 'bg-success'
@@ -148,6 +155,8 @@ const openByRun = new Map<string, boolean>()
  * an explicit expand is remembered for that run across tab switches.
  */
 export function WorkflowSteps({ runId, steps }: { runId: string; steps: StepState[] }) {
+  useLocale()
+
   const [open, setOpen] = useState(() => openByRun.get(runId) ?? false)
   if (steps.length === 0) return null
   const toggle = (next: boolean) => {
@@ -160,7 +169,7 @@ export function WorkflowSteps({ runId, steps }: { runId: string; steps: StepStat
   return (
     <Collapsible data-slot="workflow-steps" open={open} onOpenChange={toggle} className="min-w-0">
       <CollapsibleTrigger
-        aria-label={`Workflow: ${current.name}, step ${index + 1} of ${steps.length}`}
+        aria-label={t('Workflow: {0}, step {1} of {2}', { 0: current.name, 1: index + 1, 2: steps.length })}
         // Keep the phone header's compact 28px footprint: the negative margins absorb the
         // extra 16px of a 44px touch target without changing the surrounding row's height.
         // The step rail is the only control in this bordered section, so the expanded hit box
@@ -173,8 +182,7 @@ export function WorkflowSteps({ runId, steps }: { runId: string; steps: StepStat
           ))}
         </span>
         <span className="min-w-0 max-w-[45%] shrink truncate font-semibold text-foreground">{current.name}</span>
-        <span className="shrink-0 text-soft-foreground tabular-nums">
-          step {index + 1} of {steps.length}
+        <span className="shrink-0 text-soft-foreground tabular-nums">{t('step')}{' '}{index + 1}{' '}{t('of')}{' '}{steps.length}
         </span>
         <span data-slot="step-summary-progress" className="h-0.5 min-w-[36px] flex-1 overflow-hidden rounded-full bg-muted">
           <span className="block h-full rounded-full bg-pending" style={{ width: `${pct}%` }} />

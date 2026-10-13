@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { memo, useState, type ComponentProps } from 'react'
 import {
   Streamdown,
@@ -127,6 +128,8 @@ type TranscriptLinkProps = ComponentProps<'a'>
 
 /** A markdown link with the transcript's local-only destination policy applied. */
 function TranscriptLink({ href, children, className, ...props }: TranscriptLinkProps) {
+  useLocale()
+
   const [isOpen, setIsOpen] = useState(false)
 
   if (!href || isLocalFilesystemDestination(href)) {
@@ -136,7 +139,7 @@ function TranscriptLink({ href, children, className, ...props }: TranscriptLinkP
         data-local-only-link={isLocalFilesystemDestination(href ?? '') ? '' : undefined}
         title={
           isLocalFilesystemDestination(href ?? '')
-            ? 'This is a local filesystem path and cannot be opened here.'
+            ? t('This is a local filesystem path and cannot be opened here.')
             : undefined
         }
         className={className}
@@ -213,6 +216,8 @@ export const Markdown = memo(function Markdown({
   variant?: 'chat' | 'document'
   urlTransform?: UrlTransform
 }) {
+  useLocale()
+
   return (
     <Streamdown
       className={

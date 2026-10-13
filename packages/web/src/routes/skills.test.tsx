@@ -8,6 +8,7 @@ import { createQueryClient } from '@/api/query-client'
 import type { Skill, SkillsUpdateState, WorkflowsResponse } from '@open-mercato/cezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
+import { setLocale } from '@/lib/i18n'
 
 /**
  * `/skills` (R6 Step 1.4): the catalog + detail against fixture payloads, the #377
@@ -240,6 +241,15 @@ describe('the catalog list and skill preview', () => {
     serve()
     renderAt('/p/boot/skills')
 
+    expect(await screen.findByText('No installed Open Mercato skills are tracked for updates.')).toBeTruthy()
+  })
+
+  it('translates the empty update status and refreshes it when the language changes', async () => {
+    serve()
+    setLocale('zh-CN')
+    renderAt('/p/boot/skills')
+    expect(await screen.findByText('已安装的 Open Mercato 技能中，没有纳入更新跟踪的技能。')).toBeTruthy()
+    act(() => setLocale('en'))
     expect(await screen.findByText('No installed Open Mercato skills are tracked for updates.')).toBeTruthy()
   })
 

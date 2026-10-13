@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { CheckIcon, ChevronDownIcon, EyeIcon, SparklesIcon, WorkflowIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
@@ -23,6 +24,8 @@ export function WorkflowPicker({
   onChange: (workflow: string | null) => void
   slotPrefix?: string
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -40,24 +43,24 @@ export function WorkflowPicker({
         <button
           type="button"
           data-slot={`${slotPrefix}-workflow-trigger`}
-          aria-label="Choose a workflow"
+          aria-label={t('Choose a workflow')}
           className={cn(chipClass, value && 'border-foreground/60 font-mono text-[11.5px] font-semibold text-foreground')}
         >
           <WorkflowIcon aria-hidden="true" className="size-3 shrink-0 text-violet" />
-          <span className="max-w-44 truncate">{value ?? 'workflow'}</span>
+          <span className="max-w-44 truncate">{value ?? t('workflow')}</span>
           <ChevronDownIcon aria-hidden="true" className="size-2.5 shrink-0 text-soft-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={8} className="w-[320px] max-w-[calc(100vw-2rem)] p-0">
-        <Command label="Choose a workflow" shouldFilter={false}>
+        <Command label={t('Choose a workflow')} shouldFilter={false}>
           <CommandInput
-            placeholder="search workflows…"
+            placeholder={t('search workflows…')}
             value={search}
             onValueChange={setSearch}
             onInput={() => listRef.current?.scrollTo(0, 0)}
           />
           <CommandList ref={listRef} data-slot={`${slotPrefix}-workflow-menu`} className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]">
-            {matched.length === 0 ? <CommandEmpty>Nothing matches.</CommandEmpty> : null}
+            {matched.length === 0 ? <CommandEmpty>{t('Nothing matches.')}</CommandEmpty> : null}
             <CommandGroup>
               {matched.map((workflowDef) => {
                 const selected = value === workflowDef.name
@@ -76,7 +79,7 @@ export function WorkflowPicker({
                     <span className="shrink-0 font-mono text-xs">{workflowDef.name}</span>
                     {workflowDef.description ? (
                       <span className="min-w-0 flex-1 truncate text-xs text-soft-foreground">
-                        {workflowDef.description}
+                        {workflowDef.source === 'built-in' ? t(workflowDef.description) : workflowDef.description}
                       </span>
                     ) : null}
                     {selected ? (
@@ -114,6 +117,8 @@ export function SkillsPicker({
   maxSelections?: number
   slotPrefix?: string
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [preview, setPreview] = useState<Skill | null>(null)
@@ -143,8 +148,8 @@ export function SkillsPicker({
         <button
           type="button"
           data-slot={`${slotPrefix}-skill-view`}
-          aria-label={`View skill ${skill.name}`}
-          title="View skill"
+          aria-label={t('View skill {0}', { 0: skill.name })}
+          title={t('View skill')}
           // stopPropagation: the eye must never toggle the row it sits on.
           onClick={(event) => {
             event.preventDefault()
@@ -175,33 +180,32 @@ export function SkillsPicker({
           <button
             type="button"
             data-slot={`${slotPrefix}-skills-trigger`}
-            aria-label="Choose skills"
+            aria-label={t('Choose skills')}
             className={cn(chipClass, selected.length > 0 && 'border-foreground/60 font-semibold text-foreground')}
           >
-            <SparklesIcon aria-hidden="true" className="size-3 shrink-0 text-violet" />
-            skills{selected.length > 0 ? ` · ${selected.length}` : ''}
+            <SparklesIcon aria-hidden="true" className="size-3 shrink-0 text-violet" />{t('skills')}{selected.length > 0 ? ` · ${selected.length}` : ''}
             <ChevronDownIcon aria-hidden="true" className="size-2.5 shrink-0 text-soft-foreground" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" sideOffset={8} className="w-[336px] max-w-[calc(100vw-2rem)] p-0">
-          <Command label="Choose skills" shouldFilter={false}>
+          <Command label={t('Choose skills')} shouldFilter={false}>
             <CommandInput
-              placeholder="search skills…"
+              placeholder={t('search skills…')}
               value={search}
               onValueChange={setSearch}
               onInput={() => listRef.current?.scrollTo(0, 0)}
             />
             <CommandList ref={listRef} data-slot={`${slotPrefix}-skill-menu`} className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]">
               {mostUsed.length === 0 && project.length === 0 && global.length === 0 ? (
-                <CommandEmpty>Nothing matches.</CommandEmpty>
+                <CommandEmpty>{t('Nothing matches.')}</CommandEmpty>
               ) : null}
               {mostUsed.length > 0 ? (
-                <CommandGroup heading="Most used">
+                <CommandGroup heading={t("Most used")}>
                   {mostUsed.map((skill) => skillItem(skill, isProjectSkill(skill)))}
                 </CommandGroup>
               ) : null}
               {project.length > 0 ? (
-                <CommandGroup heading="Project skills">{project.map((skill) => skillItem(skill, true))}</CommandGroup>
+                <CommandGroup heading={t("Project skills")}>{project.map((skill) => skillItem(skill, true))}</CommandGroup>
               ) : null}
               {global.length > 0 ? (
                 <CommandGroup heading="Global">{global.map((skill) => skillItem(skill, false))}</CommandGroup>

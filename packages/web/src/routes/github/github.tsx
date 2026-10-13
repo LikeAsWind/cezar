@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { hashKey, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
@@ -178,6 +179,8 @@ export function GithubRoute({
   /** This is the bare `/github` index (#417): restore the remembered sub-tab before rendering. */
   index?: boolean
 }) {
+  const locale = useLocale()
+
   const { n } = useParams()
   // One fast page now that the list is cursor-backed; later pages append without replacing this
   // first-paint result or refetching rows already shown.
@@ -202,7 +205,7 @@ export function GithubRoute({
       issuesNextCursor: last.issuesNextCursor,
       prsNextCursor: last.prsNextCursor,
     }
-  }, [list.data])
+  }, [list.data, locale])
 
   // The remembered list order (#gh-sort). Read up here, above the checks window below, because
   // that window is "the PRs the user can see" and flipping to oldest-first changes which ones
@@ -392,7 +395,7 @@ export function GithubRoute({
   // doubling the filtering the render body below already does for the live query (#838).
   const localMatches = useMemo(
     () => filterGithubItems(openItems, { query: debouncedQuery, labels: labelFilter }).length,
-    [openItems, debouncedQuery, labelFilter],
+    [openItems, debouncedQuery, labelFilter, locale],
   )
   const searchWanted = shouldSearchForge(debouncedQuery, localMatches)
   const forgeSearch = useGithubSearch(view === 'issues' ? 'issue' : 'pr', debouncedQuery, searchWanted)
@@ -415,7 +418,7 @@ export function GithubRoute({
           <CenteredState
             icon={<TriangleAlertIcon />}
             tone="danger"
-            title="Could not load GitHub"
+            title={t('Could not load GitHub')}
             subtitle={list.error.message}
           />
         </div>
@@ -433,24 +436,18 @@ export function GithubRoute({
         <CenteredState
           icon={<GithubIcon />}
           tone="neutral"
-          title="GitHub is unavailable here"
-          subtitle={gh.reason ?? 'unknown reason'}
+          title={t('GitHub is unavailable here')}
+          subtitle={gh.reason ?? t('unknown reason')}
           actions={
             <Button
               variant="outline"
               data-action="gh-retry"
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
-            >
-              Try again
-            </Button>
+            >{t('Try again')}</Button>
           }
         >
-          <p className="text-xs leading-relaxed text-soft-foreground">
-            The tab needs the <span className="font-mono">gh</span> CLI, logged in (
-            <span className="font-mono">gh auth login</span>), and a repo with a GitHub remote.
-            Everything else in the cockpit works without it.
-          </p>
+          <p className="text-xs leading-relaxed text-soft-foreground">{t('The tab needs the')}{' '}<span className="font-mono">{t('gh')}</span>{' '}{t('CLI, logged in (')}<span className="font-mono">{t('gh auth login')}</span>{t('), and a repo with a GitHub remote. Everything else in the cockpit works without it.')}</p>
         </CenteredState>
       </div>
     )
@@ -514,45 +511,39 @@ export function GithubRoute({
   const searchFailed = searchWanted && (forgeSearch.data?.available === false || forgeSearch.isError)
   const searchFailureReason =
     forgeSearch.data?.available === false
-      ? (forgeSearch.data.reason ?? 'unknown reason')
+      ? (forgeSearch.data.reason ?? t('unknown reason'))
       : forgeSearch.error instanceof Error
         ? forgeSearch.error.message
-        : 'the search request failed'
+        : t('the search request failed')
   // What the empty list has to say for itself, or `null` when the "Found on GitHub" section below
   // already says it. Resolved BEFORE the wrapper rather than inside it (#838): as the contents of
   // a padded `<div>`, a null verdict still rendered the padding, leaving an empty ~2rem gap above
   // that heading. The search-hits case stays below `searching` in the chain on purpose — while a
   // new query is in flight over stale hits, the spinner is the honest thing to show.
   const emptyState = !filtering ? (
-    <p>No open {view === 'issues' ? 'issues' : 'pull requests'}.</p>
+    <p>{t('No open')}{' '}{view === 'issues' ? t('issues') : t('pull requests')}.</p>
   ) : searching ? (
     <p className="flex items-center gap-1.5">
-      <LoaderCircleIcon aria-hidden="true" className="size-3.5 motion-safe:animate-spin" />
-      Searching GitHub for “{query.trim()}”…
+      <LoaderCircleIcon aria-hidden="true" className="size-3.5 motion-safe:animate-spin" />{t('Searching GitHub for “')}{query.trim()}”…
     </p>
   ) : searchHits.length > 0 ? null : searchFailed ? (
-    <p>
-      No open {view === 'issues' ? 'issues' : 'pull requests'} match your filter, and GitHub could
-      not be searched: {searchFailureReason}.
+    <p>{t('No open')}{' '}{view === 'issues' ? t('issues') : t('pull requests')}{' '}{t('match your filter, and GitHub could not be searched:')}{' '}{searchFailureReason}.
     </p>
   ) : searchPayload ? (
     // Earned, not assumed: only a search that actually answered for THIS narrow licenses the
     // cross-state verdict. A label-only filter never asks the forge at all (`shouldSearchForge`
     // requires a non-empty query), so claiming "closed or merged" there would be the same
     // unfounded certainty in a different costume.
-    <p>
-      No {view === 'issues' ? 'issues' : 'pull requests'} match your filter — open, closed or
-      merged.
-    </p>
+    <p>{t('No')}{' '}{view === 'issues' ? t('issues') : t('pull requests')}{' '}{t('match your filter — open, closed or merged.')}</p>
   ) : (
-    <p>No open {view === 'issues' ? 'issues' : 'pull requests'} match your filter.</p>
+    <p>{t('No open')}{' '}{view === 'issues' ? t('issues') : t('pull requests')}{' '}{t('match your filter.')}</p>
   )
 
   return (
     <IssueBrowserLayout name="gh" route="github" selected={n !== undefined} list={<>
         <header data-slot="gh-header" className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 pt-3 backdrop-blur">
           <div className="flex min-w-0 items-center gap-2.5">
-            <h1 className="text-lg font-semibold">GitHub</h1>
+            <h1 className="text-lg font-semibold">{t('GitHub')}</h1>
             {gh.repo ? (
               <span data-slot="gh-repo" className="min-w-0 truncate font-mono text-[11px] text-soft-foreground">
                 {gh.repo}
@@ -562,14 +553,12 @@ export function GithubRoute({
               <Link
                 to="/automations/new"
                 className="ml-auto shrink-0 text-[10px] font-medium text-primary hover:underline"
-              >
-                Set up automations
-              </Link>
+              >{t('Set up automations')}</Link>
             ) : null}
             <button
               type="button"
               data-slot="gh-refresh"
-              title="Refresh from GitHub"
+              title={t('Refresh from GitHub')}
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
               // The automations link owns the `ml-auto` that pushes this cluster right; with the
@@ -587,11 +576,9 @@ export function GithubRoute({
             </button>
           </div>
           <div data-slot="gh-tabs" className="mt-2.5 flex items-end gap-1">
-            <TabLink to="/github" active={view === 'issues'} onClick={() => saveGithubView('issues')}>
-              Issues · {countLabel(gh.issuesTotal ?? gh.issues.length)}
+            <TabLink to="/github" active={view === 'issues'} onClick={() => saveGithubView('issues')}>{t('Issues ·')}{' '}{countLabel(gh.issuesTotal ?? gh.issues.length)}
             </TabLink>
-            <TabLink to="/github/prs" active={view === 'prs'} onClick={() => saveGithubView('prs')}>
-              Pull requests · {countLabel(gh.prsTotal ?? gh.prs.length)}
+            <TabLink to="/github/prs" active={view === 'prs'} onClick={() => saveGithubView('prs')}>{t('Pull requests ·')}{' '}{countLabel(gh.prsTotal ?? gh.prs.length)}
             </TabLink>
           </div>
           {/* Wraps rather than squeezes: on a phone the sort control below is ~145px, and with
@@ -607,8 +594,8 @@ export function GithubRoute({
               <input
                 type="search"
                 data-slot="gh-search"
-                aria-label={`Search ${view}`}
-                placeholder="Search #id, title, author…"
+                aria-label={t('Search {0}', { 0: view })}
+                placeholder={t('Search #id, title, author…')}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="w-full rounded-md border border-input bg-card py-1 pr-2 pl-7 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -625,7 +612,7 @@ export function GithubRoute({
                 payload's incoming order is itself `newest`. */}
             <Segmented<GithubSort>
               slot="gh-sort"
-              label="Sort order"
+              label={t('Sort order')}
               value={sort}
               options={[
                 { value: 'newest', label: 'Newest' },
@@ -699,20 +686,14 @@ export function GithubRoute({
           >
             {list.isFetchingNextPage ? (
               <>
-                <LoaderCircleIcon aria-hidden="true" className="size-3.5 motion-safe:animate-spin" />
-                Loading more…
-              </>
+                <LoaderCircleIcon aria-hidden="true" className="size-3.5 motion-safe:animate-spin" />{t('Loading more…')}</>
             ) : list.isFetchNextPageError ? (
-              <>
-                Could not load more.
-                <button
+              <>{t('Could not load more.')}<button
                   type="button"
                   data-slot="gh-load-more-retry"
                   onClick={() => void list.fetchNextPage()}
                   className="font-medium text-primary hover:underline"
-                >
-                  Retry
-                </button>
+                >{t('Retry')}</button>
               </>
             ) : null}
           </div>
@@ -722,8 +703,7 @@ export function GithubRoute({
             whether a row came from the open list or from a search that reached past it. */}
         {searchHits.length > 0 ? (
           <div data-slot="gh-search-hits">
-            <p className="px-4 pt-2 pb-1 text-[11px] font-medium tracking-wide text-soft-foreground uppercase">
-              Found on GitHub{searchPayload?.truncated ? ' (first matches)' : ''}
+            <p className="px-4 pt-2 pb-1 text-[11px] font-medium tracking-wide text-soft-foreground uppercase">{t('Found on GitHub')}{searchPayload?.truncated ? ' (first matches)' : ''}
             </p>
             <ul className="flex flex-col gap-0.5 px-2 pb-2">
               {searchHits.map((item) => (
@@ -769,14 +749,14 @@ export function GithubRoute({
             icon={view === 'issues' ? <CircleDotIcon /> : <GitPullRequestIcon />}
             tone="neutral"
             heading="h2"
-            title={number === null ? 'Nothing selected' : 'Not found'}
+            title={number === null ? t('Nothing selected') : t('Not found')}
             subtitle={
               number === null
-                ? `No open ${view === 'issues' ? 'issues' : 'pull requests'} to show.`
+                ? t('No open {0} to show.', { 0: view === 'issues' ? 'issues' : 'pull requests' })
                 : // Since #730 a closed or merged item IS reachable — type its number into the
                   // search box and the tab asks GitHub directly — so the honest advice is to
                   // search, not the old "it may be closed" shrug.
-                  `#${number} is not among the open ${view === 'issues' ? 'issues' : 'pull requests'}. Search for ${number} above to look it up on GitHub, closed and merged included.`
+                  t('#{0} is not among the open {1}. Search for {2} above to look it up on GitHub, closed and merged included.', { 0: number, 1: view === 'issues' ? 'issues' : 'pull requests', 2: number })
             }
           />
         )}
@@ -805,6 +785,8 @@ function GithubRow({
   /** Resolved checks glyph — the lazily-hydrated value overrides the list's `null` (#664). */
   checks?: GithubItem['checks']
 }) {
+  useLocale()
+
   const Icon = item.kind === 'issue' ? CircleDotIcon : GitPullRequestIcon
   const queryClient = useQueryClient()
 
@@ -840,7 +822,7 @@ function GithubRow({
         data-slot="gh-row"
         data-number={item.number}
         aria-current={active ? 'page' : undefined}
-        title="Drag into the composer to prefill a task"
+        title={t('Drag into the composer to prefill a task')}
         className={cn(
           'flex flex-col gap-1 rounded-md px-2.5 py-2 transition-colors hover:bg-muted',
           active && 'bg-muted',
@@ -862,9 +844,7 @@ function GithubRow({
           <CommentCount count={item.comments} />
           {checks ? <ChecksGlyph checks={checks} /> : null}
           {queued ? (
-            <span data-slot="gh-queued-flag" className="font-sans font-medium text-violet">
-              ↗ run queued
-            </span>
+            <span data-slot="gh-queued-flag" className="font-sans font-medium text-violet">{t('↗ run queued')}</span>
           ) : null}
         </span>
         {item.labels.length > 0 ? (
@@ -892,6 +872,8 @@ function LabelFilter({
   selected: readonly string[]
   onChange: (labels: string[]) => void
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const toggle = (label: string) =>
     onChange(selected.includes(label) ? selected.filter((l) => l !== label) : [...selected, label])
@@ -908,17 +890,16 @@ function LabelFilter({
           )}
         >
           <TagIcon aria-hidden="true" className="size-3.5" />
-          {selected.length > 0 ? `Labels · ${selected.length}` : 'Labels'}
+          {selected.length > 0 ? t('Labels · {0}', { 0: selected.length }) : t('Labels')}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} className="w-60 p-0">
         <Command>
-          <CommandInput placeholder="Filter labels…" />
+          <CommandInput placeholder={t('Filter labels…')} />
           <CommandList className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]">
-            <CommandEmpty>No labels.</CommandEmpty>
+            <CommandEmpty>{t('No labels.')}</CommandEmpty>
             {selected.length > 0 ? (
-              <CommandItem value="__clear__" onSelect={() => onChange([])} className="text-soft-foreground">
-                Clear {selected.length} filter{selected.length > 1 ? 's' : ''}
+              <CommandItem value="__clear__" onSelect={() => onChange([])} className="text-soft-foreground">{t('Clear')}{' '}{selected.length}{' '}{t('filter')}{selected.length > 1 ? t('s') : ''}
               </CommandItem>
             ) : null}
             {options.map((label) => {
@@ -944,6 +925,8 @@ function LabelFilter({
 
 /** A single label pill, tinted with its GitHub color (or neutral when unknown). */
 function LabelChip({ label, color }: { label: string; color: string | undefined }) {
+  useLocale()
+
   return (
     <span
       data-slot="gh-label"
@@ -972,6 +955,8 @@ function GithubDetail({
   /** Resolved checks glyph — the lazily-hydrated value overrides the list's `null` (#664). */
   checks?: GithubItem['checks']
 }) {
+  useLocale()
+
   const kindWord = item.kind === 'pr' ? 'pull request' : 'issue'
   const detailQuery = useGithubComments(item.kind, item.number)
   const detailBody = detailQuery.data?.detail?.body ?? item.body
@@ -985,13 +970,11 @@ function GithubDetail({
         data-slot="gh-back"
         className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
       >
-        <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-        Back to the list
-      </Link>
+        <ArrowLeftIcon aria-hidden="true" className="size-3.5" />{t('Back to the list')}</Link>
 
       <p data-slot="gh-meta" className="flex flex-wrap items-center gap-x-1.5 font-mono text-[10.5px] text-soft-foreground">
-        <span>#{item.number}</span>·<span>{kindWord}</span>·<span>opened by {item.author}</span>·
-        <span>{shortAge(item.createdAt)} ago</span>
+        <span>#{item.number}</span>·<span>{kindWord}</span>·<span>{t('opened by')}{' '}{item.author}</span>·
+        <span>{shortAge(item.createdAt)}{' '}{t('ago')}</span>
         {item.comments ? (
           <>
             ·<CommentCount count={item.comments} />
@@ -1015,23 +998,19 @@ function GithubDetail({
             rel="noopener noreferrer"
             data-slot="gh-open-link"
             className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground hover:underline"
-          >
-            open on GitHub
-            <ExternalLinkIcon aria-hidden="true" className="size-2.5" />
+          >{t('open on GitHub')}<ExternalLinkIcon aria-hidden="true" className="size-2.5" />
           </a>
         ) : (
-          <span data-slot="gh-open-link" className="text-muted-foreground">
-            open on GitHub
-          </span>
+          <span data-slot="gh-open-link" className="text-muted-foreground">{t('open on GitHub')}</span>
         )}
       </p>
 
       <h2 className="mt-2 text-xl leading-snug font-semibold">{item.title}</h2>
 
       {item.kind === 'pr' ? (
-        <nav aria-label="Pull request detail" className="mt-4 flex border-b border-border">
-          <TabLink to={`/github/prs/${item.number}`} active={!changes}>Conversation</TabLink>
-          <TabLink to={`/github/prs/${item.number}/changes`} active={changes}>Changes</TabLink>
+        <nav aria-label={t('Pull request detail')} className="mt-4 flex border-b border-border">
+          <TabLink to={`/github/prs/${item.number}`} active={!changes}>{t('Conversation')}</TabLink>
+          <TabLink to={`/github/prs/${item.number}/changes`} active={changes}>{t('Changes')}</TabLink>
         </nav>
       ) : null}
 
@@ -1049,7 +1028,7 @@ function GithubDetail({
         {detailBody ? (
           <Markdown>{detailBody}</Markdown>
         ) : (
-          <p className="text-soft-foreground">(no description)</p>
+          <p className="text-soft-foreground">{t('(no description)')}</p>
         )}
       </div>
 
@@ -1064,14 +1043,16 @@ function GithubDetail({
 }
 
 const mergeLabels: Record<GithubMergeMethod, string> = {
-  squash: 'Squash and merge',
-  merge: 'Create a merge commit',
-  rebase: 'Rebase and merge',
+  get squash() { return t('Squash and merge') },
+  get merge() { return t('Create a merge commit') },
+  get rebase() { return t('Rebase and merge') },
 }
 
 type MergeRequirementState = 'passing' | 'failing' | 'pending' | 'unknown'
 
 function MergeRequirementIcon({ state }: { state: MergeRequirementState }) {
+  useLocale()
+
   const iconClass = 'size-4 shrink-0'
   if (state === 'passing') return <CircleCheckIcon aria-hidden="true" data-slot="gh-merge-status-passing" className={cn(iconClass, 'text-success')} />
   if (state === 'failing') return <CircleXIcon aria-hidden="true" data-slot="gh-merge-status-failing" className={cn(iconClass, 'text-danger')} />
@@ -1080,6 +1061,8 @@ function MergeRequirementIcon({ state }: { state: MergeRequirementState }) {
 }
 
 function GithubMergeBox({ number }: { number: number }) {
+  useLocale()
+
   const queryClient = useQueryClient()
   const mergeState = useQuery({
     queryKey: queryKeys.githubMergeState(number),
@@ -1100,7 +1083,7 @@ function GithubMergeBox({ number }: { number: number }) {
     : state?.defaultMethod ?? state?.methods[0] ?? null
   const merge = useMutation({
     mutationFn: () => {
-      if (!state || !selectedMethod) throw new Error('No merge method is available.')
+      if (!state || !selectedMethod) throw new Error(t('No merge method is available.'))
       return mergeGithubPr(number, {
         method: selectedMethod,
         expectedHeadSha: state.headSha,
@@ -1109,7 +1092,7 @@ function GithubMergeBox({ number }: { number: number }) {
     },
     onSuccess: () => {
       setConfirming(false)
-      toast(`Pull request #${number} merged`)
+      toast(t('Pull request #{0} merged', { 0: number }))
       void queryClient.invalidateQueries({ queryKey: queryKeys.githubMergeState(number) })
       // A merged PR drops out of the first page on the next paged fetch.
       void queryClient.invalidateQueries({ queryKey: queryKeys.githubPages(LIST_LIMIT) })
@@ -1127,21 +1110,21 @@ function GithubMergeBox({ number }: { number: number }) {
   if (!state) {
     return (
       <section data-slot="gh-merge-unavailable" className="mt-6 rounded-lg border border-border bg-card p-4 text-sm">
-        <p className="font-medium">Merge status unavailable</p>
+        <p className="font-medium">{t('Merge status unavailable')}</p>
         <p className="mt-1 text-xs text-soft-foreground">
-          {mergeState.data?.available === false ? mergeState.data.reason : 'GitHub could not load merge requirements.'}
+          {mergeState.data?.available === false ? mergeState.data.reason : t('GitHub could not load merge requirements.')}
         </p>
       </section>
     )
   }
 
   const title =
-    state.state === 'merged' ? 'Merged'
-      : state.state === 'closed' ? 'Closed'
-        : state.isDraft ? 'Draft'
-          : state.mergeable === 'conflicting' ? 'Conflicts must be resolved'
-            : state.canMerge ? 'Ready to merge'
-              : 'Merge blocked'
+    state.state === 'merged' ? t('Merged')
+      : state.state === 'closed' ? t('Closed')
+        : state.isDraft ? t('Draft')
+          : state.mergeable === 'conflicting' ? t('Conflicts must be resolved')
+            : state.canMerge ? t('Ready to merge')
+              : t('Merge blocked')
   const reviewState: MergeRequirementState =
     state.reviewDecision === 'approved' ? 'passing'
       : state.reviewDecision === 'unknown' ? 'unknown'
@@ -1170,9 +1153,7 @@ function GithubMergeBox({ number }: { number: number }) {
               disabled={refreshMergeState.isPending}
               onClick={() => refreshMergeState.mutate()}
             >
-              <RefreshCwIcon aria-hidden="true" className={cn('size-3.5', refreshMergeState.isPending && 'animate-spin')} />
-              Refresh
-            </Button>
+              <RefreshCwIcon aria-hidden="true" className={cn('size-3.5', refreshMergeState.isPending && 'animate-spin')} />{t('Refresh')}</Button>
           </div>
           <p className="mt-1 font-mono text-[11px] text-soft-foreground">
             {state.headRef} ({state.headSha.slice(0, 7)}) → {state.baseRef}
@@ -1180,19 +1161,19 @@ function GithubMergeBox({ number }: { number: number }) {
           <ul className="mt-3 space-y-2 text-xs">
             <li className="flex items-center gap-2">
               <MergeRequirementIcon state={reviewState} />
-              <span>Reviews: {state.reviewDecision.replaceAll('-', ' ')}</span>
+              <span>{t('Reviews:')}{' '}{state.reviewDecision.replaceAll('-', ' ')}</span>
             </li>
             <li className="flex items-center gap-2">
               <MergeRequirementIcon state={conflictState} />
-              <span>Conflicts: {state.mergeable === 'conflicting' ? 'present' : state.mergeable === 'mergeable' ? 'none' : 'unknown'}</span>
+              <span>{t('Conflicts:')}{' '}{state.mergeable === 'conflicting' ? t('present') : state.mergeable === 'mergeable' ? t('none') : t('unknown')}</span>
             </li>
-            {state.checks.length === 0 && state.checksTier !== 'none' ? <li>No checks configured</li> : state.checks.map((check) => (
+            {state.checks.length === 0 && state.checksTier !== 'none' ? <li>{t('No checks configured')}</li> : state.checks.map((check) => (
               <li key={check.name} className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-2">
                   <MergeRequirementIcon state={check.state} />
-                  <span>{check.name} · {check.state}{check.required === true ? ' · required' : check.required === null ? ' · requiredness unknown' : ''}</span>
+                  <span>{check.name} · {check.state}{check.required === true ? t(' · required') : check.required === null ? t(' · requiredness unknown') : ''}</span>
                 </span>
-                {check.url && isHttpUrl(check.url) ? <a href={check.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground underline">details</a> : null}
+                {check.url && isHttpUrl(check.url) ? <a href={check.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground underline">{t('details')}</a> : null}
               </li>
             ))}
             {/* What the token could NOT read (#969). A fine-grained PAT cannot expand
@@ -1204,8 +1185,8 @@ function GithubMergeBox({ number }: { number: number }) {
                 <MergeRequirementIcon state="unknown" />
                 <span className="min-w-0">
                   {state.checksTier === 'aggregate'
-                    ? 'Only the rolled-up check state is readable here — per-check detail is not.'
-                    : 'This token cannot read the checks on this pull request.'}
+                    ? t('Only the rolled-up check state is readable here — per-check detail is not.')
+                    : t('This token cannot read the checks on this pull request.')}
                   {state.checksReason ? <span className="mt-0.5 block break-words text-soft-foreground">{state.checksReason}</span> : null}
                 </span>
               </li>
@@ -1224,15 +1205,15 @@ function GithubMergeBox({ number }: { number: number }) {
                 className="mt-0.5 size-4 accent-primary"
               />
               <span>
-                <span className="block font-medium">Merge without waiting for requirements</span>
-                <span className="mt-0.5 block text-soft-foreground">GitHub will allow this only if your permissions can bypass the repository rules.</span>
+                <span className="block font-medium">{t('Merge without waiting for requirements')}</span>
+                <span className="mt-0.5 block text-soft-foreground">{t('GitHub will allow this only if your permissions can bypass the repository rules.')}</span>
               </span>
             </label>
           ) : null}
           {state.state === 'open' && state.methods.length > 0 ? (
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <select
-                aria-label="Merge method"
+                aria-label={t('Merge method')}
                 value={selectedMethod ?? ''}
                 onChange={(event) => setMethod(event.target.value as GithubMergeMethod)}
                 className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -1240,7 +1221,7 @@ function GithubMergeBox({ number }: { number: number }) {
                 {state.methods.map((candidate) => <option key={candidate} value={candidate}>{mergeLabels[candidate]}</option>)}
               </select>
               <Button disabled={!mergeEnabled} onClick={() => setConfirming(true)}>
-                {selectedMethod ? mergeLabels[selectedMethod] : 'Merge'}
+                {selectedMethod ? mergeLabels[selectedMethod] : t('Merge')}
               </Button>
             </div>
           ) : null}
@@ -1249,17 +1230,15 @@ function GithubMergeBox({ number }: { number: number }) {
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent data-slot="gh-merge-confirm" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>{selectedMethod ? mergeLabels[selectedMethod] : 'Merge'} pull request #{number}?</DialogTitle>
-            <DialogDescription>
-              This will merge “{state.title}” into {state.baseRef}. GitHub will re-check the exact reviewed head before changing the repository.
-              {overrideRules && state.canOverride ? ' You are asking GitHub to bypass unmet repository requirements; GitHub may refuse if your permissions do not allow it.' : ''}
+            <DialogTitle>{selectedMethod ? mergeLabels[selectedMethod] : t('Merge')}{' '}{t('pull request #')}{number}?</DialogTitle>
+            <DialogDescription>{t('This will merge “')}{state.title}{t('” into')}{' '}{state.baseRef}{t('. GitHub will re-check the exact reviewed head before changing the repository.')}{overrideRules && state.canOverride ? t(' You are asking GitHub to bypass unmet repository requirements; GitHub may refuse if your permissions do not allow it.') : ''}
             </DialogDescription>
           </DialogHeader>
           {merge.error ? <p className="text-sm text-danger">{merge.error.message}</p> : null}
           <DialogFooter>
-            <Button variant="outline" disabled={merge.isPending} onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button variant="outline" disabled={merge.isPending} onClick={() => setConfirming(false)}>{t('Cancel')}</Button>
             <Button disabled={merge.isPending} onClick={() => merge.mutate()}>
-              {merge.isPending ? 'Merging…' : selectedMethod ? mergeLabels[selectedMethod] : 'Merge'}
+              {merge.isPending ? t('Merging…') : selectedMethod ? mergeLabels[selectedMethod] : t('Merge')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1269,6 +1248,8 @@ function GithubMergeBox({ number }: { number: number }) {
 }
 
 function GithubPrChanges({ item }: { item: GithubItem }) {
+  useLocale()
+
   const queryClient = useQueryClient()
   const query = useGithubPrChanges(item.number)
   const [filter, setFilter] = useState('')
@@ -1287,11 +1268,11 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
     queryClient.setQueryData(['github', 'pr-changes', item.number], next)
     if (next.available && oldHead && oldHead !== next.headSha) {
       setSelected(next.files[0]?.path ?? null)
-      toast('The reviewed revision changed.')
+      toast(t('The reviewed revision changed.'))
     }
   }
-  if (query.isPending) return <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">Loading changed files…</p>
-  if (query.isError || !data) return <p className="mt-6 text-sm text-danger">Changed files could not be loaded.</p>
+  if (query.isPending) return <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">{t('Loading changed files…')}</p>
+  if (query.isError || !data) return <p className="mt-6 text-sm text-danger">{t('Changed files could not be loaded.')}</p>
   if (!data.available) return <p className="mt-6 text-sm text-muted-foreground">{data.reason}</p>
   const diffFiles: DiffFileChange[] = files.map((file) => ({
     path: file.path,
@@ -1307,17 +1288,17 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
   return (
     <section data-slot="gh-pr-changes" className="mt-5 min-w-0">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <strong>{data.files.length} changed files</strong>
+        <strong>{data.files.length}{' '}{t('changed files')}</strong>
         <span className="text-success">+{data.additions}</span>
         <span className="text-danger">−{data.deletions}</span>
-        <span className="font-mono text-muted-foreground" title={data.headSha}>head {data.headSha.slice(0, 8)}</span>
-        <Button type="button" variant="outline" size="sm" className="ml-auto min-h-11" onClick={() => void refresh()}>Refresh</Button>
+        <span className="font-mono text-muted-foreground" title={data.headSha}>{t('head')}{' '}{data.headSha.slice(0, 8)}</span>
+        <Button type="button" variant="outline" size="sm" className="ml-auto min-h-11" onClick={() => void refresh()}>{t('Refresh')}</Button>
       </div>
-      {data.truncated ? <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">{data.reason ?? 'This response is incomplete.'} {fallback ? <a href={fallback} target="_blank" rel="noopener noreferrer" className="underline">Open all files on GitHub</a> : null}</p> : null}
+      {data.truncated ? <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">{data.reason ?? t('This response is incomplete.')} {fallback ? <a href={fallback} target="_blank" rel="noopener noreferrer" className="underline">{t('Open all files on GitHub')}</a> : null}</p> : null}
       <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="min-w-0">
-          <input aria-label="Filter changed files" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files…" className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm" />
-          <select aria-label="Select changed file" value={selected ?? ''} onChange={(e) => setSelected(e.target.value)} className="mt-2 min-h-11 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 lg:hidden">
+          <input aria-label={t('Filter changed files')} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t('Filter files…')} className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm" />
+          <select aria-label={t('Select changed file')} value={selected ?? ''} onChange={(e) => setSelected(e.target.value)} className="mt-2 min-h-11 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 lg:hidden">
             {files.map((file) => <option key={file.path}>{file.path}</option>)}
           </select>
           <ul className="mt-2 hidden max-h-[60vh] overflow-auto lg:block">
@@ -1326,12 +1307,12 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
         </aside>
         <div className="min-w-0">
           <div className="mb-2 flex justify-end gap-1">
-            <Button aria-label="Previous file" variant="outline" size="icon" className="min-h-11 min-w-11" disabled={current <= 0} onClick={() => setSelected(files[current - 1]?.path ?? null)}><ChevronLeftIcon /></Button>
-            <Button aria-label="Next file" variant="outline" size="icon" className="min-h-11 min-w-11" disabled={current < 0 || current >= files.length - 1} onClick={() => setSelected(files[current + 1]?.path ?? null)}><ChevronRightIcon /></Button>
+            <Button aria-label={t('Previous file')} variant="outline" size="icon" className="min-h-11 min-w-11" disabled={current <= 0} onClick={() => setSelected(files[current - 1]?.path ?? null)}><ChevronLeftIcon /></Button>
+            <Button aria-label={t('Next file')} variant="outline" size="icon" className="min-h-11 min-w-11" disabled={current < 0 || current >= files.length - 1} onClick={() => setSelected(files[current + 1]?.path ?? null)}><ChevronRightIcon /></Button>
           </div>
-          {files.length === 0 ? <p className="text-sm text-muted-foreground">No changed files match this filter.</p> : <>
+          {files.length === 0 ? <p className="text-sm text-muted-foreground">{t('No changed files match this filter.')}</p> : <>
             <Diff files={diffFiles.filter((file) => file.path === selected)} wrap className="min-w-0" />
-            {active && !active.patch ? <p className="rounded-b border border-border p-3 text-xs text-muted-foreground">Patch unavailable: {active.patchUnavailableReason ?? 'not-provided'}.</p> : null}
+            {active && !active.patch ? <p className="rounded-b border border-border p-3 text-xs text-muted-foreground">{t('Patch unavailable:')}{' '}{active.patchUnavailableReason ?? 'not-provided'}.</p> : null}
           </>}
         </div>
       </div>
@@ -1345,6 +1326,8 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
  *  loading → skeleton, unreachable → one-line reason + "open on GitHub", empty → nothing (the
  *  count badge already said there were none). */
 function GithubThread({ item, colors }: { item: GithubItem; colors: Record<string, string> }) {
+  useLocale()
+
   const thread = useGithubComments(item.kind, item.number)
   const data = thread.data
 
@@ -1387,18 +1370,16 @@ function GithubThread({ item, colors }: { item: GithubItem; colors: Record<strin
   }
 
   if (!data || !data.available) {
-    const reason = data?.reason ?? (thread.error instanceof Error ? thread.error.message : 'could not load comments')
+    const reason = data?.reason ?? (thread.error instanceof Error ? thread.error.message : t('could not load comments'))
     return (
       <section data-slot="gh-thread-error" className="mt-6 border-t border-border pt-5 text-xs text-soft-foreground">
-        <span>Couldn’t load comments — {reason}. </span>
+        <span>{t('Couldn’t load comments —')}{' '}{reason}. </span>
         <a
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground hover:underline"
-        >
-          open on GitHub
-          <ExternalLinkIcon aria-hidden="true" className="size-2.5" />
+        >{t('open on GitHub')}<ExternalLinkIcon aria-hidden="true" className="size-2.5" />
         </a>
       </section>
     )
@@ -1418,8 +1399,7 @@ function GithubThread({ item, colors }: { item: GithubItem; colors: Record<strin
       >
         {/* "Activity", not "Comments": heading a twenty-row list `Comments · 2` would be
             incoherent once events render. The comment count stays as a secondary. This is a
-            different surface from the row badge, which still counts comments only. */}
-        Activity · {data.comments.length} comment{data.comments.length === 1 ? '' : 's'}
+            different surface from the row badge, which still counts comments only. */}{t('Activity ·')}{' '}{data.comments.length}{' '}{t('comment')}{data.comments.length === 1 ? '' : t('s')}
       </h3>
       <ul className="flex flex-col gap-5">
         {groupCommitRuns(entries).map((grouped) =>
@@ -1442,9 +1422,7 @@ function GithubThread({ item, colors }: { item: GithubItem; colors: Record<strin
           rel="noopener noreferrer"
           data-slot="gh-thread-truncated"
           className="mt-4 inline-flex items-center gap-0.5 text-xs text-soft-foreground hover:text-foreground hover:underline"
-        >
-          thread truncated — open on GitHub
-          <ExternalLinkIcon aria-hidden="true" className="size-2.5" />
+        >{t('thread truncated — open on GitHub')}<ExternalLinkIcon aria-hidden="true" className="size-2.5" />
         </a>
       ) : null}
     </section>
@@ -1509,6 +1487,8 @@ export function groupCommitRuns(entries: ThreadRow[]): GroupedRow[] {
 /** A collapsed run of consecutive commits — `{actor} added {n} commits`, expanding to the
  *  individual rows, each of which keeps its own message and CI glyph. */
 function CommitGroup({ commits, colors }: { commits: GithubTimelineEvent[]; colors: Record<string, string> }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const actor = commits[0]?.actor ?? '?'
 
@@ -1524,7 +1504,7 @@ function CommitGroup({ commits, colors }: { commits: GithubTimelineEvent[]; colo
           >
             <span aria-hidden="true">{EVENT_GLYPH.committed}</span>
             <span className="font-sans font-medium text-foreground">{actor}</span>
-            <span>added {commits.length} commits</span>
+            <span>{t('added')}{' '}{commits.length}{' '}{t('commits')}</span>
           </button>
         </li>
         {commits.map((commit) => (
@@ -1544,7 +1524,7 @@ function CommitGroup({ commits, colors }: { commits: GithubTimelineEvent[]; colo
       >
         <span aria-hidden="true">{EVENT_GLYPH.committed}</span>
         <span className="font-sans font-medium text-foreground">{actor}</span>
-        <span>added {commits.length} commits</span>
+        <span>{t('added')}{' '}{commits.length}{' '}{t('commits')}</span>
         <span className="shrink-0">{shortAge(commits[commits.length - 1]!.createdAt)}</span>
       </button>
     </li>
@@ -1574,6 +1554,8 @@ const EVENT_GLYPH: Record<GithubTimelineEventKind, string> = {
  * Mirrors github.com's density.
  */
 function EventRow({ event, colors }: { event: GithubTimelineEvent; colors: Record<string, string> }) {
+  useLocale()
+
   return (
     <li
       data-slot="gh-event-row"
@@ -1594,7 +1576,7 @@ function EventRow({ event, colors }: { event: GithubTimelineEvent; colors: Recor
           href={event.url}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`open ${event.kind} on GitHub`}
+          aria-label={t('open {0} on GitHub', { 0: event.kind })}
           className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
         >
           <ExternalLinkIcon aria-hidden="true" className="size-2.5" />
@@ -1607,11 +1589,13 @@ function EventRow({ event, colors }: { event: GithubTimelineEvent; colors: Recor
 /** The kind-specific middle of an event row. Split out so `EventRow` stays a layout shell and
  *  each phrase can be asserted on its own in tests. */
 function EventPhrase({ event, colors }: { event: GithubTimelineEvent; colors: Record<string, string> }) {
+  useLocale()
+
   switch (event.kind) {
     case 'committed':
       return (
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0">committed</span>
+          <span className="shrink-0">{t('committed')}</span>
           {event.sha ? <span className="shrink-0 text-muted-foreground">{event.sha.slice(0, 7)}</span> : null}
           {event.message ? (
             <span className="truncate font-sans text-foreground">{event.message}</span>
@@ -1623,7 +1607,7 @@ function EventPhrase({ event, colors }: { event: GithubTimelineEvent; colors: Re
     case 'unlabeled':
       return (
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0">{event.kind === 'labeled' ? 'added the' : 'removed the'}</span>
+          <span className="shrink-0">{event.kind === 'labeled' ? t('added the') : t('removed the')}</span>
           {event.label ? (
             <span
               data-slot="gh-event-label"
@@ -1633,30 +1617,29 @@ function EventPhrase({ event, colors }: { event: GithubTimelineEvent; colors: Re
               {event.label.name}
             </span>
           ) : null}
-          <span className="shrink-0">label</span>
+          <span className="shrink-0">{t('label')}</span>
         </span>
       )
     case 'assigned':
     case 'unassigned':
       return (
         <span className="truncate">
-          {event.kind === 'assigned' ? 'assigned' : 'unassigned'} {event.subject ?? 'someone'}
+          {event.kind === 'assigned' ? t('assigned') : t('unassigned')} {event.subject ?? t('someone')}
         </span>
       )
     case 'merged':
-      return <span>merged this</span>
+      return <span>{t('merged this')}</span>
     case 'closed':
-      return <span>closed this</span>
+      return <span>{t('closed this')}</span>
     case 'reopened':
-      return <span>reopened this</span>
+      return <span>{t('reopened this')}</span>
     case 'head_ref_force_pushed':
       return <span>force-pushed</span>
     case 'renamed':
-      return <span className="truncate">renamed this to {event.subject ?? '—'}</span>
+      return <span className="truncate">{t('renamed this to')}{' '}{event.subject ?? '—'}</span>
     case 'cross-referenced':
       return (
-        <span className="truncate">
-          referenced this in {event.refNumber ? `#${event.refNumber}` : 'another thread'}
+        <span className="truncate">{t('referenced this in')}{' '}{event.refNumber ? `#${event.refNumber}` : t('another thread')}
           {event.refTitle ? ` ${event.refTitle}` : ''}
         </span>
       )
@@ -1670,12 +1653,14 @@ function EventPhrase({ event, colors }: { event: GithubTimelineEvent; colors: Re
  *  query failed or was skipped). The two are deliberately distinct values on the wire even though
  *  they look identical here — absence of a glyph should not have to mean "we know there is no CI". */
 function CommitChecks({ checks }: { checks: GithubTimelineEvent['checks'] }) {
+  useLocale()
+
   if (!checks) return null
   return (
     <span
       data-slot="gh-commit-checks"
       data-checks={checks}
-      aria-label={`checks ${checks}`}
+      aria-label={t('checks {0}', { 0: checks })}
       className={cn('shrink-0', CHECKS_TONE[checks])}
     >
       {CHECKS_GLYPH[checks]}
@@ -1686,15 +1671,17 @@ function CommitChecks({ checks }: { checks: GithubTimelineEvent['checks'] }) {
 /** Review-state chip tones — the same success/danger/muted vocabulary the checks badge uses, so
  *  approved reads green and changes-requested reads red without a new color system. */
 const REVIEW_CHIP: Record<NonNullable<GithubComment['reviewState']>, { label: string; tone: string }> = {
-  approved: { label: 'approved', tone: 'border-success/40 text-success' },
-  changes_requested: { label: 'changes requested', tone: 'border-danger/40 text-danger' },
-  commented: { label: 'commented', tone: 'border-border text-muted-foreground' },
-  dismissed: { label: 'dismissed', tone: 'border-border text-muted-foreground' },
+  approved: { get label() { return t('approved') }, tone: 'border-success/40 text-success' },
+  changes_requested: { get label() { return t('changes requested') }, tone: 'border-danger/40 text-danger' },
+  commented: { get label() { return t('commented') }, tone: 'border-border text-muted-foreground' },
+  dismissed: { get label() { return t('dismissed') }, tone: 'border-border text-muted-foreground' },
 }
 
 /** One thread entry: avatar (letter fallback), author, age, an optional review-state chip, and the
  *  body via the shared `Markdown` component (images/code fences render as in the issue body). */
 function ThreadEntry({ comment }: { comment: GithubComment }) {
+  useLocale()
+
   const chip = comment.reviewState ? REVIEW_CHIP[comment.reviewState] : null
   return (
     <li data-slot="gh-thread-entry" data-kind={comment.kind} className="min-w-0">
@@ -1715,14 +1702,14 @@ function ThreadEntry({ comment }: { comment: GithubComment }) {
           href={comment.url}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="open comment on GitHub"
+          aria-label={t('open comment on GitHub')}
           className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
         >
           <ExternalLinkIcon aria-hidden="true" className="size-2.5" />
         </a>
       </div>
       <div data-slot="gh-thread-body" className="text-sm">
-        {comment.body ? <Markdown>{comment.body}</Markdown> : <p className="text-soft-foreground">(no body)</p>}
+        {comment.body ? <Markdown>{comment.body}</Markdown> : <p className="text-soft-foreground">{t('(no body)')}</p>}
       </div>
     </li>
   )
@@ -1731,6 +1718,8 @@ function ThreadEntry({ comment }: { comment: GithubComment }) {
 /** A 16 px comment avatar. Falls back to a letter block when no URL is known or the image fails to
  *  load (private-repo attachments, deleted avatars) — never a broken-image glyph. */
 function Avatar({ url, login }: { url?: string; login: string }) {
+  useLocale()
+
   const [failed, setFailed] = useState(false)
   if (url && !failed) {
     return (
@@ -1771,12 +1760,14 @@ const CHECKS_TONE: Record<Checks, string> = {
  *  and in the detail meta line. Renders nothing for a zero (or absent) count, so quiet items look
  *  exactly as they did before real counts arrived. Shared so the row and detail can't drift. */
 function CommentCount({ count }: { count: number }) {
+  useLocale()
+
   if (!count) return null
   return (
     <span
       data-slot="gh-comment-count"
       data-count={count}
-      aria-label={`${count} comment${count === 1 ? '' : 's'}`}
+      aria-label={t('{0} comment{1}', { 0: count, 1: count === 1 ? '' : 's' })}
       className="inline-flex shrink-0 items-center gap-0.5"
     >
       <MessageSquareIcon aria-hidden="true" className="size-3" />
@@ -1788,8 +1779,10 @@ function CommentCount({ count }: { count: number }) {
 /** The checks badge — the legacy tab's three phrases, tinted by outcome. Links out
  *  to the PR's checks tab on GitHub (issue #415) when a URL is available. */
 function ChecksBadge({ checks, url }: { checks: Checks; url?: string }) {
+  useLocale()
+
   const className = cn('text-[11px] font-medium', CHECKS_TONE[checks], url && 'hover:underline')
-  const label = `${CHECKS_GLYPH[checks]} checks ${checks}`
+  const label = t('{0} checks {1}', { 0: CHECKS_GLYPH[checks], 1: checks })
 
   if (!url) {
     return (
@@ -1817,12 +1810,14 @@ function ChecksBadge({ checks, url }: { checks: Checks; url?: string }) {
  *  (the row is too narrow for the full phrase). Issues never have `checks`, so this only ever
  *  shows up on PR rows. */
 function ChecksGlyph({ checks }: { checks: Checks }) {
+  useLocale()
+
   return (
     <span
       data-slot="gh-row-checks"
       data-checks={checks}
-      title={`checks ${checks}`}
-      aria-label={`checks ${checks}`}
+      title={t('checks {0}', { 0: checks })}
+      aria-label={t('checks {0}', { 0: checks })}
       className={cn('shrink-0 font-sans text-[11px] font-semibold', CHECKS_TONE[checks])}
     >
       {CHECKS_GLYPH[checks]}

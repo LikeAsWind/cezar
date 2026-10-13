@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { LoaderCircleIcon } from 'lucide-react'
 
 import { CenteredState } from '@/components/centered-state'
@@ -9,13 +10,15 @@ import { CenteredState } from '@/components/centered-state'
  * split (Streamdown for the Progress excerpts, Shiki for the diffs) quietly disappears.
  */
 export function CompareLoading() {
+  useLocale()
+
   return (
     <div data-route="compare" className="flex min-h-full flex-col">
       <CenteredState
         icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
         tone="neutral"
-        title="Loading variants…"
-        subtitle="Fetching every variant's status, spend and diff summary."
+        title={t('Loading variants…')}
+        subtitle={t('Fetching every variant\'s status, spend and diff summary.')}
       />
     </div>
   )

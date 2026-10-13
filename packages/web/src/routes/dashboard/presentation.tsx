@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from '@/lib/i18n'
 import type { ComponentProps, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { shortAge } from '@/lib/format'
@@ -16,6 +17,8 @@ export const widgetHeader =
 export const disclosureSummary =
   'flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-muted-foreground transition-colors select-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden'
 export function DisclosureChevron() {
+  useLocale()
+
   return (
     <ChevronRight
       aria-hidden="true"
@@ -30,6 +33,8 @@ export const filterLabel = 'flex items-center gap-2 text-xs text-muted-foregroun
 // cockpit's (lime dark / ink light): a bare select gets the browser's blue, and blue
 // means `--info` here.
 export function FilterSelect({ className = '', ...props }: ComponentProps<'select'>) {
+  useLocale()
+
   return (
     <span className="relative inline-flex">
       <select
@@ -66,6 +71,8 @@ export function MetricContent({
   icon: ReactNode
   children: ReactNode
 }) {
+  useLocale()
+
   return (
     <>
       <span className="flex w-full items-center justify-between gap-2">
@@ -84,9 +91,9 @@ export function MetricContent({
   )
 }
 export function Freshness({ at }: { at: string }) {
+  useLocale()
+
   return (
-    <time dateTime={at} title={new Date(at).toLocaleString()}>
-      Updated {shortAge(at)} ago
-    </time>
+    <time dateTime={at} title={new Date(at).toLocaleString(getLocale())}>{t('Updated')}{' '}{shortAge(at)}{' '}{t('ago')}</time>
   )
 }

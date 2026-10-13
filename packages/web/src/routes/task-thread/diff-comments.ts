@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 
@@ -280,7 +281,7 @@ export function messageWithReview(text: string, comments: readonly DiffComment[]
   const message = withDiffComments(text, comments)
   if (message.length > MESSAGE_TEXT_MAX) {
     throw new Error(
-      `Too long with the ${comments.length === 1 ? 'diff comment' : `${comments.length} diff comments`} attached — shorten the message or remove some comments.`,
+      t('Too long with the {0} attached — shorten the message or remove some comments.', { 0: comments.length === 1 ? 'diff comment' : `${comments.length} diff comments` }),
     )
   }
   return message
@@ -443,7 +444,7 @@ export function useDiffComments(runId: string): DiffComments {
   const write = useCallback(
     (next: DiffComment[], dropped: readonly string[] = []): boolean => {
       if (serialize(next).length > DRAFT_TEXT_MAX) {
-        toast('Too many comments to keep as a draft — send the ones you have first.', { tone: 'danger' })
+        toast(t('Too many comments to keep as a draft — send the ones you have first.'), { tone: 'danger' })
         return false
       }
       if (dropped.length > 0) {

@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { ProviderStatus, ProviderStatusResponse, Runner } from '@open-mercato/cezar-api-client'
 
 /** The cockpit's canonical runner order, exported so a surface that renders one row per
@@ -76,7 +77,7 @@ function completeProviderRows(value: unknown): ProviderStatus[] | null {
 export function parseProviderStatusResponse(value: unknown): ProviderStatusResponse {
   const rows = completeProviderRows(value)
   if (rows === null) {
-    throw new Error('Invalid provider status response')
+    throw new Error(t('Invalid provider status response'))
   }
   return { providers: rows }
 }

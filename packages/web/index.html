@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <!-- interactive-widget: engines that honor it shrink the viewport under the virtual
@@ -17,6 +17,9 @@
          ('light' | 'dark' | 'system'); anything else falls back to dark, as legacy does. -->
     <script>
       (function () {
+        try {
+          document.documentElement.lang = localStorage.getItem('cez-locale') === 'en' ? 'en' : 'zh-CN'
+        } catch (e) { /* The default is Simplified Chinese. */ }
         try {
           var pref = localStorage.getItem('cez-theme')
           var light =

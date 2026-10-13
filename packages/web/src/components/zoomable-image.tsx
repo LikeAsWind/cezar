@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 
 import { resolveApiUrl } from '@open-mercato/cezar-api-client'
 import { cn } from '@/lib/utils'
+import { t, useLocale } from '@/lib/i18n'
 
 /**
  * An image that enlarges to a full-screen lightbox on click (#image-zoom). Used for conversation
@@ -26,6 +27,7 @@ export function ZoomableImage({
   alt?: string
   className?: string
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'alt' | 'className' | 'onClick'>) {
+  useLocale()
   const [open, setOpen] = useState(false)
   const src = resolveApiUrl(rawSrc)
 
@@ -53,7 +55,7 @@ export function ZoomableImage({
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Image preview"
+              aria-label={t('Image preview')}
               data-slot="image-lightbox"
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[100] flex cursor-zoom-out items-center justify-center bg-black/80 p-4 backdrop-blur-sm"

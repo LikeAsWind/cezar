@@ -1,5 +1,19 @@
 import { expect, it } from 'vitest'
 import { collectDashboardExport, dashboardCsv, printableDashboard } from './export'
+import { setLocale } from '@/lib/i18n'
+
+it('localizes report headings while preserving the user title and source content', () => {
+  setLocale('zh-CN')
+  const root = document.createElement('div')
+  root.innerHTML = '<section data-dashboard-module="overview"><h2>Project skills</h2><details><summary data-export-heading="Metric definitions">More</summary><p>User content</p></details></section>'
+  const report = collectDashboardExport(root, '2026-10-13T00:00:00.000Z', 'localhost')
+  expect(report.modules[0]!.html).toContain('指标定义')
+  expect(report.modules[0]!.html).toContain('User content')
+  const html = printableDashboard({ ...report, title: 'Project skills' }, [])
+  expect(html).toContain('<h1>Project skills</h1>')
+  expect(html).toContain('机密——仅供内部使用')
+  expect(html).not.toContain('Confidential — internal distribution only')
+})
 
 it('exports displayed modules in order with exact numbers, unavailable vs zero and safe spreadsheet cells', () => {
   const root = document.createElement('div')

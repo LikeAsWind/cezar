@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { BaseEdge, getSmoothStepPath, Handle, Position, type EdgeProps } from '@xyflow/react'
 import {
   BotIcon,
@@ -58,10 +59,10 @@ import {
 export type Category = WorkflowNodeCatalogResponse['nodes'][number]['category']
 
 export const CATEGORY_ORDER: { id: Category; label: string; color: string }[] = [
-  { id: 'agents', label: 'Agents', color: 'var(--violet)' },
-  { id: 'flow', label: 'Flow control', color: 'var(--primary)' },
-  { id: 'scripts', label: 'Scripts & checks', color: 'var(--info)' },
-  { id: 'git', label: 'Git & GitHub', color: 'var(--foreground)' },
+  { id: 'agents', get label() { return t('Agents') }, color: 'var(--violet)' },
+  { id: 'flow', get label() { return t('Flow control') }, color: 'var(--primary)' },
+  { id: 'scripts', get label() { return t('Scripts & checks') }, color: 'var(--info)' },
+  { id: 'git', get label() { return "Git & GitHub" }, color: 'var(--foreground)' },
 ]
 
 export const TYPE_CATEGORY: Record<GraphNodeType, Category> = {
@@ -120,27 +121,27 @@ export const TONE: Record<PortTone, string> = {
 }
 
 export const TYPE_LABEL: Record<GraphNodeType, string> = {
-  start: 'Start',
-  end: 'End',
-  loop: 'Loop',
-  agent: 'Agent',
-  check: 'Check',
-  'gate.human': 'Human gate',
-  'ask-user': 'Ask user',
-  dispatch: 'Subtask',
-  'git.commit': 'Commit',
-  'github.draft-pr': 'Draft PR',
-  'github.wait-ci': 'Wait for CI',
-  'github.pr-comment': 'PR comment',
-  fork: 'Fork',
-  join: 'Join',
-  if: 'If',
-  workflow: 'Sub-workflow',
-  'git.push': 'Push',
-  'git.sync-base': 'Sync with base',
-  'github.pr-update': 'Update PR',
-  'github.issue-comment': 'Issue comment',
-  'notify.webhook': 'Webhook',
+  get start() { return t('Start') },
+  get end() { return t('End') },
+  get loop() { return t('Loop') },
+  get agent() { return t('Agent') },
+  get check() { return t('Check') },
+  get 'gate.human'() { return t('Human gate') },
+  get 'ask-user'() { return t('Ask user') },
+  get dispatch() { return t('Subtask') },
+  get 'git.commit'() { return t('Commit') },
+  get 'github.draft-pr'() { return t('Draft PR') },
+  get 'github.wait-ci'() { return t('Wait for CI') },
+  get 'github.pr-comment'() { return t('PR comment') },
+  get fork() { return t('Fork') },
+  get join() { return t('Join') },
+  get if() { return t('If') },
+  get workflow() { return t('Sub-workflow') },
+  get 'git.push'() { return t('Push') },
+  get 'git.sync-base'() { return t('Sync with base') },
+  get 'github.pr-update'() { return t('Update PR') },
+  get 'github.issue-comment'() { return t('Issue comment') },
+  get 'notify.webhook'() { return t('Webhook') },
 }
 
 export const categoryColor = (type: GraphNodeType) =>
@@ -162,9 +163,9 @@ export function nodeDetail(node: WorkflowGraphNode, loopCount?: number): string 
     case 'check':
       return `$ ${node.command}`
     case 'loop':
-      return loopCount ? `${loopCount} / ${node.max}` : `max ${node.max}`
+      return loopCount ? `${loopCount} / ${node.max}` : t('max {0}', { 0: node.max })
     case 'end':
-      return node.status === 'failed' ? 'fails the run' : 'succeeds'
+      return node.status === 'failed' ? t('fails the run') : 'succeeds'
     case 'gate.human':
       return node.message
     case 'ask-user':
@@ -172,42 +173,42 @@ export function nodeDetail(node: WorkflowGraphNode, loopCount?: number): string 
     case 'git.commit':
       return node.message
     case 'github.draft-pr':
-      return node.title ?? 'task title'
+      return node.title ?? t('task title')
     case 'github.wait-ci':
-      return `≤ ${Math.round(node.timeoutMs / 60_000)} min`
+      return t('≤ {0} min', { 0: Math.round(node.timeoutMs / 60_000) })
     case 'github.pr-comment':
       return node.body
     case 'fork':
-      return `${node.branches} agents at once`
+      return t('{0} agents at once', { 0: node.branches })
     case 'join':
-      return node.wait === 'any' ? 'first to succeed' : 'wait for all'
+      return node.wait === 'any' ? t('first to succeed') : t('wait for all')
     case 'workflow':
       return node.workflow
     case 'git.push':
-      return 'task branch → origin'
+      return t('task branch → origin')
     case 'git.sync-base':
-      return 'merge latest base'
+      return t('merge latest base')
     case 'github.pr-update':
       return [node.ready ? 'ready' : '', node.addLabels?.length ? `+${node.addLabels.join(', ')}` : '', node.reviewers?.length ? `@${node.reviewers.join(', @')}` : '']
         .filter(Boolean)
-        .join(' · ') || 'no changes'
+        .join(' · ') || t('no changes')
     case 'github.issue-comment':
-      return node.issue ? `#${node.issue}` : "task's issue"
+      return node.issue ? `#${node.issue}` : t('task\'s issue')
     case 'notify.webhook':
       return node.url.replace(/^https?:\/\//, '')
     case 'if': {
       const c = node.condition
       switch (c.kind) {
         case 'diff-lines':
-          return `lines ${c.op} ${c.value}`
+          return t('lines {0} {1}', { 0: c.op, 1: c.value })
         case 'diff-files':
-          return `files ${c.op} ${c.value}`
+          return t('files {0} {1}', { 0: c.op, 1: c.value })
         case 'paths-changed':
-          return `changed ${c.glob}`
+          return t('changed {0}', { 0: c.glob })
         case 'output':
           return `${c.ref} ${c.op} ${c.value}`
         case 'branch':
-          return `base ${c.op} ${c.value}`
+          return t('base {0} {1}', { 0: c.op, 1: c.value })
       }
       return ''
     }
@@ -217,11 +218,11 @@ export function nodeDetail(node: WorkflowGraphNode, loopCount?: number): string 
 }
 
 const STATUS: Partial<Record<NodeRunState['status'], { ring: string; dot: string; label: string }>> = {
-  running: { ring: 'ring-2 ring-primary shadow-lg shadow-primary/25', dot: 'bg-primary motion-safe:animate-pulse', label: 'running' },
-  waiting: { ring: 'ring-2 ring-info', dot: 'bg-info motion-safe:animate-pulse', label: 'needs you' },
-  done: { ring: '', dot: 'bg-success', label: 'done' },
-  failed: { ring: 'ring-2 ring-danger', dot: 'bg-danger', label: 'failed' },
-  cancelled: { ring: '', dot: 'bg-muted-foreground', label: 'cancelled' },
+  running: { ring: 'ring-2 ring-primary shadow-lg shadow-primary/25', dot: 'bg-primary motion-safe:animate-pulse', get label() { return t('running') } },
+  waiting: { ring: 'ring-2 ring-info', dot: 'bg-info motion-safe:animate-pulse', get label() { return t('needs you') } },
+  done: { ring: '', dot: 'bg-success', get label() { return t('done') } },
+  failed: { ring: 'ring-2 ring-danger', dot: 'bg-danger', get label() { return t('failed') } },
+  cancelled: { ring: '', dot: 'bg-muted-foreground', get label() { return t('cancelled') } },
 }
 
 export interface GraphNodeViewProps {
@@ -260,8 +261,10 @@ const INNER_DOT: Record<string, string> = {
 }
 
 function InnerSteps({ steps }: { steps: readonly InnerStep[] }) {
+  useLocale()
+
   return (
-    <div className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground" aria-label="steps inside">
+    <div className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground" aria-label={t('steps inside')}>
       {steps.slice(0, 6).map((st, i) => (
         <span key={st.id} className="flex min-w-0 items-center gap-1" title={`${st.name}${st.status ? ` — ${st.status}` : ''}`}>
           {i > 0 && <span aria-hidden="true">→</span>}
@@ -288,11 +291,13 @@ export const GraphNodeView = memo(function GraphNodeView({
   inner,
   subtaskTo,
 }: GraphNodeViewProps) {
+  useLocale()
+
   const Icon = ICONS[node.type]
   const color = categoryColor(node.type)
   const ports = portsOf(node)
   const wide = WIDE.has(node.type)
-  const title = node.name ?? (wide ? TYPE_LABEL[node.type] : node.id)
+  const title = node.name ?? (wide ? t(TYPE_LABEL[node.type]) : node.id)
   const detail = nodeDetail(node, loopCount)
   const state = status ? STATUS[status] : undefined
   const extras = [iterations && iterations > 1 ? `×${iterations}` : '', costUsd ? `$${costUsd.toFixed(2)}` : '']
@@ -345,8 +350,8 @@ export const GraphNodeView = memo(function GraphNodeView({
             to={subtaskTo}
             // `nodrag nopan`: following the link, not grabbing the canvas.
             className="nodrag nopan absolute right-1.5 bottom-1 rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            aria-label={`Open the subtask for ${title}`}
-            title="Open the subtask"
+            aria-label={t('Open the subtask for {0}', { 0: title })}
+            title={t('Open the subtask')}
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLinkIcon className="size-3" />
@@ -395,8 +400,8 @@ export const GraphNodeView = memo(function GraphNodeView({
                         type="button"
                         // `nodrag nopan`: a click here is a button press, not the start of a node drag.
                         className="nodrag nopan flex size-5 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:border-primary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                        aria-label={`Add a node after ${node.name ?? node.id} → ${port}`}
-                        title={`Add a node on “${port}”`}
+                        aria-label={t('Add a node after {0} → {1}', { 0: node.name ?? node.id, 1: port })}
+                        title={t('Add a node on “{0}”', { 0: port })}
                         onClick={(e) => {
                           e.stopPropagation()
                           onAddFromPort(port)
@@ -449,6 +454,8 @@ export function edgeStyle(opts: { tone: PortTone; back: boolean; emphasis?: 'tak
  * `routeLanes`), and into the target from the left. Without a lane it falls back to smoothstep.
  */
 export function LaneEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style, markerEnd }: EdgeProps) {
+  useLocale()
+
   const route = (data as { lane?: Lane } | undefined)?.lane
   if (route === undefined) {
     const [path] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, offset: 28, borderRadius: 14 })

@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useRef, useState } from 'react'
 
 import { ApiError } from '@/api/client'
@@ -133,14 +134,14 @@ export function useAskAnswer(run: ApiRun, projectId?: string): AskAnswerDelivery
     : undefined
   const reason =
     blockedBy === 'no-session'
-      ? 'This session has ended and no agent session was recorded, so the answer cannot be delivered.'
+      ? t('This session has ended and no agent session was recorded, so the answer cannot be delivered.')
       : blockedBy === 'provider'
         ? (mode === 'resume' ? existingProvider.reason : activeProvider.reason)
         : undefined
 
   const resumeWith = (text: string) => {
     if (!existingProvider.usable) {
-      return Promise.reject(new Error(existingProvider.reason ?? 'The run provider is unavailable.'))
+      return Promise.reject(new Error(existingProvider.reason ?? t('The run provider is unavailable.')))
     }
     // No runner override: the server keeps the run's own backend and model, so answering a
     // question cannot silently switch engines when another provider happens to be connected.

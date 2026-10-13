@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { zonedParts, type AutomationsResponse } from '@open-mercato/cezar-api-client'
 
 import { Card } from '@/components/ui/card'
@@ -16,6 +17,8 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
  * re-read every minute so the line keeps moving without a data change.
  */
 export function WeekView({ data }: { data: AutomationsResponse }) {
+  useLocale()
+
   const now = useNow(60_000)
   const timeZone = data.timeZone
   const today = zonedParts(now, timeZone)
@@ -28,8 +31,7 @@ export function WeekView({ data }: { data: AutomationsResponse }) {
   if (!today || weekStart === undefined || weekStart === null || weekEnd === undefined || weekEnd === null) {
     return (
       <div data-slot="week-view" className="p-5">
-        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Cannot draw the week: unknown time zone “{timeZone}”.
+        <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t('Cannot draw the week: unknown time zone “')}{timeZone}”.
         </p>
       </div>
     )
@@ -63,7 +65,7 @@ export function WeekView({ data }: { data: AutomationsResponse }) {
                 column.isToday ? 'text-foreground' : 'text-soft-foreground',
               )}
             >
-              {column.label}
+              {t(column.label)}
               <span
                 className={cn(
                   'rounded-full px-[7px] py-px text-[13px] font-medium tracking-normal normal-case',

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import type { AgentProfile, ProviderStatusResponse, Runner } from '@open-mercato/cezar-api-client'
 import { cn } from '@/lib/utils'
 import { providerStatusFor } from '@/lib/provider-status'
@@ -43,7 +44,7 @@ export function agentPickerRows(profiles: readonly AgentProfile[]): AgentPickerR
       // folder the CLI has not written yet is called out rather than left looking fine: a run under
       // it fails on auth BY DESIGN — it must not quietly fall back to another login — so the place
       // to say so is where the choice is made.
-      desc: login.exists ? login.configDir : `${login.configDir} — folder not created yet`,
+      desc: login.exists ? login.configDir : t('{0} — folder not created yet', { 0: login.configDir }),
       missing: !login.exists,
     }))
   })
@@ -76,11 +77,13 @@ export function DefaultAgentPicker({
   accountDisabled?: boolean
   onPick: (runner: Runner, account: string | null, hasAccountChoice: boolean) => void
 }) {
+  useLocale()
+
   const stacked = hasAgentAccounts(rows)
   return (
     <div
       role="radiogroup"
-      aria-label="Default runner"
+      aria-label={t('Default runner')}
       data-slot="agents-runner"
       className={cn(
         'gap-0.5 rounded-md border border-border bg-card p-0.5',
@@ -97,14 +100,14 @@ export function DefaultAgentPicker({
           provider?.enabled === true &&
           provider.status === 'connected'
         const providerReason = providerStatus.isPending
-          ? 'Checking provider authentication…'
+          ? t('Checking provider authentication…')
           : providerStatus.isError
-            ? 'Provider authentication could not be verified.'
+            ? t('Provider authentication could not be verified.')
             : provider?.enabled === false
-              ? 'This provider is disabled. Enable it above or choose another provider.'
+              ? t('This provider is disabled. Enable it above or choose another provider.')
             : providerConnected
               ? undefined
-              : 'Connect this provider before selecting it.'
+              : t('Connect this provider before selecting it.')
         const hasAccountChoice = rows.filter((other) => other.runner.id === row.runner.id).length > 1
         const checked = row.runner.id === runner && row.account === accountFor(row.runner.id)
         return (

@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { ReferenceStatus } from '@open-mercato/cezar-api-client'
 
 /**
@@ -32,63 +33,63 @@ export type ReferenceStatusTone =
 export const REFERENCE_STATUS: Record<ReferenceStatus, ReferenceStatusPresentation> = {
   // ---- pull requests --------------------------------------------------------------------
   draft: {
-    label: 'Draft',
-    hint: 'the author has not marked it ready for review',
+    get label() { return t('Draft') },
+    get hint() { return t('the author has not marked it ready for review') },
     // Neutral, not amber: a draft is not in progress towards anything, it is parked.
     tone: 'neutral',
   },
   'review-required': {
-    label: 'Waiting for review',
-    hint: 'checks are fine, no one has reviewed it yet',
+    get label() { return t('Waiting for review') },
+    get hint() { return t('checks are fine, no one has reviewed it yet') },
     // NOT violet, which is where `merged` and `completed` live: this one is waiting on a person
     // and that is the opposite of finished. Blue is the only hue the cockpit does not otherwise
     // use, so it reads as its own thing at a glance rather than as a shade of done.
     tone: 'info',
   },
   'changes-requested': {
-    label: 'Changes requested',
-    hint: 'a reviewer asked for edits before this can merge',
+    get label() { return t('Changes requested') },
+    get hint() { return t('a reviewer asked for edits before this can merge') },
     tone: 'danger',
   },
   'checks-pending': {
-    label: 'Checks running',
-    hint: 'CI has not finished on the latest commit',
+    get label() { return t('Checks running') },
+    get hint() { return t('CI has not finished on the latest commit') },
     tone: 'pending',
   },
   'checks-failing': {
-    label: 'Checks failing',
-    hint: 'CI is red on the latest commit',
+    get label() { return t('Checks failing') },
+    get hint() { return t('CI is red on the latest commit') },
     tone: 'danger',
   },
   ready: {
-    label: 'Ready to merge',
-    hint: 'open, checks pass, nothing is waiting on a reviewer',
+    get label() { return t('Ready to merge') },
+    get hint() { return t('open, checks pass, nothing is waiting on a reviewer') },
     tone: 'success',
   },
   merged: {
-    label: 'Merged',
-    hint: 'this landed on its base branch',
+    get label() { return t('Merged') },
+    get hint() { return t('this landed on its base branch') },
     tone: 'violet',
   },
   closed: {
-    label: 'Closed',
-    hint: 'closed without merging — the work did not land',
+    get label() { return t('Closed') },
+    get hint() { return t('closed without merging — the work did not land') },
     tone: 'danger',
   },
   // ---- issues ---------------------------------------------------------------------------
   open: {
-    label: 'Open',
-    hint: 'still open on the tracker',
+    get label() { return t('Open') },
+    get hint() { return t('still open on the tracker') },
     tone: 'success',
   },
   completed: {
-    label: 'Closed as completed',
-    hint: 'the issue was resolved',
+    get label() { return t('Closed as completed') },
+    get hint() { return t('the issue was resolved') },
     tone: 'violet',
   },
   'not-planned': {
-    label: 'Closed as not planned',
-    hint: 'the issue was declined — nothing shipped for it',
+    get label() { return t('Closed as not planned') },
+    get hint() { return t('the issue was declined — nothing shipped for it') },
     tone: 'neutral',
   },
 }
@@ -112,8 +113,8 @@ export const REFERENCE_STATUS: Record<ReferenceStatus, ReferenceStatusPresentati
  * anything. Not `pending` either — nothing resolves this on its own. It is the author's move.
  */
 export const REFERENCE_CONFLICT: ReferenceStatusPresentation = {
-  label: 'Merge conflicts',
-  hint: 'this branch no longer merges cleanly into its base — rebase or merge the base in',
+  get label() { return t('Merge conflicts') },
+  get hint() { return t('this branch no longer merges cleanly into its base — rebase or merge the base in') },
   tone: 'conflict',
 }
 

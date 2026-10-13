@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { ForgeInfo, RunStatus } from '@open-mercato/cezar-api-client'
 
 /**
@@ -71,12 +72,12 @@ const isActive = (status: RunStatus): boolean =>
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree'
 
 function commitAction(state: GitActionState): GitAction {
-  const disabled = (reason: string): GitAction => ({ id: 'commit', label: 'Commit', enabled: false, reason })
-  if (!state.hasWorktree) return disabled(`Commit unavailable — ${NO_WORKTREE_REASON}`)
+  const disabled = (reason: string): GitAction => ({ id: 'commit', label: t('Commit'), enabled: false, reason: t(reason) })
+  if (!state.hasWorktree) return disabled(t('Commit unavailable — {0}', { 0: t(NO_WORKTREE_REASON) }))
   if (state.status === 'running') return disabled('Commit unavailable — the agent is still working in this worktree')
   if (state.uncommitted === undefined) return disabled('Commit unavailable — changes are still loading')
   if (state.uncommitted === 0) return disabled('Commit unavailable — no changes to commit')
-  return { id: 'commit', label: 'Commit', enabled: true }
+  return { id: 'commit', label: t('Commit'), enabled: true }
 }
 
 /**
@@ -94,36 +95,36 @@ function commitAndPushAction(state: GitActionState): GitAction {
   return {
     ...commit,
     id: 'commit-push',
-    label: 'Commit and push',
-    ...(commit.reason ? { reason: commit.reason.replace(/^Commit unavailable/, 'Commit and push unavailable') } : {}),
+    label: t('Commit and push'),
+    ...(commit.reason ? { reason: commit.reason.replace(t('Commit unavailable'), t('Commit and push unavailable')) } : {}),
   }
 }
 
 function pushAction(state: GitActionState): GitAction {
-  const disabled = (reason: string): GitAction => ({ id: 'push', label: 'Push', enabled: false, reason })
-  if (!state.hasWorktree) return disabled(`Push unavailable — ${NO_WORKTREE_REASON}`)
+  const disabled = (reason: string): GitAction => ({ id: 'push', label: t('Push'), enabled: false, reason: t(reason) })
+  if (!state.hasWorktree) return disabled(t('Push unavailable — {0}', { 0: t(NO_WORKTREE_REASON) }))
   if (state.remote === undefined) return disabled('Push unavailable — no remote configured')
   if (state.branch === undefined) return disabled('Push unavailable — the run has no branch to push')
   if (state.status === 'running') return disabled('Push unavailable — the agent is still working in this worktree')
   if (state.unpushed === 0) return disabled('Push unavailable — the remote already has every commit')
-  return { id: 'push', label: 'Push', enabled: true }
+  return { id: 'push', label: t('Push'), enabled: true }
 }
 
 function createPrAction(state: GitActionState): GitAction {
   const disabled = (reason: string): GitAction => ({
     id: 'create-pr',
-    label: 'Create PR',
+    label: t('Create PR'),
     enabled: false,
-    reason,
+    reason: t(reason),
   })
   if (!state.hasWorktree || state.branch === undefined) {
-    return disabled(`Create PR unavailable — ${NO_WORKTREE_REASON}`)
+    return disabled(t('Create PR unavailable — {0}', { 0: t(NO_WORKTREE_REASON) }))
   }
   if (state.forge === null) {
     return disabled('Create PR unavailable — no supported forge remote (GitHub) detected')
   }
   if (!state.forge.available) {
-    return disabled(`Create PR unavailable — ${state.forge.reason ?? 'the forge is unreachable'}`)
+    return disabled(t('Create PR unavailable — {0}', { 0: state.forge.reason ?? 'the forge is unreachable' }))
   }
   // The server refuses `POST /pr` while the engine owns the run — mirror it honestly here
   // rather than letting the click discover the 409.
@@ -132,9 +133,9 @@ function createPrAction(state: GitActionState): GitAction {
   }
   return {
     id: 'create-pr',
-    label: 'Create PR',
+    label: t('Create PR'),
     enabled: true,
-    alternatives: [{ id: 'create-draft-pr', label: 'Create draft PR', enabled: true }],
+    alternatives: [{ id: 'create-draft-pr', label: t('Create draft PR'), enabled: true }],
   }
 }
 
@@ -194,6 +195,6 @@ export function gitActionPolicy(state: GitActionState): GitAction | null {
 
 function agentStep(state: GitActionState, id: GitActionId, label: string): GitAction {
   return state.agentBlocked
-    ? { id, label, enabled: false, reason: `${label} unavailable — ${state.agentBlocked}` }
+    ? { id, label, enabled: false, reason: t('{0} unavailable — {1}', { 0: label, 1: state.agentBlocked }) }
     : { id, label, enabled: true }
 }

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ArrowRightIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from '@/lib/project-router'
@@ -51,11 +52,13 @@ export function SkillSourceTag({
   className?: string
   teamRepo?: string
 }) {
+  useLocale()
+
   const project = isProjectSkill({ source })
   const description =
     source === 'team' && teamRepo
-      ? `Shared from ${teamRepo}, a team skills repository configured for this project.`
-      : SKILL_SOURCE_DESCRIPTIONS[source]
+      ? t('Shared from {0}, a team skills repository configured for this project.', { 0: teamRepo })
+      : t(SKILL_SOURCE_DESCRIPTIONS[source])
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -96,6 +99,8 @@ export function SkillDetailBody({
   enabled?: boolean
   activation?: SkillActivation
 }) {
+  useLocale()
+
   return (
     <div data-slot="skill-detail" className="mx-auto w-full min-w-0 max-w-[var(--measure)]">
       <section data-slot="skill-properties" className="rounded-lg border border-border bg-muted/20 p-4">
@@ -107,7 +112,7 @@ export function SkillDetailBody({
             </div>
             <p data-slot="skill-path" className="mt-1 font-mono text-[10.5px] break-all text-soft-foreground">
               {skill.path}
-              {skill.team ? ` · from ${skill.team.repo}` : ''}
+              {skill.team ? t(' · from {0}', { 0: skill.team.repo }) : ''}
             </p>
             {skill.description ? (
               <p data-slot="skill-description" className="mt-2.5 text-[13px] text-muted-foreground">
@@ -132,9 +137,7 @@ export function SkillDetailBody({
 
         {usedBy !== undefined ? (
           <section data-slot="skill-used-by" className="mt-4 border-t border-border pt-4">
-            <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
-              Used by
-            </h3>
+            <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">{t('Used by')}</h3>
             {usedBy.length > 0 ? (
               <ul className="mt-1.5 flex flex-col gap-1">
                 {usedBy.map((entry) => (
@@ -145,16 +148,14 @@ export function SkillDetailBody({
                 ))}
               </ul>
             ) : (
-              <p className="mt-1.5 text-xs text-soft-foreground">
-                Not referenced by any workflow yet — quick-task picks it up when the task mentions it.
-              </p>
+              <p className="mt-1.5 text-xs text-soft-foreground">{t('Not referenced by any workflow yet — quick-task picks it up when the task mentions it.')}</p>
             )}
           </section>
         ) : null}
       </section>
 
       <section data-slot="skill-content" className="mt-6 min-w-0 border-t border-border pt-5">
-        <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">Content</h3>
+        <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">{t('Content')}</h3>
         <div data-slot="skill-body" className="mt-3 text-sm">
           <Markdown>{skill.body}</Markdown>
         </div>
@@ -164,6 +165,8 @@ export function SkillDetailBody({
 }
 
 function SkillBookmarklet({ skill }: { skill: Skill }) {
+  useLocale()
+
   const launchKey = useLaunchKey()
   const health = useHealth()
   const projects = useProjects()
@@ -178,19 +181,17 @@ function SkillBookmarklet({ skill }: { skill: Skill }) {
   const url = bookmarkletUrl(skill.name, auto, key, origin, projectId)
   return (
     <section data-slot="skill-run-from-github" className="mt-5 border-t border-border pt-4">
-      <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">Run from GitHub</h3>
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        Drag the button to your bookmarks bar, then click it on a GitHub PR or issue.
-      </p>
+      <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">{t('Run from GitHub')}</h3>
+      <p className="mt-1.5 text-xs text-muted-foreground">{t('Drag the button to your bookmarks bar, then click it on a GitHub PR or issue.')}</p>
       <div className="mt-3 flex items-center gap-2 text-xs font-medium">
         <Switch
           data-slot="bookmarklet-auto"
           size="sm"
-          aria-label="Start automatically"
+          aria-label={t('Start automatically')}
           checked={auto}
           onCheckedChange={setAuto}
         />
-        <span>Start automatically</span>
+        <span>{t('Start automatically')}</span>
       </div>
       <div className="mt-3">
         <BookmarkletRow
@@ -200,16 +201,12 @@ function SkillBookmarklet({ skill }: { skill: Skill }) {
           copySlot="skill-bookmarklet-copy"
         />
       </div>
-      <p className="mt-2 text-xs text-soft-foreground">
-        To update an existing bookmarklet after changing this option, drag the button to your bookmarks bar again.
-      </p>
+      <p className="mt-2 text-xs text-soft-foreground">{t('To update an existing bookmarklet after changing this option, drag the button to your bookmarks bar again.')}</p>
       <Link
         to="/settings/bookmarklets"
         data-slot="skill-bookmarklets-settings"
         className="mt-2 inline-block text-xs font-medium text-violet hover:underline"
-      >
-        Manage saved bookmarklets
-      </Link>
+      >{t('Manage saved bookmarklets')}</Link>
     </section>
   )
 }
@@ -219,6 +216,8 @@ function SkillBookmarklet({ skill }: { skill: Skill }) {
  * mounted-but-closed so open/close animates. The footer link jumps to the full catalog entry.
  */
 export function SkillPreviewDialog({ skill, onClose }: { skill: Skill | null; onClose: () => void }) {
+  useLocale()
+
   return (
     <Dialog open={skill !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent
@@ -229,7 +228,7 @@ export function SkillPreviewDialog({ skill, onClose }: { skill: Skill | null; on
           <>
             {/* The visible title is SkillDetailBody's heading; these two feed the dialog a11y contract. */}
             <DialogTitle className="sr-only">{skill.name}</DialogTitle>
-            <DialogDescription className="sr-only">Skill preview with GitHub launcher</DialogDescription>
+            <DialogDescription className="sr-only">{t('Skill preview with GitHub launcher')}</DialogDescription>
             <SkillDetailBody skill={skill} heading="h3" />
             <p className="mt-5">
               <Link
@@ -237,9 +236,7 @@ export function SkillPreviewDialog({ skill, onClose }: { skill: Skill | null; on
                 data-slot="skill-preview-manage"
                 onClick={onClose}
                 className="text-xs font-semibold text-violet hover:underline"
-              >
-                Open in the Skills catalog
-              </Link>
+              >{t('Open in the Skills catalog')}</Link>
             </p>
           </>
         ) : null}

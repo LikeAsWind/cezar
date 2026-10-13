@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { CreateRunInput, GithubItem, WorkflowStepDef } from '@open-mercato/cezar-api-client'
 
 /**
@@ -42,7 +43,7 @@ export function githubTaskPrompt(item: GithubItem, skillNames: readonly string[]
 }
 
 function skillsHint(skillNames: readonly string[]): string {
-  return `\n\nUse these skills where relevant: ${skillNames.join(', ')}.`
+  return t('\n\nUse these skills where relevant: {0}.', { 0: skillNames.join(', ') })
 }
 
 /**

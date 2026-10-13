@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation } from '@tanstack/react-query'
 
 import { openProjectIn } from '@/api/client'
@@ -40,17 +41,19 @@ export function useActiveProjectRoot(): string | null {
 function copyPath(root: string) {
   void navigator.clipboard
     .writeText(root)
-    .then(() => toast('Project folder copied'))
+    .then(() => toast(t('Project folder copied')))
     .catch(() => toast(root))
 }
 
 export function ProjectFolderField() {
+  useLocale()
+
   const root = useActiveProjectRoot()
   if (root === null) return null
   return (
     <SettingsField
-      title="Project folder"
-      hint="Where this project lives on disk. Every task worktree, git command and agent run resolves against it."
+      title={t('Project folder')}
+      hint={t('Where this project lives on disk. Every task worktree, git command and agent run resolves against it.')}
     >
       <div
         data-slot="project-location"
@@ -69,12 +72,10 @@ export function ProjectFolderField() {
           <button
             type="button"
             data-action="project-location-copy"
-            title="Copy the project folder path"
+            title={t('Copy the project folder path')}
             onClick={() => copyPath(root)}
             className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Copy
-          </button>
+          >{t('Copy')}</button>
           <OpenWithMenu root={root} />
         </div>
       </div>
@@ -83,15 +84,17 @@ export function ProjectFolderField() {
 }
 
 export function ProjectLocationNav() {
+  useLocale()
+
   const root = useActiveProjectRoot()
   if (root === null) return null
   return (
     <div data-slot="project-location" data-variant="nav" className="mt-auto px-2.5 pt-3">
-      <p className="text-[11px] text-soft-foreground">Project folder</p>
+      <p className="text-[11px] text-soft-foreground">{t('Project folder')}</p>
       <button
         type="button"
         data-action="project-location-copy"
-        title={`${root} — click to copy`}
+        title={t('{0} — click to copy', { 0: root })}
         onClick={() => copyPath(root)}
         className="block w-full truncate text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
@@ -113,6 +116,8 @@ export function ProjectLocationNav() {
  * empty target list, and a menu whose every item is missing is worse than no menu.
  */
 function OpenWithMenu({ root }: { root: string }) {
+  useLocale()
+
   const targets = useOpenTargets()
   const open = useMutation({
     mutationFn: (target: string) => openProjectIn(target),
@@ -126,7 +131,7 @@ function OpenWithMenu({ root }: { root: string }) {
   return (
     <OpenInMenu
       slot="project-location-open"
-      label="Open with"
+      label={t('Open with')}
       triggerVariant="outline"
       title={root}
       disabled={open.isPending}

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { MetricContent, metricAccents, metricSurface } from './presentation'
 import type { DashboardCostProject, DashboardCosts } from '@open-mercato/cezar-api-client'
 import { ArrowDownLeft, ArrowUpRight, DollarSign, ChevronRight } from 'lucide-react'
@@ -43,6 +44,8 @@ export function CostMetricCard({
   reported: number
   total: number
 }) {
+  useLocale()
+
   const accent = accents[metric]
   const Icon = accent.icon
   const coverage = total ? Math.min(100, (reported / total) * 100) : 0
@@ -53,8 +56,7 @@ export function CostMetricCard({
         value={value}
         icon={<Icon className={`size-4 ${accent.text}`} />}
       >
-        {reported} of {total} tasks report this metric
-      </MetricContent>
+        {reported}{' '}{t('of')}{' '}{total}{' '}{t('tasks report this metric')}</MetricContent>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
         <div
           className={`h-full rounded-full ${accent.fill} transition-[width] duration-300 motion-reduce:transition-none`}
@@ -82,6 +84,8 @@ export function CostProjectBars({
   format: (value: number | null | undefined) => string
   onSelect: (id: string) => void
 }) {
+  useLocale()
+
   const maximum = projects.reduce(
     (max, project) => Math.max(max, project[field]?.value ?? 0),
     0,
@@ -91,12 +95,10 @@ export function CostProjectBars({
     <TooltipProvider delayDuration={150}>
       <div
         className="space-y-1 rounded-xl border p-2"
-        aria-label={`Projects ranked by ${label}`}
+        aria-label={t('Projects ranked by {0}', { 0: label })}
       >
         {projects.length === 0 && (
-          <p className="px-3 py-4 text-muted-foreground">
-            No projects to compare in this cohort.
-          </p>
+          <p className="px-3 py-4 text-muted-foreground">{t('No projects to compare in this cohort.')}</p>
         )}
         {projects.slice(0, 5).map((project, index) => {
           const measure = project[field]
@@ -141,8 +143,7 @@ export function CostProjectBars({
                     />
                   </div>
                   <p className="mt-1.5 ml-7 text-xs text-muted-foreground">
-                    {measure?.reportedTasks ?? 0} of {project.tasks} tasks report this metric
-                    {!available ? ' · No measured value' : ''}
+                    {measure?.reportedTasks ?? 0}{' '}{t('of')}{' '}{project.tasks}{' '}{t('tasks report this metric')}{!available ? t(' · No measured value') : ''}
                   </p>
                 </button>
               </TooltipTrigger>
@@ -151,9 +152,8 @@ export function CostProjectBars({
                   {project.projectId} · {label}: {format(value)}
                 </p>
                 <p>
-                  {measure?.reportedTasks ?? 0} of {project.tasks} tasks report this metric.
-                </p>
-                <p>Open project tasks</p>
+                  {measure?.reportedTasks ?? 0}{' '}{t('of')}{' '}{project.tasks}{' '}{t('tasks report this metric.')}</p>
+                <p>{t('Open project tasks')}</p>
               </TooltipContent>
             </Tooltip>
           )
@@ -161,9 +161,7 @@ export function CostProjectBars({
       </div>
       {projects.length > 0 && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {projects.length > 5 ? `Top 5 of ${projects.length} projects. ` : ''}
-          Bar lengths compare reported values; the largest is the reference.
-        </p>
+          {projects.length > 5 ? t('Top 5 of {0} projects. ', { 0: projects.length }) : ''}{t('Bar lengths compare reported values; the largest is the reference.')}</p>
       )}
     </TooltipProvider>
   )

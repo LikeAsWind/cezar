@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import {
   attachmentExtension,
   isAttachmentMediaType,
@@ -76,7 +77,7 @@ export type AttachmentsChangeReason = 'edit' | 'submit'
  * and filed in the library under (`toAttachmentInput`). One function so the two cannot drift.
  */
 export function fallbackAttachmentName(mediaType: string, isImage: boolean): string {
-  return isImage ? 'pasted image' : `pasted.${attachmentExtension(mediaType)}`
+  return isImage ? t('pasted image') : `pasted.${attachmentExtension(mediaType)}`
 }
 
 /** File → base64 (chunked — `String.fromCharCode(...5MB)` would blow the arg limit). */

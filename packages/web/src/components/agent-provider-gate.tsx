@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import type { ResolvedEngine } from '@/components/engine-pills'
 import { Link } from '@/lib/project-router'
 
@@ -6,15 +7,15 @@ export function AgentProviderGate({ resolved, dataSlot }: {
   resolved: Pick<ResolvedEngine, 'providerPending' | 'providerError' | 'canRun'>
   dataSlot?: string
 }) {
+  useLocale()
+
   if (resolved.providerPending || resolved.canRun) return null
   return (
     <span data-slot={dataSlot} className="inline-flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
       {resolved.providerError
-        ? 'Provider authentication could not be verified.'
-        : 'Connect an agent provider to run this item.'}
-      <Link to="/settings/agents#providers" className="font-medium text-foreground underline underline-offset-4">
-        Configure providers
-      </Link>
+        ? t('Provider authentication could not be verified.')
+        : t('Connect an agent provider to run this item.')}
+      <Link to="/settings/agents#providers" className="font-medium text-foreground underline underline-offset-4">{t('Configure providers')}</Link>
     </span>
   )
 }

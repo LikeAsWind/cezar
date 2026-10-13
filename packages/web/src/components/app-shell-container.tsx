@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, type ReactNode } from 'react'
+import { useLocale } from '@/lib/i18n'
 import { useLocation } from 'react-router'
 
 import { useHealth, useProjectRuns, useProjects, useRunsForProject, useSkillsUpdate, useStarCount, useTodos, useWorkspaceConfig } from '@/api/queries'
@@ -56,6 +57,7 @@ export function skillsUpdateMarkerOf(state: SkillsUpdateState | undefined): bool
  * reconcile — not a change here.
  */
 export const AppShellContainer = memo(function AppShellContainer({ children }: { children: ReactNode }) {
+  const locale = useLocale()
   const { pathname } = useLocation()
   const projectId = useActiveProjectId()
   const health = useHealth()
@@ -100,7 +102,7 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
         const run = titleRunId ? list.find((item) => item.id === titleRunId) : undefined
         return run ? runTitle(run) : undefined
       },
-      [titleRunId],
+      [titleRunId, locale],
     ),
   ).data
 
@@ -150,13 +152,7 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
           skillsUpdateAvailable={skillsUpdateAvailable}
         />
       ) : undefined,
-    [
-      projects,
-      inboxAvailable,
-      automationsAvailable,
-      todos.data?.length,
-      skillsUpdateAvailable,
-    ],
+    [projects, inboxAvailable, automationsAvailable, todos.data?.length, skillsUpdateAvailable],
   )
   const toolsMenu = useMemo(() => <ToolsMenu health={health.data} />, [health.data])
 

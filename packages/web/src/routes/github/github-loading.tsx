@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { LoaderCircleIcon } from 'lucide-react'
 
 import { CenteredState } from '@/components/centered-state'
@@ -9,13 +10,15 @@ import { CenteredState } from '@/components/centered-state'
  * the split that keeps the markdown stack off the main bundle quietly disappears.
  */
 export function GithubLoading() {
+  useLocale()
+
   return (
     <div data-route="github" className="flex min-h-full flex-col">
       <CenteredState
         icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
         tone="neutral"
-        title="Loading GitHub…"
-        subtitle="Fetching open issues and pull requests."
+        title={t('Loading GitHub…')}
+        subtitle={t('Fetching open issues and pull requests.')}
       />
     </div>
   )

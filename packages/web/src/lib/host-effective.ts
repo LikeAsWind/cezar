@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { HostUsage } from '@open-mercato/cezar-api-client'
 
 import { formatMem } from './tasks-table'
@@ -112,7 +113,7 @@ export function effectiveHostView(sample: HostUsage): EffectiveHostView {
  */
 export function formatCpuCores(cores: number): string {
   const rounded = Math.round(cores * 10) / 10
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} CPU`
+  return t('{0} CPU', { 0: Number.isInteger(rounded) ? rounded : rounded.toFixed(1) })
 }
 
 /**

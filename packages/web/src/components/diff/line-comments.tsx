@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { MessageSquareOffIcon, PencilIcon, PlusIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
@@ -105,7 +106,7 @@ export const FileLinesContext = createContext<FileLines | null>(null)
 /** The row classes for a mark: a tint over the line for the live selection, a bar in the gutter
  *  edge for lines a saved comment covers — so commented code reads as commented at a glance. */
 export function markClass(mark: 'selected' | 'commented' | undefined): string | undefined {
-  if (mark === 'selected') return 'relative before:pointer-events-none before:absolute before:inset-0 before:bg-primary/15'
+  if (mark === 'selected') return t('relative before:pointer-events-none before:absolute before:inset-0 before:bg-primary/15')
   if (mark === 'commented') return 'shadow-[inset_3px_0_0_0_var(--color-primary)]'
   return undefined
 }
@@ -208,6 +209,8 @@ export function AddCommentButton({
   excerpt: string
   line: HunkLine
 }) {
+  useLocale()
+
   const api = useLineComments()
   const file = useContext(FileLinesContext)
   if (!api?.canAdd || anchor === undefined) return null
@@ -221,8 +224,8 @@ export function AddCommentButton({
       data-slot="diff-add-comment"
       // The file is named: every file has a "line 4", and a list of controls that all read
       // "Comment on line 4" is no list at all to a screen reader.
-      aria-label={`Comment on ${anchor.path.split('/').at(-1)} ${anchor.side === 'old' ? 'removed ' : ''}line ${anchor.line}`}
-      title="Add a comment for the agent — drag to cover several lines, or shift-click to extend"
+      aria-label={t('Comment on {0} {1}line {2}', { 0: anchor.path.split('/').at(-1), 1: anchor.side === 'old' ? 'removed ' : '', 2: anchor.line })}
+      title={t('Add a comment for the agent — drag to cover several lines, or shift-click to extend')}
       onMouseDown={(event) => {
         if (event.button !== 0) return
         // No text selection while dragging across code.
@@ -270,6 +273,8 @@ export function orderOfEnd(file: FileLines, path: string, end: DiffLineEnd): num
  * a split context row maps both cells to the same anchor, so keys are deduplicated.
  */
 export function LineCommentThread({ anchors }: { anchors: readonly (DiffLineAnchor | undefined)[] }) {
+  useLocale()
+
   const api = useLineComments()
   const file = useContext(FileLinesContext)
   if (!api) return null
@@ -332,6 +337,8 @@ function SavedComment({
   onEdit?: (comment: DiffLineComment) => void
   onRemove?: (id: string) => void
 }) {
+  useLocale()
+
   return (
     <div
       data-slot="diff-line-comment"
@@ -339,14 +346,14 @@ function SavedComment({
       // An accent border on a tinted band is what sets a drafted comment apart from the code
       // around it; the lines it covers carry the accent bar in their gutter edge.
       role="group"
-      aria-label={`Comment on ${describeLines(comment, comment.start)}`}
+      aria-label={t('Comment on {0}', { 0: describeLines(comment, comment.start) })}
       className="flex flex-col gap-1.5 rounded-md border border-primary/40 bg-card px-3 py-2.5 text-[13px] leading-normal shadow-sm transition-shadow duration-500 data-[flash=true]:ring-2 data-[flash=true]:ring-primary"
     >
       {outdated ? (
         // The line under this card is not the one the note was about: say so, and show the code it
         // WAS about, rather than letting the note read as if it were about what is here now.
         <div data-slot="diff-line-comment-outdated" className="flex flex-col gap-1">
-          <p className="text-[11px] font-medium text-pending-strong">Outdated — the code here changed since this comment</p>
+          <p className="text-[11px] font-medium text-pending-strong">{t('Outdated — the code here changed since this comment')}</p>
           <pre className="max-h-32 overflow-auto rounded-sm border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[12px] whitespace-pre text-muted-foreground">
             {comment.excerpt}
           </pre>
@@ -357,15 +364,11 @@ function SavedComment({
         <div className="flex items-center justify-end gap-1.5">
           {onEdit ? (
             <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(comment)}>
-              <PencilIcon aria-hidden="true" className="size-3.5" />
-              Edit
-            </Button>
+              <PencilIcon aria-hidden="true" className="size-3.5" />{t('Edit')}</Button>
           ) : null}
           {onRemove ? (
             <Button type="button" variant="outline" size="sm" onClick={() => onRemove(comment.id)}>
-              <MessageSquareOffIcon aria-hidden="true" className="size-3.5" />
-              Remove from chat
-            </Button>
+              <MessageSquareOffIcon aria-hidden="true" className="size-3.5" />{t('Remove from chat')}</Button>
           ) : null}
         </div>
       ) : null}
@@ -380,6 +383,8 @@ function CommentEditor({
   editing: NonNullable<LineCommentsApi['editing']>
   api: LineCommentsApi
 }) {
+  useLocale()
+
   const [text, setText] = useState(() => api.pendingText.get(editing.key) ?? editing.initial ?? '')
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -444,8 +449,8 @@ function CommentEditor({
         rows={3}
         maxLength={COMMENT_MAX}
         value={text}
-        aria-label={`Comment on ${describeLines(editing.anchor, editing.start)}`}
-        placeholder="Add a comment for the AI"
+        aria-label={t('Comment on {0}', { 0: describeLines(editing.anchor, editing.start) })}
+        placeholder={t('Add a comment for the AI')}
         onChange={(event) => {
           setText(event.target.value)
           api.pendingText.set(editing.key, event.target.value)
@@ -454,11 +459,9 @@ function CommentEditor({
         className="block w-full resize-y rounded-md border border-ring/60 bg-background px-3 py-2 text-base leading-normal outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/15 md:text-sm"
       />
       <div className="flex items-center justify-end gap-1.5">
-        <Button type="button" variant="ghost" size="sm" onClick={cancel}>
-          Cancel
-        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={cancel}>{t('Cancel')}</Button>
         <Button type="button" size="sm" disabled={body === ''} onClick={submit}>
-          {editing.commentId !== undefined ? 'Save' : 'Comment'} <span aria-hidden="true">↵</span>
+          {editing.commentId !== undefined ? t('Save') : t('Comment')} <span aria-hidden="true">↵</span>
         </Button>
       </div>
     </div>

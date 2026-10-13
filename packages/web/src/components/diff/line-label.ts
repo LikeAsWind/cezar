@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { DiffLineEnd } from './types'
 
 /**
@@ -8,6 +9,6 @@ import type { DiffLineEnd } from './types'
 export function describeLines(end: DiffLineEnd, start?: DiffLineEnd): string {
   const one = (at: DiffLineEnd) => `${at.side === 'old' ? 'removed ' : ''}line ${at.line}`
   if (!start || (start.side === end.side && start.line === end.line)) return one(end)
-  if (start.side === end.side) return `${end.side === 'old' ? 'removed ' : ''}lines ${start.line}–${end.line}`
+  if (start.side === end.side) return t('{0}lines {1}–{2}', { 0: end.side === 'old' ? 'removed ' : '', 1: start.line, 2: end.line })
   return `${one(start)} – ${one(end)}`
 }

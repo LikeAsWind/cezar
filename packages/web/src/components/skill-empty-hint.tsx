@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 /**
  * The "no skills yet" copy shared by every empty state that tells a user where to drop skill
  * files — the Skills tab (`routes/skills.tsx`) and the workflow builder's skill palette
@@ -21,16 +22,20 @@
 const SKILL_PROJECT_DIRS = ['.ai/cezar/skills/', '.ai/skills/', '.agents/skills/'] as const
 
 function Path({ children }: { children: string }) {
+  useLocale()
+
   return <span className="font-mono">{children}</span>
 }
 
 /** Renders `SKILL_PROJECT_DIRS` as "a, b, or c" with each entry in `<Path>`. */
 function ProjectDirList() {
+  useLocale()
+
   return (
     <>
       {SKILL_PROJECT_DIRS.map((dir, index) => (
         <span key={dir}>
-          {index > 0 ? (index === SKILL_PROJECT_DIRS.length - 1 ? ', or ' : ', ') : ''}
+          {index > 0 ? (index === SKILL_PROJECT_DIRS.length - 1 ? t(', or ') : ', ') : ''}
           <Path>{dir}</Path>
         </span>
       ))}
@@ -40,23 +45,21 @@ function ProjectDirList() {
 
 /** Full copy — the Skills tab's empty list (room for the frontmatter aside + a Refresh hint). */
 export function SkillEmptyHint() {
+  useLocale()
+
   return (
-    <>
-      No skills yet. Drop Markdown files into <ProjectDirList /> (agent mirrors like{' '}
-      <Path>.claude/skills/</Path> work too) — optional frontmatter: <Path>name</Path>,{' '}
-      <Path>description</Path>. Global (<Path>~/.agents/skills</Path>) and team-repo skills
-      appear here too — try Refresh.
-    </>
+    <>{t('No skills yet. Drop Markdown files into')}{' '}<ProjectDirList />{' '}{t('(agent mirrors like')}{' '}
+      <Path>{t('.claude/skills/')}</Path>{' '}{t('work too) — optional frontmatter:')}{' '}<Path>{t('name')}</Path>,{' '}
+      <Path>{t('description')}</Path>{t('. Global (')}<Path>{t('~/.agents/skills')}</Path>{t(') and team-repo skills appear here too — try Refresh.')}</>
   )
 }
 
 /** Compact copy — the workflow builder's skill palette, where space is tighter and there is no
  *  Refresh action on the surface itself. */
 export function SkillEmptyHintCompact() {
+  useLocale()
+
   return (
-    <>
-      No skills yet — drop Markdown files into <ProjectDirList /> (or a global/team-repo skill
-      source).
-    </>
+    <>{t('No skills yet — drop Markdown files into')}{' '}<ProjectDirList />{' '}{t('(or a global/team-repo skill source).')}</>
   )
 }

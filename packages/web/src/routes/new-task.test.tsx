@@ -19,6 +19,7 @@ import { resetToasts, Toaster } from '@/components/ui/toaster'
 
 import { readDraft, resetDraft, writeDraft } from './new-task-draft'
 import { NewTaskRoute } from './new-task'
+import { setLocale } from '@/lib/i18n'
 
 /**
  * The /new screen against a mocked API: picker data flows (runner hidden on single-backend
@@ -383,6 +384,23 @@ describe('the hero surface', () => {
     expect(textarea().value).toContain('failing or flaky test')
     expect(requests.some((r) => r.method === 'POST')).toBe(false)
     expect(location()).toBe('/new')
+  })
+
+  it('localizes suggestion labels while preserving their prompt and the draft on a language switch', async () => {
+    serve()
+    renderNewTask()
+    await pillReady()
+    const draftInput = textarea()
+    act(() => setLocale('zh-CN'))
+    const chip = screen.getByRole('button', { name: '修复失败或不稳定的测试' })
+    expect(screen.getByRole('button', { name: '总结当前分支的近期提交' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '根据近期更改更新 README' })).toBeTruthy()
+    fireEvent.click(chip)
+    expect(draftInput.value).toBe('Fix a failing or flaky test')
+    act(() => setLocale('en'))
+    expect(screen.getByRole('button', { name: 'Fix a failing or flaky test' })).toBeTruthy()
+    expect(draftInput.value).toBe('Fix a failing or flaky test')
+    expect(requests.some((r) => r.method === 'POST')).toBe(false)
   })
 })
 

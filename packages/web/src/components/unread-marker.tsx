@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 /**
  * The unread marker (#unread-done-items) — for assistive tech only.
  *
@@ -12,9 +13,9 @@
  * card and the global Tasks page cannot drift apart.
  */
 export function UnreadMarker() {
+  useLocale()
+
   return (
-    <span data-slot="unread-marker" className="sr-only">
-      , unread
-    </span>
+    <span data-slot="unread-marker" className="sr-only">{t(', unread')}</span>
   )
 }

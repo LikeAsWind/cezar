@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import {
   DISPATCH_MAX_IN_FLIGHT,
   DISPATCH_MAX_SUBTASKS,
@@ -113,12 +114,12 @@ export function composerRunModeNote(input: {
 }): string {
   if (input.dispatch === true) {
     return input.autonomous === true
-      ? 'Runs on its own and fans work out to subtasks — it will not pause for you.'
-      : 'Fans work out to subtasks in isolated worktrees.'
+      ? t('Runs on its own and fans work out to subtasks — it will not pause for you.')
+      : t('Fans work out to subtasks in isolated worktrees.')
   }
-  if (input.worktree) return 'Runs in an isolated worktree — review everything before it lands.'
-  if (input.hasGit) return 'Runs in the repo working tree — your checkout is modified directly.'
-  return 'Runs in place — no git repository detected, so there is no worktree to isolate in.'
+  if (input.worktree) return t('Runs in an isolated worktree — review everything before it lands.')
+  if (input.hasGit) return t('Runs in the repo working tree — your checkout is modified directly.')
+  return t('Runs in place — no git repository detected, so there is no worktree to isolate in.')
 }
 
 const EMPTY: NewTaskDraft = {

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   ArrowUpRightIcon,
   CircleCheckIcon,
@@ -125,6 +126,8 @@ export function ReferenceChip({
    */
   compact?: boolean
 }) {
+  useLocale()
+
   const { kind, number, url } = reference
   // An explicit `status` wins — it is what a test or a one-off caller passes — and otherwise the
   // surface's provider answers. Outside a provider neither exists and this is the chip the cockpit
@@ -151,10 +154,10 @@ export function ReferenceChip({
   )
   // The overridden status rides along into the tooltip whenever the conflict took the chip.
   const tooltip = statusTooltip(entry, presentation, conflicting ? statusPresentation : undefined)
-  const label = number ? `${!compact && kind === 'Issue' ? 'Issue ' : ''}#${number}` : kind
+  const label = number ? `${!compact && kind === 'Issue' ? t('Issue ') : ''}#${number}` : kind
   const kindWord = kind === 'PR' ? 'pull request' : 'issue'
   // The accessible name carries the status too — a screen reader gets what the color says.
-  const ariaLabel = `Open the ${kindWord} for ${taskTitle}${presentation ? ` — ${presentation.label}` : ''}`
+  const ariaLabel = t('Open the {0} for {1}{2}', { 0: kindWord, 1: taskTitle, 2: presentation ? ` — ${presentation.label}` : '' })
 
   const body = (
     <>
@@ -211,7 +214,7 @@ export function ReferenceChip({
   const panel = (
     <>
       <span className="block font-medium">
-        {kind === 'PR' ? 'Pull request' : 'Issue'}
+        {kind === 'PR' ? t('Pull request') : t('Issue')}
         {number ? ` #${number}` : ''} · {tooltip.headline}
       </span>
       <span className="block">{tooltip.detail}</span>
@@ -313,6 +316,8 @@ function ReferenceChipCard({
   state: ReferenceStatusEntry['state']
   children: ReactNode
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   // `HTMLDivElement` only to satisfy the anchor's own ref type — what it actually holds is the
   // chip, which is an `<a>` or a `<span>` (`asChild`), and every use here is on `Element`.
@@ -431,7 +436,7 @@ function statusTooltip(
     if (entry.state === 'unavailable') {
       return {
         headline: label,
-        detail: `last known — GitHub is unreachable${entry.reason ? ` (${entry.reason})` : ''}`,
+        detail: t('last known — GitHub is unreachable{0}', { 0: entry.reason ? ` (${entry.reason})` : '' }),
         ...(also ? { also } : {}),
       }
     }
@@ -439,16 +444,16 @@ function statusTooltip(
   }
   switch (entry.state) {
     case 'loading':
-      return { headline: 'Checking GitHub…', detail: 'the status of this reference is on its way' }
+      return { headline: t('Checking GitHub…'), detail: t('the status of this reference is on its way') }
     case 'unavailable':
       return {
-        headline: 'Status unavailable',
-        detail: entry.reason ?? 'GitHub could not be reached — the chip says nothing rather than guessing',
+        headline: t('Status unavailable'),
+        detail: entry.reason ?? t('GitHub could not be reached — the chip says nothing rather than guessing'),
       }
     case 'unknown':
       return {
-        headline: 'Not found on this repository',
-        detail: 'GitHub has no such number here — the reference may point at another repo',
+        headline: t('Not found on this repository'),
+        detail: t('GitHub has no such number here — the reference may point at another repo'),
       }
     default:
       return null
@@ -464,6 +469,8 @@ function lowerFirst(text: string): string {
 /** The status channel that is not color: an icon, or — for checks still running — the pulsing dot
  *  the design system reserves for a transitioning state, inside its now-amber chip. */
 function StatusGlyph({ status }: { status?: ReferenceStatus }) {
+  useLocale()
+
   if (!status) return null
   if (status === 'checks-pending') {
     return <StatusDot tone="pending" pulse className="size-[6px]" aria-hidden="true" />

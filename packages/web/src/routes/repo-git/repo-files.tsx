@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from '@/lib/i18n'
 import { ArrowLeftIcon, ChevronRightIcon, FileIcon, FolderIcon, FolderTreeIcon, ImageIcon, TriangleAlertIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -39,6 +40,8 @@ export function RepoFilesSection({
   selected: string | null
   onSelect: (path: string | null) => void
 }) {
+  useLocale()
+
   const tree = useRepoTree()
 
   // A 409 is the server's answer ("not a git repository"), not an outage.
@@ -48,9 +51,7 @@ export function RepoFilesSection({
   if (tree.isPending) {
     return (
       <Section>
-        <p data-slot="repo-files-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading files…
-        </p>
+        <p data-slot="repo-files-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">{t('Loading files…')}</p>
       </Section>
     )
   }
@@ -61,7 +62,7 @@ export function RepoFilesSection({
           icon={refused ? <FolderTreeIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'No files to browse' : 'Could not load the files'}
+          title={refused ? t('No files to browse') : t('Could not load the files')}
           subtitle={tree.error.message}
         />
       </Section>
@@ -74,8 +75,8 @@ export function RepoFilesSection({
           icon={<FolderTreeIcon />}
           tone="neutral"
           heading="h2"
-          title="No files yet"
-          subtitle="Nothing is tracked in this repository. Files show up here once git knows about them."
+          title={t('No files yet')}
+          subtitle={t('Nothing is tracked in this repository. Files show up here once git knows about them.')}
         />
       </Section>
     )
@@ -88,10 +89,7 @@ export function RepoFilesSection({
           data-slot="repo-files-truncated"
           role="status"
           className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground md:px-6"
-        >
-          Showing the first {paths.length.toLocaleString()} files; this repository has more. The tree
-          and the filter cover only what is loaded.
-        </p>
+        >{t('Showing the first')}{' '}{paths.length.toLocaleString(getLocale())}{' '}{t('files; this repository has more. The tree and the filter cover only what is loaded.')}</p>
       ) : null}
 
       {/* Unlike the Changes views, the tree is NOT hidden below `md`: it is the only way to pick a
@@ -116,9 +114,7 @@ export function RepoFilesSection({
               onClick={() => onSelect(null)}
               className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground md:hidden"
             >
-              <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-              Back to the file tree
-            </button>
+              <ArrowLeftIcon aria-hidden="true" className="size-3.5" />{t('Back to the file tree')}</button>
           ) : null}
           <FilePreview source={{ kind: 'repo' }} path={selected} />
         </div>
@@ -128,6 +124,8 @@ export function RepoFilesSection({
 }
 
 function Section({ children }: { children: React.ReactNode }) {
+  useLocale()
+
   return (
     <section data-slot="repo-files" className="flex min-h-0 flex-1 flex-col">
       {children}
@@ -173,6 +171,8 @@ function RepoFileBrowser({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  const locale = useLocale()
+
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(ancestorsOf(selected)))
   const [active, setActive] = useState<string | null>(selected)
@@ -212,7 +212,7 @@ function RepoFileBrowser({
             label: path,
           }))
         : flatten(root, open, 0),
-    [filtering, matches.results, root, open],
+    [filtering, matches.results, root, open, locale],
   )
 
   // The roving-tabindex holder: the active row when it is still visible, else the first row.
@@ -274,16 +274,14 @@ function RepoFileBrowser({
       }}
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="repo-files-filter" className="sr-only">
-          Filter repository files
-        </label>
+        <label htmlFor="repo-files-filter" className="sr-only">{t('Filter repository files')}</label>
         <input
           id="repo-files-filter"
           ref={inputRef}
           data-slot="repo-files-filter"
           type="search"
           value={query}
-          placeholder="Filter files…  (/)"
+          placeholder={t('Filter files…  (/)')}
           aria-controls="repo-files-tree"
           autoComplete="off"
           spellCheck={false}
@@ -297,13 +295,12 @@ function RepoFileBrowser({
         />
         {/* Polite, so the count lands after the typing rather than interrupting it. */}
         <p data-slot="repo-files-count" role="status" aria-live="polite" className="sr-only">
-          {filtering ? `${matches.total} files match ${query.trim()}` : `${paths.length} files`}
+          {filtering ? t('{0} files match {1}', { 0: matches.total, 1: query.trim() }) : t('{0} files', { 0: paths.length })}
         </p>
       </div>
 
       {filtering && matches.total === 0 ? (
-        <p data-slot="repo-files-no-match" className="px-1.5 py-1 text-xs text-soft-foreground">
-          No file matches <span className="font-mono">{query.trim()}</span>.
+        <p data-slot="repo-files-no-match" className="px-1.5 py-1 text-xs text-soft-foreground">{t('No file matches')}{' '}<span className="font-mono">{query.trim()}</span>.
         </p>
       ) : (
         <div
@@ -311,7 +308,7 @@ function RepoFileBrowser({
           data-slot="repo-files-tree"
           data-filtering={filtering ? 'true' : undefined}
           role="tree"
-          aria-label="Repository files"
+          aria-label={t('Repository files')}
           aria-activedescendant={activeRow ? rowId(activeRow.path) : undefined}
           onKeyDown={onKeyDown}
           className="min-w-0 text-[13px]"
@@ -345,8 +342,7 @@ function RepoFileBrowser({
 
       {filtering && matches.total > matches.results.length ? (
         <p data-slot="repo-files-more" className="px-1.5 py-1 text-xs text-soft-foreground">
-          {(matches.total - matches.results.length).toLocaleString()} more — refine the filter.
-        </p>
+          {(matches.total - matches.results.length).toLocaleString(getLocale())}{' '}{t('more — refine the filter.')}</p>
       ) : null}
     </div>
   )
@@ -367,6 +363,8 @@ function DirRow({
   focused: boolean
   onToggle: () => void
 }) {
+  useLocale()
+
   return (
     <div
       id={rowId(row.path)}
@@ -402,6 +400,8 @@ function FileRow({
   focused: boolean
   onSelect: () => void
 }) {
+  useLocale()
+
   const Icon = isImagePath(row.path) ? ImageIcon : FileIcon
   return (
     <div

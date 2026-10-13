@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { ProjectListEntry, RunIndexEntry } from '@open-mercato/cezar-api-client'
 
 import { allProjectTags } from '@/lib/project-tags'
@@ -67,10 +68,10 @@ export type GroupBy = 'none' | 'project' | 'tag' | 'status' | 'workflow'
  * grouping is mandatory when it is not.
  */
 export const GROUP_BY_OPTIONS: readonly { value: Exclude<GroupBy, 'none'>; label: string }[] = [
-  { value: 'project', label: 'Project' },
-  { value: 'tag', label: 'Tag' },
-  { value: 'status', label: 'Status' },
-  { value: 'workflow', label: 'Workflow' },
+  { value: 'project', get label() { return t('Project') } },
+  { value: 'tag', get label() { return t('Tag') } },
+  { value: 'status', get label() { return t('Status') } },
+  { value: 'workflow', get label() { return t('Workflow') } },
 ]
 
 /** What pressing `picked` does to the current grouping: turns it on, or — when it is already the

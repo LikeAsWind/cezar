@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { BotIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -39,6 +40,8 @@ import { useConfigSave } from './use-config-save'
  */
 
 export function AgentsSection() {
+  useLocale()
+
   const config = useConfig()
   // One row per runner here, so every runner's own host catalog is needed at once (#794) —
   // unlike the composer, which only ever renders the runner the user picked.
@@ -47,9 +50,7 @@ export function AgentsSection() {
 
   if (config.isPending) {
     return (
-      <p data-slot="agents-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
-        Loading agent settings…
-      </p>
+      <p data-slot="agents-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading agent settings…')}</p>
     )
   }
   if (config.isError) {
@@ -57,7 +58,7 @@ export function AgentsSection() {
       <CenteredState
         icon={<BotIcon />}
         tone="danger"
-        title="Agent settings did not load"
+        title={t('Agent settings did not load')}
         subtitle={config.error.message}
         heading="h2"
       />
@@ -75,6 +76,8 @@ function AgentsForm({
   catalogs: ReturnType<typeof useRunnerModelCatalogs>
   providerStatus: ReturnType<typeof useProviderStatus>
 }) {
+  useLocale()
+
   const save = useConfigSave()
 
   return (
@@ -92,11 +95,11 @@ function AgentsForm({
       />
 
       <Field
-        title="Default models"
+        title={t('Default models')}
         hint={
           config.modelsLocked
-            ? 'Models are locked to the defaults configured in the native coding-agent settings.'
-            : 'The model preselected in the composer for each runner. Auto lets the runner decide per task.'
+            ? t('Models are locked to the defaults configured in the native coding-agent settings.')
+            : t('The model preselected in the composer for each runner. Auto lets the runner decide per task.')
         }
       >
         <div className="flex max-w-md flex-col gap-2">
@@ -108,14 +111,14 @@ function AgentsForm({
               provider?.enabled === true &&
               provider.status === 'connected'
             const providerReason = providerStatus.isPending
-              ? 'Checking provider authentication…'
+              ? t('Checking provider authentication…')
               : providerStatus.isError
-                ? 'Provider authentication could not be verified.'
+                ? t('Provider authentication could not be verified.')
                 : provider?.enabled === false
-                  ? 'This provider is disabled. Enable it above or choose another provider.'
+                  ? t('This provider is disabled. Enable it above or choose another provider.')
                 : providerConnected
                   ? undefined
-                  : 'Connect this provider before selecting it.'
+                  : t('Connect this provider before selecting it.')
             const catalog = catalogs[runner.id]
             const catalogStatus = modelCatalogStatus(runner.id, catalog.data, catalog.isError)
             const modelOptions = modelsForRunner(runner.id, catalog.data, [
@@ -125,23 +128,23 @@ function AgentsForm({
             const configuredModelLabel =
               modelOptions.find((model) => model.id === configuredModel)?.label ??
               configuredModel ??
-              'auto (default)'
+              t('auto (default)')
             return (
               <label key={runner.id} className="flex items-center gap-3">
                 <span className="w-24 shrink-0 font-mono text-xs text-muted-foreground">{runner.label}</span>
                 {config.modelsLocked ? (
                   <output
-                    aria-label={`Default model for ${runner.label}`}
+                    aria-label={t('Default model for {0}', { 0: runner.label })}
                     data-slot="agents-model"
                     data-runner={runner.id}
-                    title="Model selection is locked to native coding-agent settings."
+                    title={t('Model selection is locked to native coding-agent settings.')}
                     className="block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs"
                   >
                     {configuredModelLabel}
                   </output>
                 ) : (
                   <select
-                    aria-label={`Default model for ${runner.label}`}
+                    aria-label={t('Default model for {0}', { 0: runner.label })}
                     data-slot="agents-model"
                     data-runner={runner.id}
                     value={configuredModel}
@@ -165,7 +168,7 @@ function AgentsForm({
                   >
                     {modelOptions.map((model) => (
                       <option key={model.id} value={model.id}>
-                        {model.id === '' ? 'auto (default)' : model.label}
+                        {model.id === '' ? t('auto (default)') : model.label}
                       </option>
                     ))}
                     {catalogStatus ? <option disabled>{catalogStatus}</option> : null}
@@ -211,6 +214,8 @@ function DefaultAgentField({
   saving: boolean
   onPick: (runner: Runner) => void
 }) {
+  useLocale()
+
   const profiles = useAgentProfiles()
   const projects = useProjects()
   const scope = useProjectScope()
@@ -231,11 +236,11 @@ function DefaultAgentField({
 
   return (
     <Field
-      title={hasAccounts ? 'Default agent' : 'Default runner'}
+      title={hasAccounts ? t('Default agent') : t('Default runner')}
       hint={
         hasAccounts
-          ? 'Preselected for new tasks in THIS repo, and used by the chain planner. Each task can still pick another agent or account. The account is stored on this machine only — it is never committed, so a teammate keeps their own.'
-          : 'Preselected for new tasks in THIS repo, and used by the chain planner. Each task can still pick another runner.'
+          ? t('Preselected for new tasks in THIS repo, and used by the chain planner. Each task can still pick another agent or account. The account is stored on this machine only — it is never committed, so a teammate keeps their own.')
+          : t('Preselected for new tasks in THIS repo, and used by the chain planner. Each task can still pick another runner.')
       }
     >
       <DefaultAgentPicker
@@ -262,15 +267,10 @@ function DefaultAgentField({
       {!providerStatus.isPending &&
       !providerStatus.isError &&
       providerStatusFor(providerStatus.data, defaultRunner)?.enabled === false ? (
-        <p className="text-[13px] text-muted-foreground">
-          This provider is disabled. Enable it above or choose another provider.
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t('This provider is disabled. Enable it above or choose another provider.')}</p>
       ) : null}
       {hasAccounts ? (
-        <p className="max-w-md text-[13px] text-muted-foreground">
-          Tasks already started under another account can’t be resumed here — their sessions live in
-          that account’s folder.
-        </p>
+        <p className="max-w-md text-[13px] text-muted-foreground">{t('Tasks already started under another account can’t be resumed here — their sessions live in that account’s folder.')}</p>
       ) : null}
     </Field>
   )
@@ -278,6 +278,8 @@ function DefaultAgentField({
 
 /** The Appearance section's field chassis — same rhythm, so Settings reads as one surface. */
 function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  useLocale()
+
   return (
     <section className="flex flex-col gap-2">
       <div>

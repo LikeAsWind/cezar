@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { FileQuestionIcon, FileWarningIcon, FileXIcon, MousePointerClickIcon, TriangleAlertIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -53,6 +54,8 @@ export function FilePreview({
   path: string | null
   className?: string
 }) {
+  useLocale()
+
   const entry = useFileEntry(source, path ?? undefined)
 
   if (path === null) {
@@ -62,8 +65,8 @@ export function FilePreview({
           icon={<MousePointerClickIcon />}
           tone="neutral"
           heading="h2"
-          title="Select a file"
-          subtitle="Pick a file from the tree to preview it here."
+          title={t('Select a file')}
+          subtitle={t('Pick a file from the tree to preview it here.')}
         />
       </Pane>
     )
@@ -71,8 +74,7 @@ export function FilePreview({
   if (entry.isPending) {
     return (
       <Pane className={className}>
-        <p data-slot="file-preview-loading" className="px-4 py-6 text-center text-xs text-soft-foreground">
-          Loading {path}…
+        <p data-slot="file-preview-loading" className="px-4 py-6 text-center text-xs text-soft-foreground">{t('Loading')}{' '}{path}…
         </p>
       </Pane>
     )
@@ -87,7 +89,7 @@ export function FilePreview({
           icon={refused ? <FileXIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'Cannot preview this file' : 'Could not load this file'}
+          title={refused ? t('Cannot preview this file') : t('Could not load this file')}
           subtitle={entry.error.message}
         />
       </Pane>
@@ -121,6 +123,8 @@ function FileEntryView({
   entry: Extract<WorktreeEntry, { type: 'file' }>
   className?: string
 }) {
+  useLocale()
+
   const kind = previewKind(entry)
   const markdown = kind === 'text' && isMarkdownPath(entry.path)
   const [mode, setMode] = useState(markdownViewMode)
@@ -178,16 +182,16 @@ function FileEntryView({
           icon={<FileWarningIcon />}
           tone="neutral"
           heading="h2"
-          title="Too large to preview"
-          subtitle={`${formatFileSize(entry.size)} — past the preview cap. Open it in your editor instead.`}
+          title={t('Too large to preview')}
+          subtitle={t('{0} — past the preview cap. Open it in your editor instead.', { 0: formatFileSize(entry.size) })}
         />
       ) : kind === 'binary' ? (
         <CenteredState
           icon={<FileQuestionIcon />}
           tone="neutral"
           heading="h2"
-          title="Binary file"
-          subtitle={`${formatFileSize(entry.size)} of binary data — no text preview.`}
+          title={t('Binary file')}
+          subtitle={t('{0} of binary data — no text preview.', { 0: formatFileSize(entry.size) })}
         />
       ) : markdown && mode === 'rendered' ? (
         // The thread's own Markdown component: the same single Shiki for fences and the same
@@ -207,6 +211,8 @@ function FileEntryView({
  *  `overflow-hidden`: both round the corners, but `hidden` makes the card a scroll container of its
  *  own, which would pin the sticky header to a card that never scrolls instead of to the column. */
 function Pane({ className, children }: { className?: string; children: React.ReactNode }) {
+  useLocale()
+
   return (
     <section data-slot="file-preview" className={cn('overflow-clip rounded-lg border border-border bg-card', className)}>
       {children}
@@ -243,6 +249,8 @@ function useFileTokens(path: string, text: string): SynToken[][] {
 }
 
 function CodeLines({ path, text }: { path: string; text: string }) {
+  useLocale()
+
   const tokens = useFileTokens(path, text)
   return (
     <div

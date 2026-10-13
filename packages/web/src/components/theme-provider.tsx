@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import * as React from 'react'
 
 import {
@@ -25,6 +26,8 @@ const ThemeContext = React.createContext<ThemeContextValue | null>(null)
  *  index.html already stamped, so mounting never repaints), tracks the OS preference live, and
  *  keeps the root element in sync. */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  useLocale()
+
   const [theme, setThemeState] = React.useState<Theme>(readStoredTheme)
   const [prefersLight, setPrefersLight] = React.useState<boolean>(systemPrefersLight)
 
@@ -60,6 +63,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme(): ThemeContextValue {
   const context = React.useContext(ThemeContext)
-  if (!context) throw new Error('cezar: useTheme() must be called inside <ThemeProvider>')
+  if (!context) throw new Error(t('cezar: useTheme() must be called inside <ThemeProvider>'))
   return context
 }

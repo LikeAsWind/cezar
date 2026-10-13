@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { CreateRunInput, TrackerItem } from '@open-mercato/cezar-api-client'
 
 import { MAX_CHAIN_STEPS, skillChainSteps } from './github-task'
@@ -32,7 +33,7 @@ export function trackerTaskPrompt(item: TrackerItem, options: TrackerPromptOptio
   if (options.instruction?.trim()) parts.push(options.instruction.trim())
   const task = parts.join('\n\n')
   if (task.length > TRACKER_TASK_LIMIT) {
-    throw new Error('The final task exceeds the 100,000 character limit. Shorten the supplemental context or instruction.')
+    throw new Error(t('The final task exceeds the 100,000 character limit. Shorten the supplemental context or instruction.'))
   }
   return task
 }
@@ -45,10 +46,10 @@ export function trackerRunBody(
   options: TrackerPromptOptions & { acknowledgeLoss?: boolean },
 ): CreateRunInput {
   if (!workflow && skills.length > MAX_CHAIN_STEPS) {
-    throw new Error(`A skill chain can contain at most ${MAX_CHAIN_STEPS} skills. Remove a skill before launching.`)
+    throw new Error(t('A skill chain can contain at most {0} skills. Remove a skill before launching.', { 0: MAX_CHAIN_STEPS }))
   }
   if (trackerLosses(item).length > 0 && !options.acknowledgeLoss) {
-    throw new Error('Acknowledge the snapshot limitations before handing this issue to an agent.')
+    throw new Error(t('Acknowledge the snapshot limitations before handing this issue to an agent.'))
   }
   const task = trackerTaskPrompt(item, {
     ...options,

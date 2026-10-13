@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useProviderStatus } from '@/api/queries'
 import type { ApiRun, Runner } from '@open-mercato/cezar-api-client'
 import { usableRunners } from '@/lib/provider-status'
@@ -12,12 +13,12 @@ export function useContinuationProvider(run: ApiRun, pickedRunner: Runner | null
   const currentRunnerConnected = runners.includes(currentRunner)
   const canContinue = providers.isSuccess && runners.length > 0
   const reason = providers.isPending
-    ? 'Checking agent providers…'
+    ? t('Checking agent providers…')
     : providers.isError
-      ? 'Provider authentication could not be verified.'
+      ? t('Provider authentication could not be verified.')
       : canContinue
         ? undefined
-        : 'Connect an agent provider to continue.'
+        : t('Connect an agent provider to continue.')
 
   return {
     runners,

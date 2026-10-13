@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 "use client"
 
 import * as React from "react"
@@ -17,6 +18,8 @@ function Command({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive>) {
+  useLocale()
+
   return (
     <CommandPrimitive
       data-slot="command"
@@ -30,8 +33,8 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Command Palette",
-  description = "Search for a command to run...",
+  title = t('Command Palette'),
+  description = t('Search for a command to run...'),
   children,
   className,
   showCloseButton = true,
@@ -47,6 +50,8 @@ function CommandDialog({
    *  into noise (see `paletteScore` in `command-palette.tsx`). */
   filter?: React.ComponentProps<typeof CommandPrimitive>["filter"]
 }) {
+  useLocale()
+
   return (
     <Dialog {...props}>
       <DialogHeader className="sr-only">
@@ -69,6 +74,8 @@ function CommandInput({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
+  useLocale()
+
   return (
     <div
       data-slot="command-input-wrapper"
@@ -91,6 +98,8 @@ function CommandList({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.List>) {
+  useLocale()
+
   return (
     <CommandPrimitive.List
       data-slot="command-list"
@@ -106,6 +115,8 @@ function CommandList({
 function CommandEmpty({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Empty>) {
+  useLocale()
+
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
@@ -119,6 +130,8 @@ function CommandGroup({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Group>) {
+  useLocale()
+
   return (
     <CommandPrimitive.Group
       data-slot="command-group"
@@ -135,6 +148,8 @@ function CommandSeparator({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Separator>) {
+  useLocale()
+
   return (
     <CommandPrimitive.Separator
       data-slot="command-separator"
@@ -148,6 +163,8 @@ function CommandItem({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Item>) {
+  useLocale()
+
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
@@ -164,6 +181,8 @@ function CommandShortcut({
   className,
   ...props
 }: React.ComponentProps<"span">) {
+  useLocale()
+
   return (
     <span
       data-slot="command-shortcut"

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   closestCenter,
   DndContext,
@@ -131,6 +132,8 @@ export function ProjectGroups({
   inboxCount?: number | null
   skillsUpdateAvailable?: boolean
 }) {
+  const locale = useLocale()
+
   const { pathname } = useLocation()
   // The shell renders outside the routes, so there is no `ProjectScopeProvider` above it — the
   // URL's own prefix is the scope, exactly as `project-router` resolves it for links.
@@ -215,20 +218,20 @@ export function ProjectGroups({
     return {
       onDragStart: ({ active }) => {
         const { name, position } = describe(active.id)
-        return `Picked up ${name}, ${position}.`
+        return t('Picked up {0}, {1}.', { 0: name, 1: position })
       },
       onDragOver: ({ active, over }) =>
         over
-          ? `${describe(active.id).name} moved to ${describe(over.id).position}.`
-          : `${describe(active.id).name} is not over a drop position.`,
+          ? t('{0} moved to {1}.', { 0: describe(active.id).name, 1: describe(over.id).position })
+          : t('{0} is not over a drop position.', { 0: describe(active.id).name }),
       onDragEnd: ({ active, over }) =>
         over
-          ? `${describe(active.id).name} dropped at ${describe(over.id).position}.`
-          : `${describe(active.id).name} dropped. The order is unchanged.`,
+          ? t('{0} dropped at {1}.', { 0: describe(active.id).name, 1: describe(over.id).position })
+          : t('{0} dropped. The order is unchanged.', { 0: describe(active.id).name }),
       onDragCancel: ({ active }) =>
-        `Reordering cancelled. ${describe(active.id).name} returned to ${describe(active.id).position}.`,
+        t('Reordering cancelled. {0} returned to {1}.', { 0: describe(active.id).name, 1: describe(active.id).position }),
     }
-  }, [ordered, orderedIds])
+  }, [ordered, orderedIds, locale])
 
   const groups = ordered.map((project) => (
     <ProjectGroup
@@ -307,12 +310,14 @@ function ProjectGrip({
   disabled: boolean
   handleProps: Record<string, unknown>
 }) {
+  useLocale()
+
   return (
     <button
       type="button"
       data-slot="project-group-grip"
       disabled={disabled}
-      aria-label={`Reorder ${name}, position ${position} of ${total}`}
+      aria-label={t('Reorder {0}, position {1} of {2}', { 0: name, 1: position, 2: total })}
       className={cn(
         // Full row height, so the touch target is the 44px the drawer's mobile rules ask for
         // even though the column itself stays narrow — 24px of a 264px drawer, 16px on desktop
@@ -387,6 +392,8 @@ function ProjectGroup({
   position: number
   total: number
 }) {
+  useLocale()
+
   const missing = project.status === 'missing'
   // A missing project holds its place in the order but is not draggable: its row is deliberately
   // inert (there is nothing behind the chevron either), and a folder that is gone is one to
@@ -486,7 +493,7 @@ function ProjectGroup({
           <span aria-hidden="true" className="w-6 shrink-0 md:w-4" />
           <div
             data-slot="project-group-header"
-            title={`${project.root} is gone — remove it in Global settings → Projects`}
+            title={t('{0} is gone — remove it in Global settings → Projects', { 0: project.root })}
             className="flex h-11 min-w-0 flex-1 items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold opacity-55 md:h-[34px]"
           >
             <span className="w-3 shrink-0" aria-hidden="true" />
@@ -494,9 +501,7 @@ function ProjectGroup({
             <span
               data-slot="project-missing"
               className="ml-auto shrink-0 rounded-full bg-danger/15 px-[7px] py-px text-[10px] font-medium text-danger"
-            >
-              folder not found
-            </span>
+            >{t('folder not found')}</span>
           </div>
         </div>
       </div>
@@ -556,7 +561,7 @@ function ProjectGroup({
             onClick={() => onToggle(project.id)}
             aria-expanded={!collapsed}
             aria-controls={bodyId}
-            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${project.name}`}
+            aria-label={`${collapsed ? t('Expand') : t('Collapse')} ${project.name}`}
             data-slot="project-group-disclosure"
             className={cn(
               // Exactly the width the chevron and its left padding used to occupy inside the
@@ -602,16 +607,14 @@ function ProjectGroup({
               // one-click Add; repeating the button here would put a registry write in the nav.
               <span
                 data-slot="project-unregistered"
-                title="cezar is serving this folder — it is not in your saved projects. Add it in Global settings → Projects."
+                title={t('cezar is serving this folder — it is not in your saved projects. Add it in Global settings → Projects.')}
                 className="shrink-0 rounded-full bg-muted px-[7px] py-px text-[10px] font-medium text-soft-foreground"
-              >
-                not saved
-              </span>
+              >{t('not saved')}</span>
             ) : null}
             {waiting ? (
               <span
                 data-slot="project-attention"
-                title={`${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`}
+                title={t('{0} task{1} need{2} you', { 0: waiting, 1: waiting === 1 ? '' : 's', 2: waiting === 1 ? 's' : '' })}
                 className="shrink-0 rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
               >
                 {waiting}
@@ -640,7 +643,7 @@ function ProjectGroup({
           // body hangs off the same vertical the disclosure control is on.
           className="mt-1 ml-[14px] border-l border-border pl-2"
         >
-          <nav aria-label={`${project.name} navigation`}>
+          <nav aria-label={t('{0} navigation', { 0: project.name })}>
             {/* Forge-gated per PROJECT (#698): the entry's own remote decides whether THIS
                 group offers a GitHub tab — the boot folder's health-level forge answer says
                 nothing about the other projects in the workspace. Whether `gh` itself works
@@ -684,7 +687,7 @@ function ProjectGroup({
                   {item.badge === 'skills-update' && active && skillsUpdateAvailable ? (
                     <span data-slot="nav-update-marker" className="ml-auto flex items-center">
                       <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
-                      <span className="sr-only">Skills update available</span>
+                      <span className="sr-only">{t('Skills update available')}</span>
                     </span>
                   ) : null}
                 </Link>
@@ -719,9 +722,7 @@ function ProjectGroup({
             onClick={onNavigate}
             data-slot="project-group-more"
             className="flex h-9 items-center rounded-md px-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground md:h-7"
-          >
-            More…
-          </Link>
+          >{t('More…')}</Link>
         </div>
       )}
     </div>

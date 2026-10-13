@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -18,13 +19,13 @@ import { providerStatusFor } from '@/lib/provider-status'
 /** The provider cards this pane renders, in order. Exported so tests count them from the
  *  source of truth rather than from a literal that a new runner silently invalidates. */
 export const PROVIDERS = [
-  { id: 'claude', label: 'Claude Code', login: 'claude auth login' },
-  { id: 'codex', label: 'Codex', login: 'codex login' },
-  { id: 'junie', label: 'Junie', login: 'junie login' },
-  { id: 'opencode', label: 'OpenCode', login: 'opencode auth login' },
-  { id: 'cursor', label: 'Cursor', login: 'agent login' },
-  { id: 'pi', label: 'pi', login: 'pi /login' },
-  { id: 'copilot', label: 'GitHub Copilot CLI', login: 'copilot login' },
+  { id: 'claude', get label() { return t('Claude Code') }, login: 'claude auth login' },
+  { id: 'codex', get label() { return t('Codex') }, login: 'codex login' },
+  { id: 'junie', get label() { return t('Junie') }, login: 'junie login' },
+  { id: 'opencode', get label() { return t('OpenCode') }, login: 'opencode auth login' },
+  { id: 'cursor', get label() { return t('Cursor') }, login: 'agent login' },
+  { id: 'pi', get label() { return t('pi') }, login: 'pi /login' },
+  { id: 'copilot', get label() { return t('GitHub Copilot CLI') }, login: 'copilot login' },
 ] as const
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
@@ -38,10 +39,10 @@ const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
 })
 
 const STATUS_PRESENTATION = {
-  connected: { label: 'Credentials found', tone: 'success' },
-  disconnected: { label: 'Not connected', tone: 'pending' },
-  'not-installed': { label: 'Not installed', tone: 'neutral' },
-  unknown: { label: 'Could not verify', tone: 'danger' },
+  connected: { get label() { return t('Credentials found') }, tone: 'success' },
+  disconnected: { get label() { return t('Not connected') }, tone: 'pending' },
+  'not-installed': { get label() { return t('Not installed') }, tone: 'neutral' },
+  unknown: { get label() { return t('Could not verify') }, tone: 'danger' },
 } as const satisfies Record<string, { label: string; tone: StatusDotTone }>
 
 interface ManualCommand {
@@ -64,6 +65,8 @@ function withProviderEnabled(
 }
 
 export function ProviderSettings() {
+  useLocale()
+
   const status = useProviderStatus()
   const refresh = useRefreshProviderStatus()
   const retry = useRetryProviderAuth()
@@ -156,8 +159,8 @@ export function ProviderSettings() {
       setManual(null)
       toast(
         result.opened
-          ? 'Finish signing in in the terminal, then check again.'
-          : 'Provider is already connected.',
+          ? t('Finish signing in in the terminal, then check again.')
+          : t('Provider is already connected.'),
       )
       await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.providerStatus })
     },
@@ -174,19 +177,17 @@ export function ProviderSettings() {
   const copyCommand = async (command: string) => {
     try {
       await navigator.clipboard.writeText(command)
-      toast('Command copied')
+      toast(t('Command copied'))
     } catch {
-      toast('Could not copy the command', { tone: 'danger' })
+      toast(t('Could not copy the command'), { tone: 'danger' })
     }
   }
 
   return (
     <section id="providers" data-slot="provider-settings" className="scroll-mt-20">
       <div className="mb-2">
-        <h2 className="text-sm font-semibold text-foreground">Providers</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Connect the coding agents available on this computer.
-        </p>
+        <h2 className="text-sm font-semibold text-foreground">{t('Providers')}</h2>
+        <p className="text-[13px] text-muted-foreground">{t('Connect the coding agents available on this computer.')}</p>
       </div>
 
       {status.isError ? (
@@ -195,9 +196,7 @@ export function ProviderSettings() {
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2.5"
         >
           <div>
-            <p className="text-[13px] font-medium text-foreground">
-              Provider status could not be loaded
-            </p>
+            <p className="text-[13px] font-medium text-foreground">{t('Provider status could not be loaded')}</p>
             <p className="text-xs text-muted-foreground">{status.error.message}</p>
           </div>
           <Button
@@ -206,9 +205,7 @@ export function ProviderSettings() {
             size="sm"
             disabled={status.isFetching}
             onClick={() => void status.refetch()}
-          >
-            Retry
-          </Button>
+          >{t('Retry')}</Button>
         </div>
       ) : null}
 
@@ -219,7 +216,7 @@ export function ProviderSettings() {
           const presentation = state
             ? STATUS_PRESENTATION[state]
             : status.isPending
-              ? { label: 'Checking…', tone: 'neutral' as const }
+              ? { label: t('Checking…'), tone: 'neutral' as const }
               : STATUS_PRESENTATION.unknown
           const isConnecting = connect.isPending && connect.variables === provider.id
           const canRefresh = state === 'disconnected' || state === 'unknown'
@@ -238,15 +235,14 @@ export function ProviderSettings() {
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <StatusDot tone={presentation.tone} pulse={status.isPending} />
                       <span>{presentation.label}</span>
-                      {current?.enabled === false ? <span>Disabled</span> : null}
+                      {current?.enabled === false ? <span>{t('Disabled')}</span> : null}
                     </div>
                     {state === 'not-installed' ? (
-                      <p className="mt-1.5 text-xs text-soft-foreground">
-                        Install {provider.label}, then run <code>{provider.login}</code>.
+                      <p className="mt-1.5 text-xs text-soft-foreground">{t('Install')}{' '}{provider.label}{t(', then run')}{' '}<code>{provider.login}</code>.
                       </p>
                     ) : state === 'unknown' || (status.isError && !state) ? (
                       <p className="mt-1.5 text-xs text-soft-foreground">
-                        {current?.hint ?? 'Verification failed. Check again when the provider is available.'}
+                        {current?.hint ?? t('Verification failed. Check again when the provider is available.')}
                       </p>
                     ) : current?.hint ? (
                       <p className="mt-1.5 text-xs text-soft-foreground">{current.hint}</p>
@@ -257,7 +253,7 @@ export function ProviderSettings() {
                     {state !== 'not-installed' ? (
                       <Switch
                         checked={current?.enabled ?? true}
-                        aria-label={`Use ${provider.label}`}
+                        aria-label={t('Use {0}', { 0: provider.label })}
                         onCheckedChange={(enabled) => queueToggle(provider.id, enabled)}
                       />
                     ) : null}
@@ -270,9 +266,7 @@ export function ProviderSettings() {
                         onClick={() => refresh.mutate(undefined, {
                           onError: (error) => toast(error.message, { tone: 'danger' }),
                         })}
-                      >
-                        Check again
-                      </Button>
+                      >{t('Check again')}</Button>
                     ) : null}
                     {state === 'disconnected' ? (
                       <Button
@@ -282,7 +276,7 @@ export function ProviderSettings() {
                         disabled={connect.isPending}
                         onClick={() => connect.mutate(provider.id)}
                       >
-                        {isConnecting ? 'Opening…' : 'Connect'}
+                        {isConnecting ? t('Opening…') : t('Connect')}
                       </Button>
                     ) : null}
                     {incidentId !== undefined ? (
@@ -300,24 +294,19 @@ export function ProviderSettings() {
                             },
                           )
                         }
-                      >
-                        Try again
-                      </Button>
+                      >{t('Try again')}</Button>
                     ) : null}
                   </div>
                 </div>
                 {incidentId !== undefined ? (
-                  <p className="mt-2 text-xs text-soft-foreground">
-                    Use this after completing the provider sign-in flow. cezar cannot validate the
-                    credential without a task/model request; it will verify it on the next task.
-                  </p>
+                  <p className="mt-2 text-xs text-soft-foreground">{t('Use this after completing the provider sign-in flow. cezar cannot validate the credential without a task/model request; it will verify it on the next task.')}</p>
                 ) : null}
               </div>
 
               {manual?.provider === provider.id && state !== 'connected' ? (
                 <div
                   role="region"
-                  aria-label={`${manual.label} manual sign-in`}
+                  aria-label={t('{0} manual sign-in', { 0: manual.label })}
                   className="rounded-md border border-pending/40 bg-pending/5 px-3.5 py-3"
                 >
                   <p className="text-[13px] text-foreground">{manual.message}</p>
@@ -330,9 +319,7 @@ export function ProviderSettings() {
                       variant="outline"
                       size="sm"
                       onClick={() => void copyCommand(manual.command)}
-                    >
-                      Copy command
-                    </Button>
+                    >{t('Copy command')}</Button>
                   </div>
                 </div>
               ) : null}

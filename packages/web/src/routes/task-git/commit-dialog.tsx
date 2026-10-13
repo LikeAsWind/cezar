@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
@@ -39,6 +40,8 @@ export function CommitDialog({
   /** Fired once the commit has landed (before the dialog closes). */
   onCommitted?: () => void
 }) {
+  useLocale()
+
   const queryClient = useQueryClient()
   const [message, setMessage] = useState('')
 
@@ -56,7 +59,7 @@ export function CommitDialog({
   const commit = useMutation({
     mutationFn: (text: string) => commitRun(run.id, text),
     onSuccess: (result) => {
-      toast(`Committed ${result.sha.slice(0, 7)}${andPush ? ' — pushing…' : ''}`)
+      toast(t('Committed {0}{1}', { 0: result.sha.slice(0, 7), 1: andPush ? ' — pushing…' : '' }))
       onCommitted?.()
       onOpenChange(false)
       // The diff is anchored at the merge-base, so the files stay visible — but the record's
@@ -78,16 +81,15 @@ export function CommitDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-slot="commit-dialog">
         <DialogHeader>
-          <DialogTitle>{andPush ? 'Commit and push' : 'Commit changes'}</DialogTitle>
-          <DialogDescription>
-            Stages everything in the task&apos;s worktree (git add -A) and commits to{' '}
-            {run.branch ? <span className="font-mono">{run.branch}</span> : 'its branch'}
-            {andPush ? ', then pushes it' : ''}.
+          <DialogTitle>{andPush ? t('Commit and push') : t('Commit changes')}</DialogTitle>
+          <DialogDescription>{t('Stages everything in the task\'s worktree (git add -A) and commits to')}{' '}
+            {run.branch ? <span className="font-mono">{run.branch}</span> : t('its branch')}
+            {andPush ? t(', then pushes it') : ''}.
           </DialogDescription>
         </DialogHeader>
         <Textarea
           data-slot="commit-message"
-          aria-label="Commit message"
+          aria-label={t('Commit message')}
           rows={3}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -110,15 +112,13 @@ export function CommitDialog({
           }}
         />
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('Cancel')}</Button>
           <Button
             data-slot="commit-confirm"
             disabled={message.trim().length === 0 || commit.isPending}
             onClick={submit}
           >
-            {commit.isPending ? 'Committing…' : andPush ? 'Commit and push' : 'Commit'}
+            {commit.isPending ? t('Committing…') : andPush ? t('Commit and push') : t('Commit')}
           </Button>
         </DialogFooter>
       </DialogContent>

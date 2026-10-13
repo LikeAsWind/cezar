@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from '@/lib/i18n'
 import { useSheetState, useSheetPosition, newSheetSelection, useSheetTrigger } from './sheet-state'
 import { useDashboardTruth } from '@/api/dashboard-truth'
 import { DisclosureChevron, disclosureSummary, FilterSelect, filterLabel, MetricContent, metricAccents, metricSurface, widgetHeader, widgetHeading } from './presentation'
@@ -27,10 +28,10 @@ import { OutcomeInsights } from './insights'
 import { useDashboardFilter } from './url-filter'
 
 const labels = {
-  running: 'Running now',
-  'needs-you': 'Needs you',
-  completed: 'Completed',
-  failed: 'Failed outcomes',
+  get running() { return t('Running now') },
+  get 'needs-you'() { return t('Needs you') },
+  get completed() { return t('Completed') },
+  get failed() { return t('Failed outcomes') },
 }
 const metricTints = {
   'needs-you': metricAccents.violet,
@@ -60,6 +61,8 @@ export function Overview({
   onCurrent?: (group: 'running' | 'needs-you', target: HTMLElement) => void
   children: (modules: { overview?: ReactNode; portfolio?: ReactNode }) => ReactNode
 }) {
+  useLocale()
+
   const [period, setPeriod] = useDashboardFilter('period', ['7d', '30d'] as const, '7d')
   const trigger = useSheetTrigger('outcome', '[data-outcome-trigger]')
   const projects = useProjects().data?.projects
@@ -83,46 +86,38 @@ export function Overview({
   const overview = (
     <Card className="gap-0 py-0">
       <div className={widgetHeader}>
-        <h2 className={widgetHeading}>Workspace overview</h2>
-        <label className={filterLabel}>
-          Outcomes period
-          <FilterSelect
+        <h2 className={widgetHeading}>{t('Workspace overview')}</h2>
+        <label className={filterLabel}>{t('Outcomes period')}<FilterSelect
             value={period}
             onChange={(e) => {
               setPeriod(e.target.value === '30d' ? '30d' : '7d')
               setSelection(null)
             }}
           >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
+            <option value="7d">{t('Last 7 days')}</option>
+            <option value="30d">{t('Last 30 days')}</option>
           </FilterSelect>
         </label>
       </div>
       <div className="space-y-4 p-4">
         {query.isPending && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Loading overview…
-          </p>
+          <p role="status" className="text-sm text-muted-foreground">{t('Loading overview…')}</p>
         )}
         {query.isError && (
           <p role="alert">
-            {data ? 'Showing previous results. ' : ''}Could not refresh overview.{' '}
-            <Button variant="outline" onClick={() => void query.refetch()}>
-              Retry overview
-            </Button>
+            {data ? t('Showing previous results. ') : ''}{t('Could not refresh overview.')}{' '}
+            <Button variant="outline" onClick={() => void query.refetch()}>{t('Retry overview')}</Button>
           </p>
         )}
         {data && (
           <>
             <p className="text-sm text-muted-foreground">
               {data.metrics.needsYou
-                ? `${data.metrics.needsYou} tasks require your input or review.`
+                ? t('{0} tasks require your input or review.', { 0: data.metrics.needsYou })
                 : complete && live.connected && !query.isError
-                  ? 'No tasks currently require your input or review.'
-                  : 'No waiting tasks found in the available data.'}{' '}
-              {data.metrics.failed} failed {data.metrics.failed === 1 ? 'outcome' : 'outcomes'}{' '}
-              in this period. Includes subtasks; completed does not mean accepted or deployed.
-            </p>
+                  ? t('No tasks currently require your input or review.')
+                  : t('No waiting tasks found in the available data.')}{' '}
+              {data.metrics.failed}{' '}{t('failed')}{' '}{data.metrics.failed === 1 ? t('outcome') : t('outcomes')}{' '}{t('in this period. Includes subtasks; completed does not mean accepted or deployed.')}</p>
             <Coverage coverage={data.coverage} retry={() => void query.refetch()} />
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {(['needs-you', 'running', 'completed', 'failed'] as const).map((group) => {
@@ -148,14 +143,13 @@ export function Overview({
                       icon={<Icon className="size-4" />}
                     >
                       {group === 'running' || group === 'needs-you'
-                        ? 'Current state'
-                        : `Last ${period === '7d' ? 7 : 30} calendar days`}
+                        ? t('Current state')
+                        : t('Last {0} calendar days', { 0: period === '7d' ? 7 : 30 })}
                     </MetricContent>
                     <span
                       data-export-exclude
                       className="mt-4 flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-hover/metric:text-foreground"
-                    >
-                      View tasks{' '}
+                    >{t('View tasks')}{' '}
                       <ChevronRight
                         className="size-3 transition-transform group-hover/metric:translate-x-0.5 motion-reduce:transition-none"
                         aria-hidden="true"
@@ -167,25 +161,19 @@ export function Overview({
             </div>
             <OutcomeInsights period={period} active={active} />
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-3">
-              <p className="text-sm text-muted-foreground">
-                Median cycle time{' '}
+              <p className="text-sm text-muted-foreground">{t('Median cycle time')}{' '}
                 <strong className="font-mono font-semibold text-foreground">
                   {hours(data.metrics.medianCycleHours)}
                 </strong>{' '}
-                · {data.metrics.timedTasks}/{data.metrics.completed} completed tasks have valid
-                timings.{' '}
+                · {data.metrics.timedTasks}/{data.metrics.completed}{' '}{t('completed tasks have valid timings.')}{' '}
                 <Button
                   variant="ghost"
                   className="h-auto px-1.5 py-1 text-sm text-foreground underline-offset-4 hover:underline"
                   onClick={() => open('completed')}
-                >
-                  Inspect completed tasks
-                </Button>
+                >{t('Inspect completed tasks')}</Button>
               </p>
               <p className="font-mono text-[11px] text-soft-foreground">
-                <time dateTime={data.asOf} title={new Date(data.asOf).toLocaleString()}>
-                  Updated {shortAge(data.asOf)} ago
-                </time>
+                <time dateTime={data.asOf} title={new Date(data.asOf).toLocaleString(getLocale())}>{t('Updated')}{' '}{shortAge(data.asOf)}{' '}{t('ago')}</time>
               </p>
             </div>
             <details className="text-xs text-muted-foreground">
@@ -193,14 +181,8 @@ export function Overview({
                 data-export-heading="Metric definitions"
                 className={`${disclosureSummary} py-1`}
               >
-                <DisclosureChevron />
-                How these metrics work
-              </summary>
-              <p className="mt-1 max-w-prose pl-5 leading-relaxed">
-                Outcomes use finish dates, including archived tasks. Scheduled retries are
-                excluded from failed outcomes. Period includes today at your current fixed UTC
-                offset.
-              </p>
+                <DisclosureChevron />{t('How these metrics work')}</summary>
+              <p className="mt-1 max-w-prose pl-5 leading-relaxed">{t('Outcomes use finish dates, including archived tasks. Scheduled retries are excluded from failed outcomes. Period includes today at your current fixed UTC offset.')}</p>
             </details>
             <ExportRows
               rows={Object.entries(data.metrics).map(([metric, value]) => ({
@@ -211,7 +193,7 @@ export function Overview({
                 asOf: data.asOf,
                 note:
                   metric === 'running' || metric === 'needsYou'
-                    ? 'Current non-archived state'
+                    ? t('Current non-archived state')
                     : `Finished since ${data.windowStart}`,
               }))}
             />
@@ -227,16 +209,13 @@ export function Overview({
         data-export-context={`Outcomes: Last ${period === '7d' ? 7 : 30} calendar days; workload: current state`}
       >
         <div className={widgetHeader}>
-          <h2 className={widgetHeading}>Projects</h2>
+          <h2 className={widgetHeading}>{t('Projects')}</h2>
         </div>
-        <p className="px-4 pt-3 text-xs text-muted-foreground">
-          Current workload and outcomes for the selected period. Sorted by tasks needing you,
-          then running tasks. Counts include subtasks.
-        </p>
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('Current workload and outcomes for the selected period. Sorted by tasks needing you, then running tasks. Counts include subtasks.')}</p>
         <div
           className="overflow-x-auto px-1 pb-2"
           role="region"
-          aria-label="Project outcomes"
+          aria-label={t('Project outcomes')}
           tabIndex={0}
         >
           <table className="w-full text-left text-sm">
@@ -248,7 +227,7 @@ export function Overview({
                       key={label}
                       className={`whitespace-nowrap px-3 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-soft-foreground ${label === 'Project' ? '' : 'text-right'}`}
                     >
-                      {label}
+                      {t(label)}
                     </th>
                   ),
                 )}
@@ -269,9 +248,7 @@ export function Overview({
                         {projectName(project.projectId)}
                       </Link>
                       {source?.state !== 'complete' && (
-                        <span className="block text-xs text-muted-foreground">
-                          Incomplete data
-                        </span>
+                        <span className="block text-xs text-muted-foreground">{t('Incomplete data')}</span>
                       )}
                     </td>
                     {(['needs-you', 'running', 'completed', 'failed'] as const).map((group) => (
@@ -280,12 +257,12 @@ export function Overview({
                           data-export-keep
                           variant="ghost"
                           className="min-h-11 tabular-nums"
-                          aria-label={`${projectName(project.projectId)}: ${labels[group]}: ${source?.state === 'unavailable' ? 'Unavailable' : project[group === 'needs-you' ? 'needsYou' : group]}`}
+                          aria-label={`${projectName(project.projectId)}: ${labels[group]}: ${source?.state === 'unavailable' ? t('Unavailable') : project[group === 'needs-you' ? 'needsYou' : group]}`}
                           disabled={source?.state === 'unavailable'}
                           onClick={() => open(group, project.projectId)}
                         >
                           {source?.state === 'unavailable'
-                            ? 'Unavailable'
+                            ? t('Unavailable')
                             : project[group === 'needs-you' ? 'needsYou' : group]}
                         </Button>
                       </td>
@@ -293,15 +270,14 @@ export function Overview({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {hours(project.medianCycleHours)}
                       <span className="block text-xs text-muted-foreground">
-                        {project.timedTasks}/{project.completed} timed
-                      </span>
+                        {project.timedTasks}/{project.completed}{' '}{t('timed')}</span>
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          {!data.projects.length && <p className="py-4">No projects to compare yet.</p>}
+          {!data.projects.length && <p className="py-4">{t('No projects to compare yet.')}</p>}
         </div>
         <ExportRows
           rows={data.projects.flatMap(({ projectId, ...metrics }) =>
@@ -342,13 +318,10 @@ export function Overview({
         >
           <SheetHeader>
             <SheetTitle>
-              {selection ? labels[selection.group] : 'Tasks'}
+              {selection ? labels[selection.group] : t('Tasks')}
               {selection?.projectId ? ` · ${selection.projectId}` : ''}
             </SheetTitle>
-            <SheetDescription>
-              Tasks behind the selected metric. Includes subtasks. Snapshot keeps counts and
-              rows consistent.
-            </SheetDescription>
+            <SheetDescription>{t('Tasks behind the selected metric. Includes subtasks. Snapshot keeps counts and rows consistent.')}</SheetDescription>
           </SheetHeader>
           {selection && (
             <OutcomeTasks
@@ -375,6 +348,8 @@ function OutcomeTasks({
   refresh: () => void
   projectName: (id: string) => string
 }) {
+  useLocale()
+
   const [offset, setOffset] = useSheetState(`outcome:${selection.identity}:offset`, 0)
   const query = useDashboardOverview({
     period: selection.snapshot.period,
@@ -397,25 +372,23 @@ function OutcomeTasks({
   }
   return (
     <div className="space-y-3 p-4" data-sheet-loading={query.isFetching}>
-      {query.isPending && <p>Loading tasks…</p>}
+      {query.isPending && <p>{t('Loading tasks…')}</p>}
       {query.isError && (
-        <p role="alert">
-          This snapshot may have expired or become unavailable.{' '}
-          <Button onClick={refresh}>Refresh overview</Button>
+        <p role="alert">{t('This snapshot may have expired or become unavailable.')}{' '}
+          <Button onClick={refresh}>{t('Refresh overview')}</Button>
         </p>
       )}
       {query.data && (
         <>
           <p ref={summary} tabIndex={-1} className="text-xs text-muted-foreground">
-            {query.data.page.total} tasks · Snapshot from{' '}
-            <time dateTime={query.data.asOf} title={new Date(query.data.asOf).toLocaleString()}>
-              {shortAge(query.data.asOf)} ago
-            </time>
+            {query.data.page.total}{' '}{t('tasks · Snapshot from')}{' '}
+            <time dateTime={query.data.asOf} title={new Date(query.data.asOf).toLocaleString(getLocale())}>
+              {shortAge(query.data.asOf)}{' '}{t('ago')}</time>
           </p>
           {query.data.page.rows.map((row) => (
             <OutcomeTask key={`${row.projectId}:${row.id}`} row={row} group={selection.group} projectName={projectName} />
           ))}
-          {!query.data.page.rows.length && <p>No tasks in this group.</p>}
+          {!query.data.page.rows.length && <p>{t('No tasks in this group.')}</p>}
         </>
       )}
       <div className="flex gap-2">
@@ -423,16 +396,12 @@ function OutcomeTasks({
           variant="outline"
           disabled={!offset || query.isFetching}
           onClick={() => goToPage(Math.max(0, offset - 20))}
-        >
-          Previous
-        </Button>
+        >{t('Previous')}</Button>
         <Button
           variant="outline"
           disabled={!query.data || query.data.page.nextOffset === null || query.isFetching}
           onClick={() => goToPage(query.data!.page.nextOffset!)}
-        >
-          Next
-        </Button>
+        >{t('Next')}</Button>
       </div>
     </div>
   )
@@ -447,6 +416,8 @@ function OutcomeTask({
   group: DashboardOverviewGroup
   projectName: (id: string) => string
 }) {
+  useLocale()
+
   const truth = useDashboardTruth(row)
   const current = group === 'running' || group === 'needs-you'
   // Outcomes retain their historical status; operational groups must stop
@@ -459,9 +430,9 @@ function OutcomeTask({
   const inactive = removed || obsolete
   const attention = deriveAttention(row)
   const label = current && removed
-    ? 'Task removed'
+    ? t('Task removed')
     : obsolete
-      ? group === 'running' ? 'No longer running' : 'No longer needs you'
+      ? group === 'running' ? t('No longer running') : t('No longer needs you')
       : attention.label
   return (
     <div className="border-b py-3">
@@ -478,14 +449,13 @@ function OutcomeTask({
       </Link>
       <p className="text-xs text-muted-foreground">
         <StatusDot tone={attention.tone} /> {projectName(row.projectId)} ·{' '}
-        {label} · {row.archived ? 'Archived · ' : ''}
+        {label} · {row.archived ? t('Archived · ') : ''}
         <time
           dateTime={row.finishedAt ?? row.createdAt}
-          title={new Date(row.finishedAt ?? row.createdAt).toLocaleString()}
+          title={new Date(row.finishedAt ?? row.createdAt).toLocaleString(getLocale())}
         >
-          {row.finishedAt ? 'Finished' : 'Created'}{' '}
-          {shortAge(row.finishedAt ?? row.createdAt)} ago
-        </time>
+          {row.finishedAt ? t('Finished') : t('Created')}{' '}
+          {shortAge(row.finishedAt ?? row.createdAt)}{' '}{t('ago')}</time>
       </p>
     </div>
   )

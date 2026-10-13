@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { RunEvent, RunStatus } from '@open-mercato/cezar-api-client'
 import { runItemKey } from '@/api/run-events'
 import {
@@ -166,14 +167,14 @@ export function threadFooter(status: RunStatus, error?: string, awaitingAnswer =
       // The session closed on an unanswered question: the header says "needs you", so the footer
       // must not announce a failure — the answer is the way forward, not a retry.
       if (awaitingAnswer) {
-        return { state: 'closed', tone: 'dim', label: 'Session closed — waiting for your answer, which reopens it' }
+        return { state: 'closed', tone: 'dim', label: t('Session closed — waiting for your answer, which reopens it') }
       }
-      return { state: 'closed', tone: 'danger', label: error ? `Session failed — ${error}` : 'Session failed' }
+      return { state: 'closed', tone: 'danger', label: error ? t('Session failed — {0}', { 0: error }) : t('Session failed') }
     case 'review':
-      return { state: 'closed', tone: 'dim', label: 'Session closed — waiting for your review' }
+      return { state: 'closed', tone: 'dim', label: t('Session closed — waiting for your review') }
     case 'done':
     case 'cancelled':
-      return { state: 'closed', tone: 'dim', label: 'Session closed' }
+      return { state: 'closed', tone: 'dim', label: t('Session closed') }
     default:
       // queued/running: the stream itself is the status.
       return null
@@ -604,7 +605,7 @@ export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = 
         const suffix = str(event.error) ? ` — ${str(event.error)}` : ''
         currentTurn().entries.push({
           origin: 'meta',
-          entry: { kind: 'note', id: `v1:${event.seq}`, text: `step ${str(event.stepId) ?? '?'} failed${suffix}`, tone: 'danger' },
+          entry: { kind: 'note', id: `v1:${event.seq}`, text: t('step {0} failed{1}', { 0: str(event.stepId) ?? '?', 1: suffix }), tone: 'danger' },
         })
         break
       }
@@ -620,7 +621,7 @@ export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = 
           id: `v1:${event.seq}`,
           name: 'check',
           toolKind: 'execute',
-          title: `Ran ${command}`,
+          title: t('Ran {0}', { 0: command }),
           status: exitCode === 0 ? 'completed' : 'failed',
           output: str(event.text) ?? '',
           exitCode,

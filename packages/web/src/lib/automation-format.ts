@@ -1,7 +1,9 @@
+import { t } from '@/lib/i18n'
 import {
   WEEKDAY_NAMES,
   hm,
   scheduleLabel,
+  normalizeSchedule,
   zonedParts,
   type AutomationDefinition,
   type RunStatus,
@@ -28,7 +30,7 @@ export const AUTOMATION_COST_VISIBLE = false
 
 /** `Mon` … `Sun` for an ISO weekday (Monday = 1). */
 export function dayName(weekday: number): string {
-  return WEEKDAY_NAMES[((weekday - 1) % 7 + 7) % 7] ?? ''
+  return t(WEEKDAY_NAMES[((weekday - 1) % 7 + 7) % 7] ?? '')
 }
 
 /** `Thu 04:00` in the zone; `''` for an unknown zone or a bad instant. */
@@ -56,16 +58,16 @@ export function logTime(iso: string, timeZone: string, now = Date.now()): string
 /** `in 12m` / `in 3h` / `in 2d` — the rail's and the preview's relative column. */
 export function relativeIn(ms: number, now = Date.now()): string {
   const minutes = Math.max(0, Math.round((ms - now) / 60_000))
-  if (minutes < 60) return `in ${minutes}m`
-  if (minutes < 1_440) return `in ${Math.round(minutes / 60)}h`
-  return `in ${Math.round(minutes / 1_440)}d`
+  if (minutes < 60) return t('in {0}m', { 0: minutes })
+  if (minutes < 1_440) return t('in {0}h', { 0: Math.round(minutes / 60) })
+  return t('in {0}d', { 0: Math.round(minutes / 1_440) })
 }
 
 /** `4h 12m` / `12m` / `0m` — the strip's agent time. */
 export function agentTime(seconds: number): string {
   const minutes = Math.round(seconds / 60)
   const hours = Math.floor(minutes / 60)
-  return hours > 0 ? `${hours}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`
+  return hours > 0 ? t('{0}h {1}m', { 0: hours, 1: String(minutes % 60).padStart(2, '0') }) : `${minutes}m`
 }
 
 /** `$13.4` above ten dollars, `$2.41` below — the design's two spellings. */
@@ -86,23 +88,34 @@ export function statusTone(status: RunStatus): StatusDotTone {
 /** The word beside that dot. */
 export function statusLabel(status: RunStatus): string {
   switch (status) {
-    case 'review': return 'needs review'
-    case 'waiting': return 'needs you'
-    default: return status
+    case 'review': return t('needs review')
+    case 'waiting': return t('needs you')
+    default: return t(status)
   }
 }
 
 /** The trigger cell: `on issue.opened · every 5 min` for a poll, `scheduleLabel` for a schedule. */
 export function triggerLabel(automation: Pick<AutomationDefinition, 'kind' | 'events' | 'intervalSeconds' | 'schedule' | 'trackerTrigger'>): string {
-  if (automation.kind === 'schedule' && automation.schedule) return scheduleLabel(automation.schedule)
+  if (automation.kind === 'schedule' && automation.schedule) {
+    const schedule = normalizeSchedule(automation.schedule)
+    switch (schedule.type) {
+      case 'daily': return t('every day at {0}', { 0: hm(schedule.hour, schedule.minute) })
+      case 'weekdays': return t('weekdays at {0}', { 0: hm(schedule.hour, schedule.minute) })
+      case 'hours': return schedule.every === 1 ? t('every hour') : t('every {0} hours', { 0: schedule.every })
+      case 'weekly': {
+        const english = scheduleLabel(schedule)
+        return t('{0}s at {1}', { 0: t(english.split('s at ')[0]!), 1: hm(schedule.hour, schedule.minute) })
+      }
+    }
+  }
   if (automation.kind === 'tracker') {
     const trigger = automation.trackerTrigger
     const provider = trigger?.association.kind === 'jira' ? 'Jira' : trigger?.association.kind === 'linear' ? 'Linear' : 'Tracker'
-    return trigger ? `${provider} · ${trigger.events.join(', ')}${trigger.targetStatusIds?.length ? ` → ${trigger.targetStatusIds.join(', ')}` : ''}${trigger.changedLabelIds?.length ? ` · labels ${trigger.changedLabelIds.join(', ')}` : ''} · every ${Math.round((automation.intervalSeconds ?? 1800) / 60)} min` : `${provider} · select an event to complete setup`
+    return trigger ? t('{0} · {1}{2}{3} · every {4} min', { 0: provider, 1: trigger.events.join(', '), 2: trigger.targetStatusIds?.length ? ` → ${trigger.targetStatusIds.join(', ')}` : '', 3: trigger.changedLabelIds?.length ? ` · labels ${trigger.changedLabelIds.join(', ')}` : '', 4: Math.round((automation.intervalSeconds ?? 1800) / 60) }) : t('{0} · select an event to complete setup', { 0: provider })
   }
   const events = (automation.events ?? []).join(', ')
   const minutes = Math.round((automation.intervalSeconds ?? 300) / 60)
-  return `on ${events || 'github'} · every ${minutes} min`
+  return t('on {0} · every {1} min', { 0: events || 'github', 1: minutes })
 }
 
 /** The log result's dot tone (spec § UI/UX 5). */

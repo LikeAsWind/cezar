@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setApiBaseUrl } from '@open-mercato/cezar-api-client'
@@ -24,7 +25,7 @@ function resolveApiBase(): string {
 setApiBaseUrl(resolveApiBase())
 
 const container = document.getElementById('root')
-if (!container) throw new Error('cezar: #root container is missing from index.html')
+if (!container) throw new Error(t('cezar: #root container is missing from index.html'))
 
 createRoot(container).render(
   <StrictMode>

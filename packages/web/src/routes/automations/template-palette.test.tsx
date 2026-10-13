@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,6 +7,7 @@ import { createQueryClient } from '@/api/query-client'
 import type { AutomationTemplatesResponse } from '@open-mercato/cezar-api-client'
 
 import { TemplatePalette } from './template-palette'
+import { setLocale } from '@/lib/i18n'
 
 afterEach(() => {
   cleanup()
@@ -39,6 +40,16 @@ function renderPalette(onPick = vi.fn()) {
 }
 
 describe('TemplatePalette', () => {
+  it('localizes built-in names and timing without changing the selected task payload', () => {
+    stubTemplates({ templates: [] })
+    const onPick = renderPalette()
+    act(() => setLocale('zh-CN'))
+    expect(screen.getByText('每夜更新依赖')).toBeTruthy()
+    expect(screen.getByText('每天 04:00')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '使用这个：排查不稳定的测试' }))
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ name: 'Flaky test hunt', schedule: { type: 'weekly', day: 2, hour: 2, minute: 0 } }))
+  })
+
   it('lists the six built-ins and hands the picked one over', () => {
     const paths = stubTemplates({ templates: [] })
     const onPick = renderPalette()

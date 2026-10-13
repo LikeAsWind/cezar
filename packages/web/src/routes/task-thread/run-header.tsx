@@ -1,3 +1,4 @@
+import { t, useLocale, dateTimeFormat } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArchiveIcon,
@@ -152,6 +153,8 @@ function RunHeaderView({
   onMarkedUnread,
   continuationEngine,
 }: RunHeaderProps) {
+  useLocale()
+
   const attention = deriveAttention(run)
   const budget = budgetStop(run)
   const flags = runActionFlags(run)
@@ -209,7 +212,7 @@ function RunHeaderView({
                 variant="ghost"
                 size="icon-sm"
                 className="md:hidden"
-                aria-label={detailsOpen ? 'Hide run details' : 'Show run details'}
+                aria-label={detailsOpen ? t('Hide run details') : t('Show run details')}
                 aria-controls={detailsId}
                 aria-expanded={detailsOpen}
                 onClick={toggleDetails}
@@ -270,28 +273,16 @@ function RunHeaderView({
             // supports) — contained scroll here, not page-wide overflow on `main`.
             className="mt-1.5 flex items-end gap-1 overflow-x-auto md:mt-2.5 md:overflow-x-visible"
           >
-            <TabLink to={`/tasks/${run.id}`} active={tab === 'session'}>
-              Session
-            </TabLink>
-            <TabLink to={`/tasks/${run.id}/changes`} active={tab === 'changes'}>
-              Changes
-            </TabLink>
-            <TabLink to={`/tasks/${run.id}/commits`} active={tab === 'commits'}>
-              Commits
-            </TabLink>
-            <TabLink to={`/tasks/${run.id}/files`} active={tab === 'files'}>
-              Files
-            </TabLink>
+            <TabLink to={`/tasks/${run.id}`} active={tab === 'session'}>{t('Session')}</TabLink>
+            <TabLink to={`/tasks/${run.id}/changes`} active={tab === 'changes'}>{t('Changes')}</TabLink>
+            <TabLink to={`/tasks/${run.id}/commits`} active={tab === 'commits'}>{t('Commits')}</TabLink>
+            <TabLink to={`/tasks/${run.id}/files`} active={tab === 'files'}>{t('Files')}</TabLink>
             {/* The live workflow graph (#1322) — every run with a definition: a step list opens as
                 its graph. */}
             {run.workflowDef ? (
-              <TabLink to={`/tasks/${run.id}/graph`} active={tab === 'graph'}>
-                Graph
-              </TabLink>
+              <TabLink to={`/tasks/${run.id}/graph`} active={tab === 'graph'}>{t('Graph')}</TabLink>
             ) : null}
-            <TabLink to={`/tasks/${run.id}/notes`} active={tab === 'notes'}>
-              Notes
-            </TabLink>
+            <TabLink to={`/tasks/${run.id}/notes`} active={tab === 'notes'}>{t('Notes')}</TabLink>
 
             {/* What the run has spent, and on what — on the tabs line, out of the way of the
                 actions above. Desktop only; phones read it in the details row. */}
@@ -332,6 +323,8 @@ function RunStatus({
   attention: ReturnType<typeof deriveAttention>
   queuePosition: number | undefined
 }) {
+  useLocale()
+
   return (
     <Pill className="shrink-0" dot={attention.tone} pulse={attention.pulse}>
       {attention.label}
@@ -348,19 +341,19 @@ function RunProgress({
   planTally?: { done: number; total: number }
   budget: ReturnType<typeof budgetStop>
 }) {
+  useLocale()
+
   return (
     <>
       {planTally ? (
         // The plan dock's compact mirror (spec: "mirrored as a compact progress line in the run
         // header"). Desktop only since #764: on a phone the dock it mirrors is itself on screen,
         // so the mirror would spend the tightest row here restating it.
-        <span data-slot="plan-mirror" className="hidden shrink-0 text-[11px] text-soft-foreground tabular-nums md:inline">
-          Plan {planTally.done}/{planTally.total}
+        <span data-slot="plan-mirror" className="hidden shrink-0 text-[11px] text-soft-foreground tabular-nums md:inline">{t('Plan')}{' '}{planTally.done}/{planTally.total}
         </span>
       ) : null}
       {budget ? (
-        <span data-slot="budget-stop" className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          Spent {formatCost(budget.spent) || '$0.00'} of {formatCost(budget.ceiling) || '$0.00'}
+        <span data-slot="budget-stop" className="shrink-0 text-xs text-muted-foreground tabular-nums">{t('Spent')}{' '}{formatCost(budget.spent) || '$0.00'}{' '}{t('of')}{' '}{formatCost(budget.ceiling) || '$0.00'}
         </span>
       ) : null}
     </>
@@ -371,7 +364,7 @@ function RunProgress({
  *  controls stay in place either way — a row whose icons come and go with the run's status is a
  *  row where the reader's muscle memory clicks the wrong one. */
 function liveRunReason(run: ApiRun): string | undefined {
-  return isRunActive(run.status) ? 'Stop the task first' : undefined
+  return isRunActive(run.status) ? t('Stop the task first') : undefined
 }
 
 /**
@@ -391,6 +384,8 @@ function TaskItemActions({
   /** Offer Stop in the ⋯ menu — off on the Session tab, whose composer carries it. */
   showRunControls: boolean
 }) {
+  useLocale()
+
   const flags = runActionFlags(run)
   const live = liveRunReason(run)
   const moreStop = showRunControls && flags.cancel
@@ -405,8 +400,8 @@ function TaskItemActions({
       {flags.markRead || flags.markUnread ? (
         <IconAction
           slot="unread-toggle"
-          label={flags.markRead ? 'Mark read' : 'Mark unread'}
-          title={flags.markRead ? 'Unread — mark it read' : 'Mark unread — put it back in your unread list'}
+          label={flags.markRead ? t('Mark read') : t('Mark unread')}
+          title={flags.markRead ? t('Unread — mark it read') : t('Mark unread — put it back in your unread list')}
           pressed={flags.markRead}
           pending={actions.markRead.isPending || actions.markUnread.isPending}
           onClick={() => (flags.markRead ? actions.markRead.mutate() : actions.markUnread.mutate())}
@@ -417,14 +412,14 @@ function TaskItemActions({
       ) : null}
       <IconAction
         slot="pin-run"
-        label={run.pinned ? 'Unpin' : 'Pin'}
+        label={run.pinned ? t('Unpin') : t('Pin')}
         title={
           run.pinned
-            ? 'Pinned — unpin from the top of this project’s task list'
-            : 'Pin to the top of this project’s task list'
+            ? t('Pinned — unpin from the top of this project’s task list')
+            : t('Pin to the top of this project’s task list')
         }
         pressed={Boolean(run.pinned)}
-        unavailable={flags.pin ? undefined : 'Archived tasks can’t be pinned'}
+        unavailable={flags.pin ? undefined : t('Archived tasks can’t be pinned')}
         pending={actions.pin.isPending}
         onClick={actions.pin.mutate}
         className={cn(run.pinned && TOGGLE_ON_CLASS)}
@@ -433,8 +428,8 @@ function TaskItemActions({
       </IconAction>
       <IconAction
         slot="archive-run"
-        label={run.archived ? 'Unarchive' : 'Archive'}
-        title={run.archived ? 'Archived — move it back to the active list' : 'Move to the archived list'}
+        label={run.archived ? t('Unarchive') : t('Archive')}
+        title={run.archived ? t('Archived — move it back to the active list') : t('Move to the archived list')}
         pressed={Boolean(run.archived)}
         unavailable={live}
         pending={actions.archive.isPending}
@@ -447,8 +442,8 @@ function TaskItemActions({
           icon at rest would shout louder than everything the reader actually came here to do. */}
       <IconAction
         slot="delete-run"
-        label="Delete"
-        title="Delete the task, its worktree and its branch"
+        label={t('Delete')}
+        title={t('Delete the task, its worktree and its branch')}
         unavailable={live}
         danger
         onClick={() => actions.setConfirming('delete')}
@@ -458,9 +453,9 @@ function TaskItemActions({
       </IconAction>
       {moreStop || moreEnd ? (
         <DropdownMenu>
-          <IconTooltip label="More actions">
+          <IconTooltip label={t('More actions')}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="More actions">
+              <Button variant="ghost" size="icon-sm" aria-label={t('More actions')}>
                 <EllipsisIcon aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
@@ -468,13 +463,11 @@ function TaskItemActions({
           <DropdownMenuContent align="end" data-slot="run-more-menu">
             {moreEnd ? (
               <DropdownMenuItem onSelect={() => actions.finish.mutate()}>
-                <CheckIcon aria-hidden="true" /> End session
-              </DropdownMenuItem>
+                <CheckIcon aria-hidden="true" />{' '}{t('End session')}</DropdownMenuItem>
             ) : null}
             {moreStop ? (
               <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('cancel')}>
-                <CircleStopIcon aria-hidden="true" /> Stop
-              </DropdownMenuItem>
+                <CircleStopIcon aria-hidden="true" />{' '}{t('Stop')}</DropdownMenuItem>
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -507,6 +500,8 @@ function IconAction({
   className?: string
   children: ReactNode
 }) {
+  useLocale()
+
   const blocked = unavailable !== undefined
   return (
     <IconTooltip label={unavailable ?? title}>
@@ -549,6 +544,8 @@ function OpenInMenuForRun({
   canResume: boolean
   onResume: () => void
 }) {
+  useLocale()
+
   const targets = useOpenTargets()
   const providers = useProviderStatus()
   const open = useMutation({
@@ -576,7 +573,7 @@ function OpenInMenuForRun({
           const resumes = cliTargetResumes(run, target.id)
           return {
             target,
-            ...(resumes ? { suffix: ' (resume)', title: "Resume this run's session" } : {}),
+            ...(resumes ? { suffix: ' (resume)', title: t('Resume this run\'s session') } : {}),
           }
         })
     : []
@@ -587,21 +584,19 @@ function OpenInMenuForRun({
     if (!path) return
     void navigator.clipboard
       .writeText(path)
-      .then(() => toast('Worktree path copied'))
-      .catch(() => toast(`Path: ${path}`))
+      .then(() => toast(t('Worktree path copied')))
+      .catch(() => toast(t('Path: {0}', { 0: path })))
   }
 
   return (
     <OpenInMenu
       choices={choices}
       onPick={(target) => open.mutate(target)}
-      title="Resume in a terminal, or open the worktree locally"
+      title={t('Resume in a terminal, or open the worktree locally')}
       leading={
         canResumeHere ? (
           <DropdownMenuItem data-target="terminal-resume" onSelect={onResume}>
-            <SquareTerminalIcon aria-hidden="true" />
-            Terminal (resume session)
-          </DropdownMenuItem>
+            <SquareTerminalIcon aria-hidden="true" />{t('Terminal (resume session)')}</DropdownMenuItem>
         ) : null
       }
       trailing={
@@ -609,9 +604,7 @@ function OpenInMenuForRun({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={copyPath}>
-              <CopyIcon aria-hidden="true" />
-              Copy worktree path
-            </DropdownMenuItem>
+              <CopyIcon aria-hidden="true" />{t('Copy worktree path')}</DropdownMenuItem>
           </>
         ) : null
       }
@@ -690,7 +683,7 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
       // The legacy 409 fallback: no terminal emulator → the server sends the manual command;
       // put it on the clipboard so "no terminal" still ends with the user one paste away.
       if (error instanceof ApiError && error.command) {
-        void copyToClipboard(error.command, 'No terminal found — command copied to clipboard.')
+        void copyToClipboard(error.command, t('No terminal found — command copied to clipboard.'))
         return
       }
       onError(error)
@@ -719,7 +712,7 @@ async function copyToClipboard(text: string, doneMessage: string): Promise<void>
     toast(doneMessage)
   } catch {
     // No clipboard access (permissions, http) — show the command itself; it is the payload.
-    toast(`Run manually: ${text}`)
+    toast(t('Run manually: {0}', { 0: text }))
   }
 }
 
@@ -730,6 +723,8 @@ async function copyToClipboard(text: string, doneMessage: string): Promise<void>
  * The rename machine itself is shared with the Tasks table (`components/editable-title.tsx`).
  */
 function EditableTitle({ run }: { run: ApiRun }) {
+  useLocale()
+
   const patch = usePatchRun(run.id)
   const title = runTitle(run)
   const draft = useDraft(run.id, 'title')
@@ -771,7 +766,7 @@ function EditableTitle({ run }: { run: ApiRun }) {
       </h1>
       <button
         type="button"
-        aria-label="Rename task"
+        aria-label={t('Rename task')}
         onClick={editor.begin}
         className="shrink-0 rounded-sm p-1 text-soft-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
@@ -783,6 +778,8 @@ function EditableTitle({ run }: { run: ApiRun }) {
 
 /** Copyable task branch with confirmation kept local so hovering it does not re-render MetaRow. */
 function CopyBranchChip({ branch }: { branch: string }) {
+  useLocale()
+
   const [copied, setCopied] = useState(false)
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -796,7 +793,7 @@ function CopyBranchChip({ branch }: { branch: string }) {
 
   const copy = () => {
     if (!navigator.clipboard) {
-      toast(`Branch: ${branch}`)
+      toast(t('Branch: {0}', { 0: branch }))
       return
     }
     void navigator.clipboard
@@ -810,7 +807,7 @@ function CopyBranchChip({ branch }: { branch: string }) {
           setTooltipOpen(false)
         }, 1_500)
       })
-      .catch(() => toast(`Branch: ${branch}`))
+      .catch(() => toast(t('Branch: {0}', { 0: branch })))
   }
 
   return (
@@ -827,16 +824,16 @@ function CopyBranchChip({ branch }: { branch: string }) {
               type="button"
               data-slot="branch-chip"
               className="cursor-copy rounded-sm border border-border bg-card px-1.5 py-px font-mono text-[11px] font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              aria-label={`Copy branch name ${branch}`}
+              aria-label={t('Copy branch name {0}', { 0: branch })}
               onClick={copy}
             >
               {branch}
               <span className="sr-only" role="status">
-                {copied ? 'Branch name copied' : ''}
+                {copied ? t('Branch name copied') : ''}
               </span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>{copied ? 'Copied' : 'Copy branch name'}</TooltipContent>
+          <TooltipContent>{copied ? t('Copied') : t('Copy branch name')}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
@@ -869,6 +866,8 @@ function MetaRow({
    *  plain text, because the route it used to link to is disabled. */
   automationsAvailable: boolean
 }) {
+  useLocale()
+
   // #526: the issue chip may be synthesized from the CEZ:ISSUE marker, and the only repository
   // such a link may name is the one on screen — never the transcript's.
   const repoBase = useProjectRepoBase()
@@ -905,18 +904,14 @@ function MetaRow({
           key="automation"
           to={`/automations/${encodeURIComponent(run.automation.automationId)}/log`}
           className="rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-medium hover:text-foreground"
-        >
-          Automation
-        </Link>
+        >{t('Automation')}</Link>
       ) : (
         <span
           key="automation"
           data-slot="automation-origin"
-          title="Automations are off on this server (CEZ_AUTOMATIONS)"
+          title={t("Automations are off on this server (CEZ_AUTOMATIONS)")}
           className="rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-medium"
-        >
-          Automation
-        </span>
+        >{t('Automation')}</span>
       ),
     )
   }
@@ -1040,6 +1035,8 @@ function RunUsage({
   continuationEngine?: ReactNode
   className?: string
 }) {
+  useLocale()
+
   const usage: ReactNode[] = []
   if (showTokens && (run.inputTokens !== undefined || run.outputTokens !== undefined)) {
     usage.push(
@@ -1086,6 +1083,8 @@ function RunUsage({
  * or pruned) still gets its link, labelled by its id.
  */
 function DispatchParentLine({ run }: { run: ApiRun }) {
+  useLocale()
+
   const runs = useRuns()
   const parentRunId = run.dispatch?.parentRunId
   if (parentRunId === undefined) return null
@@ -1096,7 +1095,7 @@ function DispatchParentLine({ run }: { run: ApiRun }) {
       data-slot="dispatch-parent-line"
       className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground"
     >
-      <span className="shrink-0">Dispatched by</span>
+      <span className="shrink-0">{t('Dispatched by')}</span>
       <Link
         to={`/tasks/${parentRunId}`}
         data-slot="dispatch-parent"
@@ -1138,6 +1137,8 @@ const subtasksOpenByRun = new Map<string, boolean>()
  *    meta disclosure above, no invisible-but-focusable links in the tab order.
  */
 function DispatchChildrenLine({ run }: { run: ApiRun }) {
+  useLocale()
+
   const runs = useRuns()
   const [, bumpSubtasks] = useReducer((n: number) => n + 1, 0)
   const listId = useId()
@@ -1164,7 +1165,7 @@ function DispatchChildrenLine({ run }: { run: ApiRun }) {
           aria-hidden="true"
           className={cn('size-3 shrink-0 transition-transform', !open && '-rotate-90')}
         />
-        <span className="shrink-0">Subtasks</span>
+        <span className="shrink-0">{t('Subtasks')}</span>
         <span data-slot="dispatch-children-count" className="shrink-0 tabular-nums">
           {children.length}
         </span>
@@ -1207,6 +1208,8 @@ function DispatchChildrenLine({ run }: { run: ApiRun }) {
  * is read first, never buried behind the done pile.
  */
 function SubtaskTally({ subtasks }: { subtasks: ApiRun[] }) {
+  useLocale()
+
   const byLabel = new Map<string, { tone: AttentionTone; pulse: boolean; rank: number; count: number }>()
   for (const child of subtasks) {
     const attention = deriveAttention(child)
@@ -1237,30 +1240,27 @@ function SubtaskTally({ subtasks }: { subtasks: ApiRun[] }) {
 }
 
 function MonitoringSchedule({ run }: { run: ApiRun }) {
+  useLocale()
+
   if (run.status !== 'running' || run.activity !== 'monitoring') return null
   if (run.monitoringWakeCapReached) {
     return (
-      <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-        Automatic checks paused — 40/40 reached
-      </p>
+      <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">{t('Automatic checks paused — 40/40 reached')}</p>
     )
   }
   const wakeAt = run.monitoringWakeAt ? new Date(run.monitoringWakeAt) : null
   const validWakeAt = wakeAt && Number.isFinite(wakeAt.getTime()) ? wakeAt : null
   if (!validWakeAt) {
     return (
-      <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-        Parked — no automatic check scheduled
-      </p>
+      <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">{t('Parked — no automatic check scheduled')}</p>
     )
   }
-  const label = new Intl.DateTimeFormat(undefined, {
+  const label = dateTimeFormat({
     dateStyle: 'medium',
     timeStyle: 'long',
   }).format(validWakeAt)
   return (
-    <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-      Next automatic check{' '}
+    <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">{t('Next automatic check')}{' '}
       <time dateTime={run.monitoringWakeAt} className="font-medium text-foreground">
         {label}
       </time>
@@ -1281,6 +1281,8 @@ function MonitoringSchedule({ run }: { run: ApiRun }) {
  *  question only a user debugging "which provider actually served this?" asks, so it belongs
  *  behind the same disclosure as the account rather than in the truncating summary line. */
 function AgentBadge({ run, continuationEngine }: { run: ApiRun; continuationEngine?: ReactNode }) {
+  useLocale()
+
   const { runner, account, model, identity, summary } = useRunEngine(run)
   return (
     <DropdownMenu>
@@ -1292,7 +1294,7 @@ function AgentBadge({ run, continuationEngine }: { run: ApiRun; continuationEngi
           <button
             type="button"
             data-slot="agent-badge"
-            aria-label={`Agent: ${runner}, ${account ? `account ${account}, ` : ''}model ${model}`}
+            aria-label={t('Agent: {0}, {1}model {2}', { 0: runner, 1: account ? t('account {0}, ', { 0: account }) : '', 2: model })}
             className="flex shrink-0 items-center rounded-sm p-1 text-soft-foreground hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <BotIcon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -1300,8 +1302,7 @@ function AgentBadge({ run, continuationEngine }: { run: ApiRun; continuationEngi
         </DropdownMenuTrigger>
       </IconTooltip>
       <DropdownMenuContent align="end" className="min-w-[9rem]">
-        <DropdownMenuLabel className="font-mono text-[11px] font-normal text-muted-foreground">
-          runner: {runner}
+        <DropdownMenuLabel className="font-mono text-[11px] font-normal text-muted-foreground">{t('runner:')}{' '}{runner}
         </DropdownMenuLabel>
         {/* Omitted, not guessed, when no step recorded one: a run from before accounts existed
             cannot be said to have used the discovered account — nothing wrote that down. */}
@@ -1309,27 +1310,22 @@ function AgentBadge({ run, continuationEngine }: { run: ApiRun; continuationEngi
           <DropdownMenuLabel
             data-slot="agent-badge-account"
             className="font-mono text-[11px] font-normal text-muted-foreground"
-          >
-            account: {account}
+          >{t('account:')}{' '}{account}
           </DropdownMenuLabel>
         ) : null}
-        <DropdownMenuLabel className="font-mono text-[11px] font-normal text-muted-foreground">
-          model: {model}
+        <DropdownMenuLabel className="font-mono text-[11px] font-normal text-muted-foreground">{t('model:')}{' '}{model}
         </DropdownMenuLabel>
         {identity ? (
           <DropdownMenuLabel
             data-slot="agent-badge-identity"
             className="font-mono text-[11px] font-normal text-muted-foreground"
-          >
-            identity: {identity}
+          >{t('identity:')}{' '}{identity}
           </DropdownMenuLabel>
         ) : null}
         {continuationEngine ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="pb-1 text-[11px] font-normal text-muted-foreground">
-              Next continuation
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="pb-1 text-[11px] font-normal text-muted-foreground">{t('Next continuation')}</DropdownMenuLabel>
             <div
               data-slot="agent-badge-engine-picker"
               className="px-2 pb-1"
@@ -1359,6 +1355,8 @@ function GitStepAndKebab({
   actions: RunActions
   showRunControls: boolean
 }) {
+  useLocale()
+
   const git = useRunGitStep(run)
   return (
     <>
@@ -1386,6 +1384,8 @@ function ActionsKebab({
   git: RunGitStep
   showRunControls: boolean
 }) {
+  useLocale()
+
   const flags = runActionFlags(run)
   const live = liveRunReason(run)
   const step = git.action
@@ -1393,7 +1393,7 @@ function ActionsKebab({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Run actions" className="md:hidden">
+        <Button variant="ghost" size="icon-sm" aria-label={t('Run actions')} className="md:hidden">
           <EllipsisVerticalIcon aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
@@ -1418,13 +1418,11 @@ function ActionsKebab({
         {/* Off the Session tab only: there the hint over the composer carries it. */}
         {showRunControls && run.status === 'waiting' ? (
           <DropdownMenuItem onSelect={() => actions.finish.mutate()}>
-            <CheckIcon aria-hidden="true" /> End session
-          </DropdownMenuItem>
+            <CheckIcon aria-hidden="true" />{' '}{t('End session')}</DropdownMenuItem>
         ) : null}
         {flags.terminal ? (
           <DropdownMenuItem onSelect={() => actions.terminal.mutate()}>
-            <SquareTerminalIcon aria-hidden="true" /> Terminal
-          </DropdownMenuItem>
+            <SquareTerminalIcon aria-hidden="true" />{' '}{t('Terminal')}</DropdownMenuItem>
         ) : null}
         {/* The state toggles: one icon each, ON in the same violet-filled way as on desktop. */}
         {flags.markRead || flags.markUnread ? (
@@ -1435,7 +1433,7 @@ function ActionsKebab({
             onSelect={() => (unread ? actions.markRead.mutate() : actions.markUnread.mutate())}
           >
             <MailIcon aria-hidden="true" className={cn(unread && TOGGLE_ON_ICON_CLASS)} />
-            {unread ? 'Mark read' : 'Mark unread'}
+            {unread ? t('Mark read') : t('Mark unread')}
           </DropdownMenuItem>
         ) : null}
         {flags.pin ? (
@@ -1448,21 +1446,20 @@ function ActionsKebab({
             onSelect={() => actions.pin.mutate()}
           >
             <PinIcon aria-hidden="true" className={cn(run.pinned && TOGGLE_ON_ICON_CLASS)} />
-            {run.pinned ? 'Unpin' : 'Pin'}
+            {run.pinned ? t('Unpin') : t('Pin')}
           </DropdownMenuItem>
         ) : null}
         {flags.archive ? (
           <DropdownMenuItem aria-pressed={Boolean(run.archived)} onSelect={() => actions.archive.mutate()}>
             <ArchiveIcon aria-hidden="true" className={cn(run.archived && TOGGLE_ON_ICON_CLASS)} />
-            {run.archived ? 'Unarchive' : 'Archive'}
+            {run.archived ? t('Unarchive') : t('Archive')}
           </DropdownMenuItem>
         ) : null}
         {(showRunControls && flags.cancel) || flags.deleteRun ? <DropdownMenuSeparator /> : null}
         {/* On the Session tab the composer's ■ carries Stop, exactly as on desktop. */}
         {showRunControls && flags.cancel ? (
           <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('cancel')}>
-            <CircleStopIcon aria-hidden="true" /> Stop
-          </DropdownMenuItem>
+            <CircleStopIcon aria-hidden="true" />{' '}{t('Stop')}</DropdownMenuItem>
         ) : null}
         {flags.deleteRun ? (
           <DropdownMenuItem
@@ -1470,8 +1467,7 @@ function ActionsKebab({
             disabled={live !== undefined}
             onSelect={() => actions.setConfirming('delete')}
           >
-            <Trash2Icon aria-hidden="true" /> Delete
-          </DropdownMenuItem>
+            <Trash2Icon aria-hidden="true" />{' '}{t('Delete')}</DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1482,16 +1478,18 @@ function ActionsKebab({
  *  copyable. Local-machine phrasing; hosted mode (R5, `capabilities.localHandoff`) will swap the
  *  cd-prefix for a bare resume command. */
 function ResumeHintLine({ hint }: { hint: string }) {
+  useLocale()
+
   return (
     <button
       type="button"
       data-slot="resume-hint"
-      title="Copy the command"
-      onClick={() => void copyToClipboard(hint, 'Command copied to clipboard.')}
+      title={t('Copy the command')}
+      onClick={() => void copyToClipboard(hint, t('Command copied to clipboard.'))}
       className="mb-2 flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-[11px] text-soft-foreground hover:bg-muted hover:text-foreground"
     >
       <CopyIcon className="size-3 shrink-0" aria-hidden="true" />
-      <span className="truncate">take over interactively: {hint}</span>
+      <span className="truncate">{t('take over interactively:')}{' '}{hint}</span>
     </button>
   )
 }

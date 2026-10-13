@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type {
   ProviderId,
   ProviderStatusResponse,
@@ -6,13 +7,13 @@ import type {
 
 const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'junie', 'opencode', 'cursor', 'pi', 'copilot']
 const LABELS: Record<ProviderId, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  cursor: 'Cursor',
-  pi: 'pi',
-  junie: 'Junie',
-  copilot: 'GitHub Copilot CLI',
+  get claude() { return t('Claude Code') },
+  get codex() { return t('Codex') },
+  get opencode() { return t('OpenCode') },
+  get cursor() { return t('Cursor') },
+  get pi() { return t('pi') },
+  get junie() { return t('Junie') },
+  get copilot() { return t('GitHub Copilot CLI') },
 }
 
 export interface ProviderAuthIncident {

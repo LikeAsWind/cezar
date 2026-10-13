@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import type { Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
 import { EnginePills, type EnginePick } from '@/components/engine-pills'
 import { PickerPill } from '@/components/picker-pill'
@@ -37,6 +38,8 @@ export function EditorRunAs({
   autonomous: boolean
   onAutonomous: (autonomous: boolean) => void
 }) {
+  useLocale()
+
   return (
     <div data-slot="editor-run-as" className="flex flex-wrap items-center gap-2">
       <SourcePill
@@ -50,18 +53,16 @@ export function EditorRunAs({
       <EnginePills pick={pick} onChange={onPick} accounts />
       <PickerPill
         slot="editor-base-pill"
-        ariaLabel="Base branch"
+        ariaLabel={t('Base branch')}
         readOnly
-        hint="Every run branches off the project's base branch."
-        label={<span className="font-mono text-[11.5px]">base: {baseBranch ?? '…'}</span>}
+        hint={t('Every run branches off the project\'s base branch.')}
+        label={<span className="font-mono text-[11.5px]">{t('base:')}{' '}{baseBranch ?? '…'}</span>}
         value={baseBranch ?? ''}
         options={[]}
         onPick={() => undefined}
       />
       <span className="flex-1" />
-      <Label className="text-[13px] font-medium">
-        Autonomous
-        <Switch aria-label="Autonomous" checked={autonomous} onCheckedChange={onAutonomous} />
+      <Label className="text-[13px] font-medium">{t('Autonomous')}<Switch aria-label={t('Autonomous')} checked={autonomous} onCheckedChange={onAutonomous} />
       </Label>
     </div>
   )

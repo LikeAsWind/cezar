@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   SCHEDULE_HOURS_OPTIONS,
   WEEKDAY_NAMES,
@@ -38,19 +39,21 @@ export function EditorScheduleFields({
   timeZone: string
   onChange: (schedule: AutomationSchedule) => void
 }) {
+  useLocale()
+
   const s = normalizeSchedule(schedule)
   const set = (patch: Partial<AutomationSchedule>) => onChange({ ...s, ...patch })
   return (
     <div data-slot="editor-schedule" className="flex flex-col gap-3.5">
-      <div role="group" aria-label="Schedule type" className="flex flex-wrap gap-1.5">
+      <div role="group" aria-label={t('Schedule type')} className="flex flex-wrap gap-1.5">
         {TYPES.map(([value, label]) => (
           <Chip key={value} active={s.type === value} aria-pressed={s.type === value} onClick={() => set({ type: value })}>
-            {label}
+            {t(label)}
           </Chip>
         ))}
       </div>
       {s.type === 'weekly' ? (
-        <div role="group" aria-label="Weekday" className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label={t('Weekday')} className="flex flex-wrap gap-1.5">
           {WEEKDAY_NAMES.map((name, index) => (
             <Chip
               key={name}
@@ -59,31 +62,25 @@ export function EditorScheduleFields({
               className="px-[9px]"
               onClick={() => set({ day: index + 1 })}
             >
-              {name}
+              {t(name)}
             </Chip>
           ))}
         </div>
       ) : null}
       {s.type === 'hours' ? (
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          every
-          <Select value={String(s.every)} onValueChange={(value) => { const every = Number(value); if (isScheduleEvery(every)) set({ every }) }}>
-            <SelectTrigger size="sm" aria-label="Every N hours" className="text-[13px]">
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">{t('every')}<Select value={String(s.every)} onValueChange={(value) => { const every = Number(value); if (isScheduleEvery(every)) set({ every }) }}>
+            <SelectTrigger size="sm" aria-label={t('Every N hours')} className="text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {SCHEDULE_HOURS_OPTIONS.map((hours) => (
-                <SelectItem key={hours} value={String(hours)}>{hours} h</SelectItem>
+                <SelectItem key={hours} value={String(hours)}>{hours}{' '}{t('h')}</SelectItem>
               ))}
             </SelectContent>
-          </Select>
-          starting at 00:00
-        </div>
+          </Select>{t('starting at 00:00')}</div>
       ) : (
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          at
-          <Input
-            aria-label="Hour"
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">{t('at')}<Input
+            aria-label={t('Hour')}
             inputMode="numeric"
             value={pad(s.hour)}
             onChange={(event) => set({ hour: Math.min(23, Math.max(0, Number(event.target.value) || 0)) })}
@@ -91,7 +88,7 @@ export function EditorScheduleFields({
           />
           :
           <Input
-            aria-label="Minute"
+            aria-label={t('Minute')}
             inputMode="numeric"
             value={pad(s.minute)}
             onChange={(event) => set({ minute: Math.min(59, Math.max(0, Number(event.target.value) || 0)) })}
@@ -101,7 +98,7 @@ export function EditorScheduleFields({
         </div>
       )}
       <div className="flex items-center gap-2.5 font-mono text-xs text-soft-foreground">
-        <span>cron</span>
+        <span>{t('cron')}</span>
         <BranchChip data-slot="editor-cron">{cronOf(s)}</BranchChip>
       </div>
     </div>

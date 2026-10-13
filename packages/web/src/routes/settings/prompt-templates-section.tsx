@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ChevronDownIcon, NotebookPenIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
@@ -43,13 +44,13 @@ import { cn } from '@/lib/utils'
 /** `embedded`: rendered inside Settings → Instructions, which already provides the page chassis
  *  (padding, width), so the form draws no outer wrapper of its own. */
 export function PromptTemplatesSection({ embedded = false }: { embedded?: boolean } = {}) {
+  useLocale()
+
   const uiState = useUiState()
 
   if (uiState.isPending) {
     return (
-      <p data-slot="prompt-templates-loading" className={embedded ? 'text-[13px] text-soft-foreground' : 'p-4 text-[13px] text-soft-foreground md:p-6'}>
-        Loading prompt templates…
-      </p>
+      <p data-slot="prompt-templates-loading" className={embedded ? 'text-[13px] text-soft-foreground' : 'p-4 text-[13px] text-soft-foreground md:p-6'}>{t('Loading prompt templates…')}</p>
     )
   }
   if (uiState.isError) {
@@ -57,7 +58,7 @@ export function PromptTemplatesSection({ embedded = false }: { embedded?: boolea
       <CenteredState
         icon={<NotebookPenIcon />}
         tone="danger"
-        title="Prompt templates did not load"
+        title={t('Prompt templates did not load')}
         subtitle={uiState.error.message}
         heading="h2"
       />
@@ -70,6 +71,8 @@ export function PromptTemplatesSection({ embedded = false }: { embedded?: boolea
 }
 
 function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[]; embedded: boolean }) {
+  useLocale()
+
   const queryClient = useQueryClient()
   const skills = useSkills()
   // Already cached by the section gate above; read again here for the picker's #519 tiers.
@@ -82,7 +85,7 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
     mutationFn: (next: PromptTemplate[]) => putUiState({ promptTemplates: next }),
     onSuccess: (merged) => {
       queryClient.setQueryData(queryKeys.uiState, merged)
-      toast('Prompt templates saved')
+      toast(t('Prompt templates saved'))
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
@@ -133,14 +136,12 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
       }
     >
       <Field
-        title="Prompt templates"
-        hint="Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over, and the Inbox's “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet."
+        title={t('Prompt templates')}
+        hint={t('Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over, and the Inbox\'s “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet.')}
       >
         <div data-slot="prompt-template-list" className="flex flex-col gap-3">
           {templates.length === 0 ? (
-            <p data-slot="prompt-templates-empty" className="text-[13px] text-soft-foreground">
-              No templates. Add one below, or reset to the built-ins.
-            </p>
+            <p data-slot="prompt-templates-empty" className="text-[13px] text-soft-foreground">{t('No templates. Add one below, or reset to the built-ins.')}</p>
           ) : (
             templates.map((template) => (
               <div
@@ -151,7 +152,7 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
               >
                 <div className="flex items-center gap-2">
                   <Input
-                    aria-label={`Label for ${template.label || 'this template'}`}
+                    aria-label={t('Label for {0}', { 0: template.label || 'this template' })}
                     data-slot="prompt-template-label-input"
                     value={template.label}
                     maxLength={80}
@@ -163,14 +164,14 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
                     variant="ghost"
                     size="sm"
                     data-action="prompt-template-remove"
-                    title="Remove this template"
+                    title={t('Remove this template')}
                     onClick={() => removeTemplate(template.id)}
                   >
                     <XIcon aria-hidden="true" className="size-3.5" />
                   </Button>
                 </div>
                 <Textarea
-                  aria-label={`Text for ${template.label || 'this template'}`}
+                  aria-label={t('Text for {0}', { 0: template.label || 'this template' })}
                   data-slot="prompt-template-text-input"
                   value={template.text}
                   maxLength={PROMPT_TEMPLATE_TEXT_LIMIT}
@@ -193,7 +194,7 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
                       type="button"
                       data-slot="prompt-template-skill-chip"
                       data-skill={name}
-                      title={`Stop applying “${template.label}” automatically with ${name}`}
+                      title={t('Stop applying “{0}” automatically with {1}', { 0: template.label, 1: name })}
                       onClick={() => toggleTemplateSkill(template.id, name)}
                       className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-px font-mono text-[11px] font-medium text-foreground transition-colors hover:bg-danger/10 hover:text-danger"
                     >
@@ -212,17 +213,17 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
           className="flex flex-col gap-1.5 rounded-md border border-dashed border-border p-3"
         >
           <Input
-            aria-label="New template label"
+            aria-label={t('New template label')}
             data-slot="prompt-template-new-label"
-            placeholder='Label (e.g. "Add tests")'
+            placeholder={t('Label (e.g. "Add tests")')}
             value={newLabel}
             maxLength={80}
             onChange={(event) => setNewLabel(event.target.value)}
           />
           <Textarea
-            aria-label="New template text"
+            aria-label={t('New template text')}
             data-slot="prompt-template-new-text"
-            placeholder="The instructions to insert…"
+            placeholder={t('The instructions to insert…')}
             value={newText}
             maxLength={PROMPT_TEMPLATE_TEXT_LIMIT}
             onChange={(event) => setNewText(event.target.value)}
@@ -237,9 +238,7 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
             onClick={addTemplate}
             className="self-start"
           >
-            <PlusIcon aria-hidden="true" className="size-3.5" />
-            Add template
-          </Button>
+            <PlusIcon aria-hidden="true" className="size-3.5" />{t('Add template')}</Button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -250,9 +249,7 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
             data-action="prompt-templates-save"
             disabled={!dirty || invalid || save.isPending}
             onClick={() => save.mutate(templates)}
-          >
-            Save
-          </Button>
+          >{t('Save')}</Button>
           <Button
             type="button"
             variant="ghost"
@@ -260,13 +257,9 @@ function PromptTemplatesForm({ initial, embedded }: { initial: PromptTemplate[];
             data-action="prompt-templates-reset"
             disabled={save.isPending}
             onClick={resetToDefaults}
-          >
-            Reset to defaults
-          </Button>
+          >{t('Reset to defaults')}</Button>
           {invalid ? (
-            <p data-slot="prompt-templates-invalid" className="text-[11px] text-danger">
-              Every template needs both a label and text.
-            </p>
+            <p data-slot="prompt-templates-invalid" className="text-[11px] text-danger">{t('Every template needs both a label and text.')}</p>
           ) : null}
         </div>
       </Field>
@@ -296,6 +289,8 @@ function TemplateSkillsPicker({
   selected: readonly string[]
   onToggle: (name: string) => void
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -345,8 +340,8 @@ function TemplateSkillsPicker({
         <button
           type="button"
           data-slot="prompt-template-skills-trigger"
-          aria-label={`Apply ${label || 'this template'} automatically with a skill`}
-          title="Pick the skills this template applies itself to"
+          aria-label={t('Apply {0} automatically with a skill', { 0: label || 'this template' })}
+          title={t('Pick the skills this template applies itself to')}
           disabled={skills.length === 0}
           className={cn(
             'inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
@@ -354,14 +349,14 @@ function TemplateSkillsPicker({
           )}
         >
           <SparklesIcon aria-hidden="true" className="size-3 shrink-0 text-violet" />
-          {skills.length === 0 ? 'no skills found' : 'apply with…'}
+          {skills.length === 0 ? t('no skills found') : t('apply with…')}
           <ChevronDownIcon aria-hidden="true" className="size-2.5 shrink-0 text-soft-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={8} className="w-[336px] max-w-[calc(100vw-2rem)] p-0">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="search skills…"
+            placeholder={t('search skills…')}
             value={search}
             onValueChange={setSearch}
             onInput={() => listRef.current?.scrollTo(0, 0)}
@@ -372,15 +367,15 @@ function TemplateSkillsPicker({
             className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]"
           >
             {mostUsed.length === 0 && project.length === 0 && global.length === 0 ? (
-              <CommandEmpty>Nothing matches.</CommandEmpty>
+              <CommandEmpty>{t('Nothing matches.')}</CommandEmpty>
             ) : null}
             {mostUsed.length > 0 ? (
-              <CommandGroup heading="Most used">
+                <CommandGroup heading={t('Most used')}>
                 {mostUsed.map((skill) => skillItem(skill, isProjectSkill(skill)))}
               </CommandGroup>
             ) : null}
             {project.length > 0 ? (
-              <CommandGroup heading="Project skills">
+                <CommandGroup heading={t('Project skills')}>
                 {project.map((skill) => skillItem(skill, true))}
               </CommandGroup>
             ) : null}
@@ -396,6 +391,8 @@ function TemplateSkillsPicker({
 
 /** The Appearance/Agents sections' field chassis — same rhythm, so Settings reads as one surface. */
 function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  useLocale()
+
   return (
     <section className="flex flex-col gap-2">
       <div>

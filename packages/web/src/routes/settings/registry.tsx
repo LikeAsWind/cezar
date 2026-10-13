@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   BellIcon,
   BookmarkIcon,
@@ -93,12 +94,14 @@ export interface SettingsSection {
 /** A registry entry whose real section arrives in a later Step — routable, honest about it. */
 function comingSoon(title: string, Icon: ComponentType<SVGProps<SVGSVGElement>>): ComponentType {
   return function ComingSoonSection() {
+  useLocale()
+
     return (
       <CenteredState
         icon={<Icon />}
         tone="neutral"
         title={title}
-        subtitle="This section arrives in a later phase of the redesign."
+        subtitle={t('This section arrives in a later phase of the redesign.')}
         heading="h2"
       />
     )
@@ -109,72 +112,72 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   // ---- project scope (`/p/<projectId>/settings/…`) — settings that describe THIS repo -------
   {
     id: 'tracker',
-    title: 'Issue tracker',
-    description: 'Connect this project to Jira or Linear.',
+    get title() { return t('Issue tracker') },
+    get description() { return t('Connect this project to Jira or Linear.') },
     icon: TicketIcon,
     component: TrackerSection,
     scope: 'project',
   },
   {
     id: 'secrets',
-    title: 'Secrets',
-    description: 'Encrypted values for this project’s check steps and cezar — never for agents.',
+    get title() { return t('Secrets') },
+    get description() { return t('Encrypted values for this project’s check steps and cezar — never for agents.') },
     icon: KeyRoundIcon,
     component: ProjectSecretsSection,
     scope: 'project',
   },
   {
     id: 'integrations',
-    title: 'External integrations',
-    description: 'Third-party tools cezar installs and wires into this project — test frameworks first.',
+    get title() { return t('External integrations') },
+    get description() { return t('Third-party tools cezar installs and wires into this project — test frameworks first.') },
     icon: BlocksIcon,
     component: IntegrationsSection,
     scope: 'project',
   },
   {
     id: 'agents',
-    title: 'Agents',
-    description: 'Providers, default runner and models.',
+    get title() { return t('Agents') },
+    get description() { return t('Providers, default runner and models.') },
     icon: BotIcon,
     component: AgentsSection,
     scope: 'project',
   },
   {
     id: 'instructions',
-    title: 'Instructions',
-    description: 'What you write for the models: system prompt, branch naming, prompt templates.',
+    get title() { return t('Instructions') },
+    get description() { return t('What you write for the models: system prompt, branch naming, prompt templates.') },
     icon: MessageSquareTextIcon,
     component: InstructionsSection,
     scope: 'project',
   },
   {
     id: 'tasks',
-    title: 'Tasks',
-    description: 'Base branch, review before finishing, live titles.',
+    get title() { return t('Tasks') },
+    get description() { return t('Base branch, review before finishing, live titles.') },
     icon: ListChecksIcon,
     component: TasksSection,
     scope: 'project',
   },
   {
     id: 'agent-config',
-    title: 'Agent config',
-    description: 'Edit the coding agents’ own config files, per scope.',
+    get title() { return t('Agent config') },
+    get description() { return t('Edit the coding agents’ own config files, per scope.') },
     icon: FileCogIcon,
     component: AgentConfigSection,
     scope: 'project',
   },
   {
     id: 'worktrees',
-    title: 'Worktrees',
-    description: 'How many finished task worktrees this project keeps on disk.',
+    get title() { return t('Worktrees') },
+    get description() { return t('How many finished task worktrees this project keeps on disk.') },
     icon: FolderGit2Icon,
     component: WorktreesSection,
     scope: 'project',
   },
   {
     id: 'bookmarklets',
-    title: 'Bookmarklets',
-    description: 'Launch skills from a GitHub PR or issue.',
+    get title() { return t('Bookmarklets') },
+    get description() { return t('Launch skills from a GitHub PR or issue.') },
     icon: BookmarkIcon,
     component: BookmarkletsSection,
     scope: 'project',
@@ -182,72 +185,72 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   // ---- global scope (`/settings/global/…`) — the user and the machine, in mockup order -----
   {
     id: 'appearance',
-    title: 'Appearance',
-    description: 'Theme, accent and density.',
+    get title() { return t('Appearance') },
+    get description() { return t('Language, theme, accent and density.') },
     icon: PaletteIcon,
     component: AppearanceSection,
     scope: 'global',
   },
   {
     id: 'notifications',
-    title: 'Notifications',
-    description: 'Browser notifications when an agent needs you.',
+    get title() { return t('Notifications') },
+    get description() { return t('Browser notifications when an agent needs you.') },
     icon: BellIcon,
     component: NotificationsSection,
     scope: 'global',
   },
   {
     id: 'resources',
-    title: 'Resources',
-    description: 'Parallel tasks and per-task memory limit, across every project.',
+    get title() { return t('Resources') },
+    get description() { return t('Parallel tasks and per-task memory limit, across every project.') },
     icon: GaugeIcon,
     component: ResourcesSection,
     scope: 'global',
   },
   {
     id: 'skills',
-    title: 'Skills',
-    description: 'Updates for skills installed on this machine.',
+    get title() { return t('Skills') },
+    get description() { return t('Updates for skills installed on this machine.') },
     icon: PackageCheckIcon,
     component: SkillsSection,
     scope: 'global',
   },
   {
     id: 'workspace-secrets',
-    title: 'Secrets',
-    description: 'Encrypted values shared by every project on this machine — never for agents.',
+    get title() { return t('Secrets') },
+    get description() { return t('Encrypted values shared by every project on this machine — never for agents.') },
     icon: KeyRoundIcon,
     component: WorkspaceSecretsSection,
     scope: 'global',
   },
   {
     id: 'accounts',
-    title: 'Agent accounts',
-    description: 'Second logins, and the agent and models a project uses when it has chosen none.',
+    get title() { return t('Agent accounts') },
+    get description() { return t('Second logins, and the agent and models a project uses when it has chosen none.') },
     icon: IdCardIcon,
     component: AccountsSection,
     scope: 'global',
   },
   {
     id: 'projects',
-    title: 'Projects',
-    description: 'The workspace registry and where GitHub checkouts land.',
+    get title() { return t('Projects') },
+    get description() { return t('The workspace registry and where GitHub checkouts land.') },
     icon: FoldersIcon,
     component: ProjectsSection,
     scope: 'global',
   },
   {
     id: 'privacy',
-    title: 'Privacy',
-    description: 'Whether cezar shares usage data with its maintainers. Off unless you turn it on.',
+    get title() { return t('Privacy') },
+    get description() { return t('Whether cezar shares usage data with its maintainers. Off unless you turn it on.') },
     icon: ShieldCheckIcon,
     component: PrivacySection,
     scope: 'global',
   },
   {
     id: 'keyboard',
-    title: 'Keyboard',
-    description: 'Shortcuts.',
+    get title() { return t('Keyboard') },
+    get description() { return t('Shortcuts.') },
     icon: KeyboardIcon,
     component: comingSoon('Keyboard', KeyboardIcon),
     scope: 'global',

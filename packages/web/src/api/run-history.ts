@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
@@ -218,7 +219,7 @@ export function useRunHistory(runId: string | undefined): RunHistoryState {
         new Promise<RunHistoryPage>((_, reject) => {
           timeout = setTimeout(() => {
             controller.abort()
-            reject(new Error('history compaction timed out'))
+            reject(new Error(t('history compaction timed out')))
           }, COMPACTION_TIMEOUT_MS)
         }),
       ])

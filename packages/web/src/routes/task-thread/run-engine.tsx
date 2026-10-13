@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useAgentProfiles, useConfig, useRunnerModels } from '@/api/queries'
 import { DEFAULT_AGENT_ACCOUNT_ID, type ApiRun } from '@open-mercato/cezar-api-client'
 import { PickerPill } from '@/components/picker-pill'
@@ -48,18 +49,20 @@ export function useRunEngine(run: ApiRun) {
  * Continue can choose.
  */
 export function RunEnginePills({ run }: { run: ApiRun }) {
+  useLocale()
+
   const engine = useRunEngine(run)
   // The catalog only turns the pinned id into its display name ("opus" → "Opus 5.5"), so the chip
   // reads exactly as the editable one will once the session closes.
   const catalog = useRunnerModels(engine.runner)
   const models = modelsForRunner(engine.runner, catalog.data, [run.model])
   const modelLabel = models.find((preset) => preset.id === engine.model)?.label ?? engine.model
-  const hint = 'The session’s engine — pick another when you continue it'
+  const hint = t('The session’s engine — pick another when you continue it')
   return (
     <div data-slot="run-engine" className="flex flex-wrap items-center gap-1.5">
       <PickerPill
         slot="run-engine-runner"
-        ariaLabel="Agent"
+        ariaLabel={t('Agent')}
         label={engine.account && engine.account !== 'default' ? `${engine.runner} · ${engine.account}` : engine.runner}
         value={engine.runner}
         options={[]}
@@ -69,13 +72,13 @@ export function RunEnginePills({ run }: { run: ApiRun }) {
       />
       <PickerPill
         slot="run-engine-model"
-        ariaLabel="Model"
+        ariaLabel={t('Model')}
         label={modelLabel}
         value={engine.model}
         options={[]}
         onPick={() => {}}
         readOnly
-        hint={engine.identity ? `${hint} (served as ${engine.identity})` : hint}
+        hint={engine.identity ? t('{0} (served as {1})', { 0: hint, 1: engine.identity }) : hint}
       />
     </div>
   )

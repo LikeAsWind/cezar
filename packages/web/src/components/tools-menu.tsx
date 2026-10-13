@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon, SettingsIcon } from 'lucide-react'
 import { Link } from '@/lib/project-router'
 
@@ -44,12 +45,12 @@ const isRunner = (check: BackendCheck): boolean => Object.hasOwn(RUNNER_NAMES, c
 export function toolsBlocker(health: HealthResponse): string | null {
   const runners = health.checks.filter(isRunner)
   if (runners.length && !runners.some((check) => check.available)) {
-    return 'no agent CLI found — install one to run tasks'
+    return t('no agent CLI found — install one to run tasks')
   }
   // Absent from `checks[]` (an older server) means unprobed, not broken: nothing to claim.
   const preferred = runners.find((check) => check.name === health.defaultRunner)
   if (preferred && !preferred.available) {
-    return `default runner (${health.defaultRunner}) not found`
+    return t('default runner ({0}) not found', { 0: health.defaultRunner })
   }
   return null
 }
@@ -61,7 +62,7 @@ export function toolsTooltip(health: HealthResponse): string {
   const blocker = toolsBlocker(health)
   if (blocker) return `${base} · ${blocker}`
   const missing = health.checks.filter((check) => !check.available).map((check) => check.name)
-  return missing.length ? `${base} · optional: ${missing.join(', ')} not installed` : base
+  return missing.length ? t('{0} · optional: {1} not installed', { 0: base, 1: missing.join(', ') }) : base
 }
 
 /**
@@ -72,12 +73,14 @@ export function toolsTooltip(health: HealthResponse): string {
 export function forgeNote(health: HealthResponse): string | null {
   if (health.forge?.available) return null
   if (!health.forge) {
-    return 'No GitHub remote detected — the GitHub tab is hidden. Every plain-git feature still works.'
+    return t('No GitHub remote detected — the GitHub tab is hidden. Every plain-git feature still works.')
   }
-  return `GitHub is unreachable — ${health.forge.reason ?? 'unknown reason'}. The GitHub tab is hidden until it comes back.`
+  return t('GitHub is unreachable — {0}. The GitHub tab is hidden until it comes back.', { 0: health.forge.reason ?? 'unknown reason' })
 }
 
 export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
+  useLocale()
+
   if (!health) return null
 
   // Green when cez can actually work: at least one agent CLI is present and the default runner
@@ -93,9 +96,7 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
           title={toolsTooltip(health)}
           className="flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <StatusDot tone={blocker ? 'pending' : 'success'} />
-          Tools
-          <ChevronDownIcon className="size-[11px]" aria-hidden="true" />
+          <StatusDot tone={blocker ? 'pending' : 'success'} />{t('Tools')}<ChevronDownIcon className="size-[11px]" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
 
@@ -106,9 +107,7 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
         data-slot="tools-menu-content"
         className="w-[240px]"
       >
-        <DropdownMenuLabel className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
-          Installed tools
-        </DropdownMenuLabel>
+        <DropdownMenuLabel className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">{t('Installed tools')}</DropdownMenuLabel>
         {health.checks.map((check) =>
           check.available ? <AvailableToolRow key={check.name} check={check} /> : <UnavailableToolRow key={check.name} check={check} />
         )}
@@ -127,9 +126,7 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
             data-slot="tools-settings"
             className="gap-2 text-[12.5px] text-muted-foreground"
           >
-            <SettingsIcon className="size-3.5" aria-hidden="true" />
-            Tool settings
-          </Link>
+            <SettingsIcon className="size-3.5" aria-hidden="true" />{t('Tool settings')}</Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -139,6 +136,8 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
 /** A present tool: dot, mono name, right-aligned version. Informational, not interactive —
  *  there is nothing to do to a tool that works. */
 function AvailableToolRow({ check }: { check: BackendCheck }) {
+  useLocale()
+
   return (
     <div
       data-slot="tool-row"
@@ -152,7 +151,7 @@ function AvailableToolRow({ check }: { check: BackendCheck }) {
         data-slot="tool-version"
         className="ml-auto font-mono text-[11.5px] font-medium text-muted-foreground tabular-nums"
       >
-        {check.version ?? 'not found'}
+        {check.version ?? t('not found')}
       </span>
     </div>
   )
@@ -164,6 +163,8 @@ function AvailableToolRow({ check }: { check: BackendCheck }) {
  * Agents. The whole row is the link, so the DropdownMenuItem closes the menu on navigation.
  */
 function UnavailableToolRow({ check }: { check: BackendCheck }) {
+  useLocale()
+
   return (
     <DropdownMenuItem asChild>
       <Link
@@ -179,9 +180,7 @@ function UnavailableToolRow({ check }: { check: BackendCheck }) {
           <span
             data-slot="tool-version"
             className="ml-auto font-mono text-[11.5px] font-medium text-muted-foreground"
-          >
-            not found
-          </span>
+          >{t('not found')}</span>
         </span>
         <span className="flex items-end justify-between gap-3 pl-[15px]">
           {check.hint ? (
@@ -189,9 +188,7 @@ function UnavailableToolRow({ check }: { check: BackendCheck }) {
               {check.hint}
             </span>
           ) : null}
-          <span data-slot="tool-setup" className="ml-auto shrink-0 text-[11.5px] font-semibold text-violet">
-            Set up →
-          </span>
+          <span data-slot="tool-setup" className="ml-auto shrink-0 text-[11.5px] font-semibold text-violet">{t('Set up →')}</span>
         </span>
       </Link>
     </DropdownMenuItem>

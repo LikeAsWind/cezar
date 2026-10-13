@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
@@ -60,7 +61,7 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
     try {
       const failure = await agent.send(prompt)
       if (failure) toast(failure, { tone: 'danger' })
-      else toast(`${reopened ? 'Task reopened' : 'Sent to the task'} — ${doing}${prNumber ? ` in PR #${prNumber}` : ''}`)
+      else toast(`${reopened ? t('Task reopened') : t('Sent to the task')} — ${doing}${prNumber ? t(' in PR #{0}', { 0: prNumber }) : ''}`)
     } finally {
       setPrompting(false)
     }
@@ -75,8 +76,8 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
     onSuccess: (result) => {
       toast(
         result.upstreamSet
-          ? `Pushed ${result.branch} to ${result.remote} (upstream set)`
-          : `Pushed ${result.branch} to ${result.remote}`,
+          ? t('Pushed {0} to {1} (upstream set)', { 0: result.branch, 1: result.remote })
+          : t('Pushed {0} to {1}', { 0: result.branch, 1: result.remote }),
       )
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.gitStatus(run.id) })
     },
@@ -85,7 +86,7 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
   const createPr = useMutation({
     mutationFn: (draft: boolean) => createRunPr(run.id, { draft }),
     onSuccess: (result, draft) => {
-      toast(`${draft ? 'Draft PR' : 'PR'} created — ${result.url}`)
+      toast(t('{0} created — {1}', { 0: draft ? 'Draft PR' : 'PR', 1: result.url }))
       void invalidateRuns() // the record now carries pullRequestUrl → the policy moves past Create PR
     },
     onError,

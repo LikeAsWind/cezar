@@ -55,6 +55,18 @@ describe('the ui-state API — skillUsage (#408)', () => {
     expect(await res.json()).toEqual({});
   });
 
+  it('saves the global interface language without dropping other workspace preferences', async () => {
+    const url = '/api/v1/workspace/ui-state';
+    const save = (body: unknown) => apiRequest(app, url, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    expect((await save({ appearance: { accent: 'violet' }, locale: 'zh-CN' })).status).toBe(200);
+    expect((await save({ locale: 'en' })).status).toBe(200);
+    expect(await (await apiRequest(app, url)).json()).toMatchObject({ locale: 'en', appearance: { accent: 'violet' } });
+    expect((await save({ locale: 'fr' })).status).toBe(400);
+    expect(await (await apiRequest(app, url)).json()).toMatchObject({ locale: 'en' });
+  });
+
   it('keeps a legacy workspace skill selection until this project saves its own', async () => {
     mkdirSync(dirname(legacyWorkspaceStatePath), { recursive: true });
     writeFileSync(legacyWorkspaceStatePath, JSON.stringify({ importedSkills: ['om-fix'] }));

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMemo, useState } from 'react'
 
 import { useRefreshSelfUpdateDevelopment, useSelfUpdateDevelopment } from '@/api/queries'
@@ -31,6 +32,8 @@ export function DevelopmentPanel({
   onApply: (target: string) => void
   applying: boolean
 }) {
+  const locale = useLocale()
+
   const dev = useSelfUpdateDevelopment()
   const refresh = useRefreshSelfUpdateDevelopment()
   const [chosenTab, setTab] = useState<Tab>('worktrees')
@@ -58,7 +61,7 @@ export function DevelopmentPanel({
               .filter(Boolean)
               .some((field) => field!.toLowerCase().includes(needle)),
       ),
-    [checkouts, needle],
+    [checkouts, needle, locale],
   )
   const shownPulls = useMemo(
     () =>
@@ -71,7 +74,7 @@ export function DevelopmentPanel({
               field.toLowerCase().includes(needle),
             ),
       ),
-    [pulls, needle, showUnbuilt],
+    [pulls, needle, showUnbuilt, locale],
   )
   const unbuilt = (pulls?.items ?? []).filter((pull) => !pull.version).length
 
@@ -83,19 +86,19 @@ export function DevelopmentPanel({
   const needsBuild = !!pickedCheckout && (!pickedCheckout.built || pickedCheckout.stale)
   const targetIsActive = !!target && target === active?.id && !needsBuild
   const actionLabel = pickedPull && !pickedPull.installed
-    ? 'Install & restart'
+    ? t('Install & restart')
     : needsBuild
-      ? `${pickedCheckout!.built ? 'Rebuild' : 'Build'} & ${pickedCheckout!.id === active?.id ? 'restart' : 'switch'}`
-      : 'Switch & restart'
+      ? `${pickedCheckout!.built ? t('Rebuild') : t('Build')} & ${pickedCheckout!.id === active?.id ? 'restart' : 'switch'}`
+      : t('Switch & restart')
 
   return (
     <div data-slot="self-update-development" className="flex min-w-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <div role="tablist" aria-label="Development builds" className="flex rounded-md border border-border bg-muted/40 p-0.5">
+        <div role="tablist" aria-label={t('Development builds')} className="flex rounded-md border border-border bg-muted/40 p-0.5">
           {(
             [
-              ...(hasWorktrees ? [{ value: 'worktrees', label: 'Worktrees', count: checkouts.length } as const] : []),
-              { value: 'pulls', label: 'Pull requests', count: (pulls?.items.length ?? 0) - unbuilt } as const,
+              ...(hasWorktrees ? [{ value: 'worktrees', label: t('Worktrees'), count: checkouts.length } as const] : []),
+              { value: 'pulls', label: t('Pull requests'), count: (pulls?.items.length ?? 0) - unbuilt } as const,
             ]
           ).map((entry) => (
             <button
@@ -118,15 +121,15 @@ export function DevelopmentPanel({
           ))}
         </div>
         <Button variant="ghost" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending || dev.isFetching}>
-          {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+          {refresh.isPending ? t('Refreshing…') : t('Refresh')}
         </Button>
       </div>
 
       <Input
-        aria-label="Filter"
+        aria-label={t('Filter')}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder={tab === 'worktrees' ? 'Filter by task, branch, commit or #PR' : 'Filter by #number, title, branch or author'}
+        placeholder={tab === 'worktrees' ? t('Filter by task, branch, commit or #PR') : t('Filter by #number, title, branch or author')}
         className="h-8 text-[13px]"
       />
 
@@ -134,13 +137,13 @@ export function DevelopmentPanel({
           may only hold options. */}
       <div className="max-h-72 min-h-24 overflow-y-auto rounded-md border border-border">
         {dev.isPending ? (
-          <p className="px-3 py-3 text-[12.5px] text-muted-foreground">Looking for worktrees and pull requests…</p>
+          <p className="px-3 py-3 text-[12.5px] text-muted-foreground">{t('Looking for worktrees and pull requests…')}</p>
         ) : dev.error ? (
           <p className="px-3 py-3 text-[12.5px] text-danger">{dev.error.message}</p>
         ) : tab === 'worktrees' ? (
           <>
-            {shownCheckouts.length === 0 ? <p className="px-3 py-3 text-[12.5px] text-muted-foreground">Nothing matches.</p> : null}
-            <div role="listbox" aria-label="Worktrees">
+            {shownCheckouts.length === 0 ? <p className="px-3 py-3 text-[12.5px] text-muted-foreground">{t('Nothing matches.')}</p> : null}
+            <div role="listbox" aria-label={t('Worktrees')}>
               {shownCheckouts.map((checkout) => (
                 <CheckoutRow
                   key={checkout.worktree}
@@ -158,13 +161,13 @@ export function DevelopmentPanel({
             {pulls?.available && shownPulls.length === 0 ? (
               <p className="px-3 py-3 text-[12.5px] text-muted-foreground">
                 {pulls.items.length === 0
-                  ? `No open pull requests on ${pulls.repo}.`
+                  ? t('No open pull requests on {0}.', { 0: pulls.repo })
                   : needle
-                    ? 'Nothing matches.'
-                    : 'No open pull request has a preview build.'}
+                    ? t('Nothing matches.')
+                    : t('No open pull request has a preview build.')}
               </p>
             ) : null}
-            <div role="listbox" aria-label="Pull requests">
+            <div role="listbox" aria-label={t('Pull requests')}>
               {shownPulls.map((pull) => (
                 <PullRow
                   key={pull.number}
@@ -182,8 +185,8 @@ export function DevelopmentPanel({
                 className="w-full border-t border-border px-3 py-2 text-left text-[12px] text-muted-foreground hover:text-foreground"
               >
                 {showUnbuilt
-                  ? `Hide the ${unbuilt} without a preview build`
-                  : `${unbuilt} more without a preview build (forks, CI not green yet) — show`}
+                  ? t('Hide the {0} without a preview build', { 0: unbuilt })
+                  : t('{0} more without a preview build (forks, CI not green yet) — show', { 0: unbuilt })}
               </button>
             ) : null}
           </>
@@ -194,13 +197,13 @@ export function DevelopmentPanel({
         <p className="min-w-0 truncate text-[11.5px] text-muted-foreground" title={pickedCheckout?.worktree}>
           {pickedCheckout
             ? needsBuild
-              ? `${pickedCheckout.built ? 'Built before its last commit' : 'Not built yet'} — runs npm run build in ${pickedCheckout.worktree} first (about a minute).`
+              ? t('{0} — runs npm run build in {1} first (about a minute).', { 0: pickedCheckout.built ? 'Built before its last commit' : 'Not built yet', 1: pickedCheckout.worktree })
               : pickedCheckout.worktree
             : pickedPull
-              ? `Installs ${pickedPull.version} from npm.`
+              ? t('Installs {0} from npm.', { 0: pickedPull.version })
               : tab === 'worktrees'
-                ? 'Linked, not copied: a worktree that is not built, or built before its last commit, is built before the switch.'
-                : 'Preview builds CI publishes for green same-repo pull requests.'}
+                ? t('Linked, not copied: a worktree that is not built, or built before its last commit, is built before the switch.')
+                : t('Preview builds CI publishes for green same-repo pull requests.')}
         </p>
         <Button
           size="sm"
@@ -228,6 +231,8 @@ function Row({
   title?: string
   children: React.ReactNode
 }) {
+  useLocale()
+
   return (
     <div
       role="option"
@@ -264,17 +269,19 @@ function CheckoutRow({
   selected: boolean
   onSelect: () => void
 }) {
+  useLocale()
+
   const headline = checkout.task?.title ?? checkout.commit?.subject ?? checkout.branch
   return (
     <Row selected={selected} disabled={!checkout.id} onSelect={onSelect} title={checkout.worktree}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{headline}</span>
         {checkout.pr ? <Badge variant="outline">#{checkout.pr}</Badge> : null}
-        {active ? <Badge variant="secondary">current</Badge> : null}
+        {active ? <Badge variant="secondary">{t('current')}</Badge> : null}
         {!checkout.built ? (
-          <Badge variant="outline">not built</Badge>
+          <Badge variant="outline">{t('not built')}</Badge>
         ) : checkout.stale ? (
-          <Badge variant="outline">needs rebuild</Badge>
+          <Badge variant="outline">{t('needs rebuild')}</Badge>
         ) : null}
       </div>
       <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-muted-foreground">
@@ -282,10 +289,9 @@ function CheckoutRow({
         {checkout.task ? <span className="shrink-0">· {checkout.task.status}</span> : null}
         {checkout.commit ? (
           <span className="min-w-0 truncate">
-            · {checkout.commit.sha} {checkout.task ? checkout.commit.subject : ''} · {shortAge(checkout.commit.at)} ago
-          </span>
+            · {checkout.commit.sha} {checkout.task ? checkout.commit.subject : ''} · {shortAge(checkout.commit.at)}{' '}{t('ago')}</span>
         ) : null}
-        {checkout.builtAt ? <span className="shrink-0">· built {shortAge(checkout.builtAt)} ago</span> : null}
+        {checkout.builtAt ? <span className="shrink-0">{t('· built')}{' '}{shortAge(checkout.builtAt)}{' '}{t('ago')}</span> : null}
       </div>
     </Row>
   )
@@ -302,26 +308,28 @@ function PullRow({
   selected: boolean
   onSelect: () => void
 }) {
+  useLocale()
+
   return (
     <Row selected={selected} disabled={!pull.version} onSelect={onSelect} title={pull.url}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="shrink-0 text-[13px] text-muted-foreground">#{pull.number}</span>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{pull.title}</span>
-        {pull.draft ? <Badge variant="outline">draft</Badge> : null}
+        {pull.draft ? <Badge variant="outline">{t('draft')}</Badge> : null}
         {active ? (
-          <Badge variant="secondary">current</Badge>
+          <Badge variant="secondary">{t('current')}</Badge>
         ) : !pull.version ? (
-          <Badge variant="outline">no build</Badge>
+          <Badge variant="outline">{t('no build')}</Badge>
         ) : pull.installed ? (
-          <Badge variant="outline">installed</Badge>
+          <Badge variant="outline">{t('installed')}</Badge>
         ) : null}
       </div>
       <div className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-muted-foreground">
         {pull.author ? <span className="shrink-0">{pull.author}</span> : null}
         <span className="min-w-0 truncate font-mono">· {pull.branch}</span>
-        <span className="shrink-0">· updated {shortAge(pull.updatedAt)} ago</span>
+        <span className="shrink-0">{t('· updated')}{' '}{shortAge(pull.updatedAt)}{' '}{t('ago')}</span>
         {pull.version ? (
-          <span className="shrink-0">· build {pull.publishedAt ? `${shortAge(pull.publishedAt)} ago` : pull.version}</span>
+          <span className="shrink-0">{t('· build')}{' '}{pull.publishedAt ? t('{0} ago', { 0: shortAge(pull.publishedAt) }) : pull.version}</span>
         ) : null}
       </div>
     </Row>

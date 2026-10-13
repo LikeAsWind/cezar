@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ArrowLeftIcon, GitCommitHorizontalIcon, SearchXIcon, TriangleAlertIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router'
@@ -23,6 +24,8 @@ import { DiffViewToggles } from '../task-git/diff-controls'
  * same `<Diff>` facade as everything else. Same mobile rule: unified+wrap forced below `md`.
  */
 export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
+  useLocale()
+
   const { sha } = useParams<{ sha: string }>()
   if (sha) return <CommitDiffView sha={sha} />
 
@@ -32,8 +35,8 @@ export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
         icon={<GitCommitHorizontalIcon />}
         tone="neutral"
         heading="h2"
-        title="No commits yet"
-        subtitle="The log is empty — this repository has no commits to show."
+        title={t('No commits yet')}
+        subtitle={t('The log is empty — this repository has no commits to show.')}
       />
     )
   }
@@ -53,6 +56,8 @@ export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
 }
 
 function CommitDiffView({ sha }: { sha: string }) {
+  useLocale()
+
   const commit = useRepoCommit(sha)
   const desktop = useIsDesktop()
   const [mode, setMode] = useState<DiffMode>('unified')
@@ -69,9 +74,7 @@ function CommitDiffView({ sha }: { sha: string }) {
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6">
         <Button asChild variant="ghost" size="sm" data-slot="commit-back">
           <Link to="/git/commits">
-            <ArrowLeftIcon aria-hidden="true" />
-            All commits
-          </Link>
+            <ArrowLeftIcon aria-hidden="true" />{t('All commits')}</Link>
         </Button>
         {commit.data ? <DiffStatLabel stat={commit.data.stat} /> : null}
         <span className="ml-auto hidden items-center gap-1 md:flex">
@@ -80,15 +83,13 @@ function CommitDiffView({ sha }: { sha: string }) {
       </div>
 
       {commit.isPending ? (
-        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading commit…
-        </p>
+        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">{t('Loading commit…')}</p>
       ) : commit.isError ? (
         <CenteredState
           icon={refused ? <SearchXIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'Commit not found' : 'Could not load the commit'}
+          title={refused ? t('Commit not found') : t('Could not load the commit')}
           subtitle={commit.error.message}
         />
       ) : (
@@ -105,8 +106,8 @@ function CommitDiffView({ sha }: { sha: string }) {
               icon={<GitCommitHorizontalIcon />}
               tone="neutral"
               heading="h2"
-              title="No file changes"
-              subtitle="This commit carries no diff of its own — a merge commit's changes live on the commits it merged."
+              title={t('No file changes')}
+              subtitle={t('This commit carries no diff of its own — a merge commit\'s changes live on the commits it merged.')}
             />
           ) : (
             <div className="px-4 py-4 [--diff-sticky-top:7rem] md:px-6">

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { FileIcon, XIcon } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -24,6 +25,8 @@ export function DiffCommentChips({
    *  do nothing, scrolls the diff to the comment's file instead. Absent, it links to the tab. */
   onOpen?: (comment: DiffComment) => void
 }) {
+  useLocale()
+
   if (comments.length === 0) return null
   return (
     // The cockpit's own tooltip, not the browser's `title`: themed, shown on keyboard focus as well
@@ -57,7 +60,7 @@ export function DiffCommentChips({
                     type="button"
                     onClick={() => onOpen(comment)}
                     className="min-w-0 truncate px-2 font-medium hover:underline"
-                    aria-label={`Show comment on ${comment.path} ${where}`}
+                    aria-label={t('Show comment on {0} {1}', { 0: comment.path, 1: where })}
                   >
                     {label}
                   </button>
@@ -71,14 +74,14 @@ export function DiffCommentChips({
                       commentId: comment.id,
                     })}
                     className="min-w-0 truncate px-2 font-medium hover:underline"
-                    aria-label={`Comment on ${comment.path} ${where}`}
+                    aria-label={t('Comment on {0} {1}', { 0: comment.path, 1: where })}
                   >
                     {label}
                   </Link>
                 )}
                 <button
                   type="button"
-                  aria-label={`Remove comment on ${name} ${where}`}
+                  aria-label={t('Remove comment on {0} {1}', { 0: name, 1: where })}
                   onClick={() => onRemove(comment.id)}
                   className="flex h-full items-center px-1.5 text-soft-foreground hover:bg-muted hover:text-foreground"
                 >

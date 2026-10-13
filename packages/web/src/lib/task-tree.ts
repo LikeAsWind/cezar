@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 /**
  * Task dispatch, as a tree (spec `.ai/specs/2026-09-10-dispatch.md`).
  *
@@ -151,7 +152,7 @@ export function taskTreeRows<T extends TaskTreeInput>(
 /** "3 subtasks" — the count a parent row prints, or null when the run dispatched nothing. */
 export function subtaskLabel(childCount: number): string | null {
   if (childCount <= 0) return null
-  return `${childCount} subtask${childCount === 1 ? '' : 's'}`
+  return t('{0} subtask{1}', { 0: childCount, 1: childCount === 1 ? '' : 's' })
 }
 
 /**

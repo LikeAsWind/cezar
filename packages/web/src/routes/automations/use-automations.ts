@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
@@ -72,10 +73,10 @@ export function useAutomationActions(data: AutomationsResponse | undefined): Aut
     mutationFn: async (automation: AutomationListEntry) => {
       if (automation.kind === 'schedule') {
         await runAutomationNow(automation.id)
-        toast(`Started "${automation.name}" — the task is queued.`)
+        toast(t('Started "{0}" — the task is queued.', { 0: automation.name }))
       } else {
         await checkAutomation(automation.id, 'execute')
-        toast(`Checking events for "${automation.name}" now.`)
+        toast(t('Checking events for "{0}" now.', { 0: automation.name }))
       }
     },
     onSuccess: () => void refresh(),
@@ -84,7 +85,7 @@ export function useAutomationActions(data: AutomationsResponse | undefined): Aut
   const preview = useMutation({
     mutationFn: async (automation: AutomationListEntry) => {
       await checkAutomation(automation.id, 'preview')
-      toast(`Preview queued for "${automation.name}" — no tasks will launch. See the execution log for results.`)
+      toast(t('Preview queued for "{0}" — no tasks will launch. See the execution log for results.', { 0: automation.name }))
     },
     onSuccess: () => void refresh(),
     onError: fail,
@@ -110,7 +111,7 @@ export function useAutomationActions(data: AutomationsResponse | undefined): Aut
       return createAutomation(body)
     },
     onSuccess: (created) => {
-      toast(`Duplicated as "${created.automation.name}", paused.`)
+      toast(t('Duplicated as "{0}", paused.', { 0: created.automation.name }))
       void refresh()
     },
     onError: fail,
@@ -150,8 +151,8 @@ export function useAutomationActions(data: AutomationsResponse | undefined): Aut
 export async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
-    toast('Copied to the clipboard.')
+    toast(t('Copied to the clipboard.'))
   } catch {
-    toast('Copy failed — select the text to copy it.', { tone: 'danger' })
+    toast(t('Copy failed — select the text to copy it.'), { tone: 'danger' })
   }
 }

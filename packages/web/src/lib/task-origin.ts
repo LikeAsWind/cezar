@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import * as React from 'react'
 
 /**
@@ -20,9 +21,9 @@ export type TaskOrigin = 'regular' | 'automation' | 'all'
 export const DEFAULT_TASK_ORIGIN: TaskOrigin = 'regular'
 
 export const TASK_ORIGIN_OPTIONS: readonly { value: TaskOrigin; label: string }[] = [
-  { value: 'regular', label: 'Regular' },
-  { value: 'automation', label: 'Automations' },
-  { value: 'all', label: 'All' },
+  { value: 'regular', get label() { return t('Regular') } },
+  { value: 'automation', get label() { return t('Automations') } },
+  { value: 'all', get label() { return t('All') } },
 ]
 
 export const TASK_ORIGIN_STORAGE_KEY = 'cez-task-origin'

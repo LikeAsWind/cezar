@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useParams } from 'react-router'
 
 import { useRun, useRunHandoff } from '@/api/queries'
@@ -12,6 +13,8 @@ import { RunHeader } from './run-header'
  * above the thread; it is content, not an action, so it gets a tab and the whole page to read in.
  */
 export function TaskNotesRoute() {
+  useLocale()
+
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
 
@@ -28,19 +31,19 @@ export function TaskNotesRoute() {
 }
 
 function NotesBody({ runId }: { runId: string }) {
+  useLocale()
+
   const handoff = useRunHandoff(runId)
   return (
     <div data-slot="notes-panel">
       {handoff.isPending ? (
-        <p className="text-xs text-soft-foreground">Loading notes…</p>
+        <p className="text-xs text-soft-foreground">{t('Loading notes…')}</p>
       ) : handoff.isError ? (
         <p className="text-xs text-danger">{handoff.error.message}</p>
       ) : handoff.data.trim().length > 0 ? (
         <Markdown>{handoff.data}</Markdown>
       ) : (
-        <p className="text-xs text-soft-foreground">
-          No notes yet — the handoff file is seeded when the task starts.
-        </p>
+        <p className="text-xs text-soft-foreground">{t('No notes yet — the handoff file is seeded when the task starts.')}</p>
       )}
     </div>
   )

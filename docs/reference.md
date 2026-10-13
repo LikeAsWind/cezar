@@ -700,6 +700,19 @@ works and how to redeploy new versions.
 
 ## Configuration (optional)
 
+### Interface language
+
+The cockpit defaults to Simplified Chinese. Switch between **简体中文** and
+**English** in global **Settings → Appearance → Interface language**
+(**设置 → 外观 → 界面语言**). The preference is shared by the workspace and saved
+as `locale` in `~/.cezar/ui-state.json`; a browser mirror (`cez-locale`) prevents
+an incorrect language on first paint. Switching preserves unsent form drafts.
+User content, source code, commands and agent output keep their original language.
+
+Fixed UI messages live in `packages/web/src/lib/i18n/zh-CN.json`, keyed by the
+English source. Use `t(source, values)` for messages, numbered placeholders for
+dynamic values, and `useLocale()` in components that render localized text.
+
 Zero config is the default — everything below is opt-in via
 `.ai/cezar/config.json` (a missing or invalid file simply uses the defaults, and
 never blocks startup):

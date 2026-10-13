@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 import * as React from 'react'
 
@@ -48,7 +49,7 @@ export function FacetFilter({
   onToggle,
   onClear,
   searchPlaceholder,
-  emptyLabel = 'Nothing to filter by',
+  emptyLabel = t('Nothing to filter by'),
 }: {
   /** `data-slot` suffix, and the id prefix for tests. */
   slot: string
@@ -62,6 +63,8 @@ export function FacetFilter({
    *  to filter by, and saying so beats an empty box. */
   emptyLabel?: string
 }) {
+  useLocale()
+
   const [open, setOpen] = React.useState(false)
   const active = selected.length > 0
   // What the chip says once it is narrowing something: the single value by name (which is the
@@ -69,7 +72,7 @@ export function FacetFilter({
   const summary =
     selected.length === 1
       ? (options.find((option) => option.value === selected[0])?.label ?? selected[0])
-      : `${selected.length} selected`
+      : t('{0} selected', { 0: selected.length })
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -78,7 +81,7 @@ export function FacetFilter({
           type="button"
           data-slot={`facet-${slot}`}
           data-active={active ? 'true' : undefined}
-          aria-label={`Filter by ${label.toLowerCase()}`}
+          aria-label={t('Filter by {0}', { 0: label.toLowerCase() })}
           className={cn(
             'inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
             active && 'border-violet/40 bg-violet/10 text-foreground',
@@ -94,7 +97,7 @@ export function FacetFilter({
           {/* Past a handful of options the list is only usable if it can be typed at; below that
               the input costs one row and is ignored. Shown unconditionally so the control does
               not change shape as a workspace grows. */}
-          <CommandInput placeholder={searchPlaceholder ?? `Search ${label.toLowerCase()}…`} />
+          <CommandInput placeholder={searchPlaceholder ?? t('Search {0}…', { 0: label.toLowerCase() })} />
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
@@ -138,8 +141,7 @@ export function FacetFilter({
               data-action={`facet-${slot}-clear`}
               onClick={() => onClear()}
               className="w-full rounded-sm px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              Clear {label.toLowerCase()}
+            >{t('Clear')}{' '}{label.toLowerCase()}
             </button>
           </div>
         ) : null}
@@ -172,6 +174,8 @@ export function ToggleChip({
    *  filters read as the same vocabulary. */
   tone?: 'neutral' | 'tag'
 }) {
+  useLocale()
+
   return (
     <button
       type="button"
@@ -218,5 +222,7 @@ export function SegmentedControl<T extends string>({
   options: readonly { value: T; label: string }[]
   onChange: (value: T) => void
 }) {
+  useLocale()
+
   return <Segmented slot={slot} label={label} value={value} options={options} onChange={onChange} allowRelease />
 }

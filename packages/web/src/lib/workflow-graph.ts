@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import dagre from '@dagrejs/dagre'
 import type { WorkflowGraph, WorkflowGraphNode, WorkflowStepDef } from '@open-mercato/cezar-api-client'
 
@@ -163,13 +164,13 @@ export function newNode(type: GraphNodeType, taken: Iterable<string>): WorkflowG
     case 'agent':
       return { id: uniqueId('agent', taken), type, prompt: '{{task}}' }
     case 'gate.human':
-      return { id: uniqueId('gate', taken), type, message: 'Approve the changes for {{task}}?' }
+      return { id: uniqueId('gate', taken), type, message: t('Approve the changes for {{task}}?') }
     case 'ask-user':
       return { id: uniqueId('ask', taken), type, question: 'What should I do next?' }
     case 'dispatch':
       return { id: uniqueId('subtask', taken), type, prompt: '{{task}}' }
     case 'git.commit':
-      return { id: uniqueId('commit', taken), type, message: 'chore: {{task}}' }
+      return { id: uniqueId('commit', taken), type, message: t('chore: {{task}}') }
     case 'github.draft-pr':
       return { id: uniqueId('pr', taken), type }
     case 'github.wait-ci':
@@ -890,5 +891,5 @@ export function roundedPath(points: readonly { x: number; y: number }[], r = 12)
     d += ` L ${a.x} ${a.y} Q ${c.x} ${c.y} ${b.x} ${b.y}`
   }
   const last = points[points.length - 1]!
-  return `${d} L ${last.x} ${last.y}`
+  return t('{0} L {1} {2}', { 0: d, 1: last.x, 2: last.y })
 }

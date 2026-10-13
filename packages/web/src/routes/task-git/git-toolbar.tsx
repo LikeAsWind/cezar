@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import {
   ChevronDownIcon,
   GitCommitHorizontalIcon,
@@ -53,6 +54,8 @@ export function GitToolbar({
   /** Present only when the diff has a Markdown file to preview — see `DiffViewToggles`. */
   onPreviewChange?: (preview: boolean) => void
 }) {
+  useLocale()
+
   return (
     <div
       data-slot="git-toolbar"
@@ -86,6 +89,8 @@ export function GitToolbar({
  * is "next" is decided there, never here.
  */
 export function GitActions({ action, onAction }: { action: GitAction | null; onAction: (id: GitActionId) => void }) {
+  useLocale()
+
   if (!action) return null
   const alternatives = action.alternatives ?? []
   return (
@@ -104,7 +109,7 @@ export function GitActions({ action, onAction }: { action: GitAction | null; onA
             <Button
               variant="outline"
               size="sm"
-              aria-label={`More ways to ${action.label.toLowerCase()}`}
+              aria-label={t('More ways to {0}', { 0: action.label.toLowerCase() })}
               className="-ml-px rounded-l-none px-1.5"
             >
               <ChevronDownIcon aria-hidden="true" />
@@ -155,6 +160,8 @@ function ActionButton({
   onAction: (id: GitActionId) => void
   className?: string
 }) {
+  useLocale()
+
   return (
     <Button
       variant={variant}
@@ -178,6 +185,8 @@ function ActionButton({
  * the real value, so tests and screenshots never catch a fake zero.
  */
 export function AnimatedDiffStat({ stat }: { stat: DiffStat }) {
+  useLocale()
+
   const adds = useAnimatedNumber(stat.adds)
   const dels = useAnimatedNumber(stat.dels)
   return (

@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 // A contract VALUE, not a type: which runners cezar can interrogate for a live catalog is decided
 // once, by the schema `GET /api/v1/models` validates with, so the picker and the route cannot
 // disagree about who has discovery. It narrows `Runner` to `ModelDiscoveryRunner`.
@@ -49,13 +50,13 @@ export interface RunnerOption {
 /** The agent-backend catalog (legacy `RUNNERS`). Installation-only compatibility surfaces use
  *  `availableRunners`; the new-task composer filters this catalog by connected provider status. */
 export const RUNNERS: readonly RunnerOption[] = [
-  { id: 'claude', label: 'claude', desc: 'Claude Code CLI' },
-  { id: 'codex', label: 'codex', desc: 'OpenAI Codex (app-server)' },
-  { id: 'junie', label: 'junie', desc: 'JetBrains Junie CLI' },
-  { id: 'opencode', label: 'opencode', desc: 'OpenCode (serve)' },
-  { id: 'cursor', label: 'cursor', desc: 'Cursor Agent CLI' },
-  { id: 'pi', label: 'pi', desc: 'pi CLI (provider/model)' },
-  { id: 'copilot', label: 'copilot', desc: 'GitHub Copilot CLI (ACP)' },
+  { id: 'claude', get label() { return t('claude') }, get desc() { return t('Claude Code CLI') } },
+  { id: 'codex', get label() { return t('codex') }, get desc() { return t('OpenAI Codex (app-server)') } },
+  { id: 'junie', get label() { return t('junie') }, get desc() { return t('JetBrains Junie CLI') } },
+  { id: 'opencode', get label() { return t('opencode') }, get desc() { return t('OpenCode (serve)') } },
+  { id: 'cursor', get label() { return t('cursor') }, get desc() { return t('Cursor Agent CLI') } },
+  { id: 'pi', get label() { return t('pi') }, get desc() { return t('pi CLI (provider/model)') } },
+  { id: 'copilot', get label() { return t('copilot') }, get desc() { return t('GitHub Copilot CLI (ACP)') } },
 ]
 
 export interface ModelPreset {
@@ -77,36 +78,36 @@ export interface ModelPreset {
  */
 export const MODELS_BY_RUNNER: Record<Runner, readonly ModelPreset[]> = {
   claude: [
-    { id: '', label: 'auto', desc: 'Pick the best model per step' },
-    { id: 'opus', label: 'opus', desc: 'Deep reasoning for hard tasks' },
-    { id: 'sonnet', label: 'sonnet', desc: 'Fast and cheap' },
-    { id: 'haiku', label: 'haiku', desc: 'Fastest — simple, scoped tasks' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Pick the best model per step') } },
+    { id: 'opus', get label() { return t('opus') }, get desc() { return t('Deep reasoning for hard tasks') } },
+    { id: 'sonnet', get label() { return t('sonnet') }, get desc() { return t('Fast and cheap') } },
+    { id: 'haiku', get label() { return t('haiku') }, get desc() { return t('Fastest — simple, scoped tasks') } },
   ],
   codex: [
-    { id: '', label: 'auto', desc: 'Use your Codex default model' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Use your Codex default model') } },
   ],
   opencode: [
-    { id: '', label: 'auto', desc: 'Use your OpenCode default model' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Use your OpenCode default model') } },
   ],
   junie: [
-    { id: '', label: 'auto', desc: 'Use your Junie default model' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Use your Junie default model') } },
   ],
   cursor: [
-    { id: '', label: 'auto', desc: 'Use your Cursor default model' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Use your Cursor default model') } },
   ],
   // pi selects a model with the same `provider/model` convention as opencode.
   pi: [
-    { id: '', label: 'auto', desc: 'Use your pi default model' },
-    { id: 'anthropic/claude-opus-4-8', label: 'claude-opus-4.8', desc: 'via Anthropic' },
-    { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5', desc: 'via Anthropic' },
-    { id: 'openai/gpt-5.1', label: 'gpt-5.1', desc: 'via OpenAI' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Use your pi default model') } },
+    { id: 'anthropic/claude-opus-4-8', get label() { return t('claude-opus-4.8') }, get desc() { return t('via Anthropic') } },
+    { id: 'anthropic/claude-sonnet-5', label: 'claude-sonnet-5', get desc() { return t('via Anthropic') } },
+    { id: 'openai/gpt-5.1', get label() { return t('gpt-5.1') }, get desc() { return t('via OpenAI') } },
   ],
   // Copilot has no host catalog here (it stays out of `MODEL_DISCOVERY_RUNNERS`), and its own
   // catalog is fetched from GitHub per account, so nothing dated can be listed truthfully. `auto`
   // is Copilot's own documented value for "let Copilot pick" (`copilot --help`), and the field
   // stays free text for anything the account is entitled to.
   copilot: [
-    { id: '', label: 'auto', desc: 'Let Copilot pick the model' },
+    { id: '', get label() { return t('auto') }, get desc() { return t('Let Copilot pick the model') } },
   ],
 }
 
@@ -190,17 +191,17 @@ export function modelsForRunner(
 /** `auto` survives every discovery outcome — it is cezar's own entry (no `--model` at all), not
  *  something a CLI can stop offering. */
 function autoPreset(presets: readonly ModelPreset[]): ModelPreset {
-  return presets.find((preset) => preset.id === '') ?? { id: '', label: 'auto', desc: '' }
+  return presets.find((preset) => preset.id === '') ?? { id: '', label: t('auto'), desc: '' }
 }
 
 /** How each discovery runner is named in the picker's status line. Keyed by
  *  `ModelDiscoveryRunner` on purpose: a runner gaining discovery cannot forget its label here. */
 const DISCOVERY_RUNNER_LABEL: Record<ModelDiscoveryRunner, string> = {
-  claude: 'Claude',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  junie: 'Junie',
-  cursor: 'Cursor',
+  get claude() { return t('Claude') },
+  get codex() { return t('Codex') },
+  get opencode() { return t('OpenCode') },
+  get junie() { return t('Junie') },
+  get cursor() { return t('Cursor') },
 }
 
 export function modelCatalogStatus(
@@ -210,8 +211,8 @@ export function modelCatalogStatus(
 ): string | undefined {
   if (!runnerDiscoversModels(runner)) return undefined
   const name = DISCOVERY_RUNNER_LABEL[runner]
-  if (catalog?.stale) return `Using cached ${name} model list`
-  if (failed || catalog?.source === 'unavailable') return `Latest ${name} models unavailable`
+  if (catalog?.stale) return t('Using cached {0} model list', { 0: name })
+  if (failed || catalog?.source === 'unavailable') return t('Latest {0} models unavailable', { 0: name })
   return undefined
 }
 

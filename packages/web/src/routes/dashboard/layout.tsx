@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import type { ReactNode } from 'react'
 import {
   DndContext,
@@ -29,6 +30,8 @@ const names: Record<TileId, string> = {
   trends: 'Trends',
 }
 function Module({ id, children, wide }: { id: TileId; children: ReactNode; wide: boolean }) {
+  useLocale()
+
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } =
     useSortable({ id })
   return (
@@ -49,7 +52,7 @@ function Module({ id, children, wide }: { id: TileId; children: ReactNode; wide:
         className="absolute -top-[22px] left-1/2 z-10 min-h-11 min-w-11 -translate-x-1/2 cursor-grab touch-none p-0 opacity-0 transition-opacity hover:bg-transparent focus-visible:opacity-100 active:cursor-grabbing group-hover/module:opacity-100 no-hover:opacity-100"
         {...attributes}
         {...listeners}
-        aria-label={`Move ${names[id]}`}
+        aria-label={t('Move {0}', { 0: t(names[id]) })}
       >
         <span className="flex h-4 w-8 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-xs">
           <GripHorizontal className="size-3.5" aria-hidden="true" />
@@ -68,6 +71,8 @@ export function DashboardLayout({
   modules: Partial<Record<TileId, ReactNode>>
   onOrder: (order: TileId[]) => void
 }) {
+  useLocale()
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -86,27 +91,27 @@ export function DashboardLayout({
   }
   if (unpaired) wide.add(unpaired)
   const describe = (id: string | number) =>
-    `${names[id as TileId]}, position ${visible.indexOf(id as TileId) + 1} of ${visible.length}`
+    t('{0}, position {1} of {2}', { 0: t(names[id as TileId]), 1: visible.indexOf(id as TileId) + 1, 2: visible.length })
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
       accessibility={{
         announcements: {
-          onDragStart: ({ active }) => `Picked up ${describe(active.id)}.`,
+          onDragStart: ({ active }) => t('Picked up {0}.', { 0: describe(active.id) }),
           onDragOver: ({ active, over }) =>
             over
-              ? `${names[active.id as TileId]} moved to position ${visible.indexOf(over.id as TileId) + 1} of ${visible.length}.`
+              ? t('{0} moved to position {1} of {2}.', { 0: t(names[active.id as TileId]), 1: visible.indexOf(over.id as TileId) + 1, 2: visible.length })
               : undefined,
           onDragEnd: ({ active, over }) =>
             over
-              ? `${names[active.id as TileId]} dropped at position ${visible.indexOf(over.id as TileId) + 1} of ${visible.length}.`
-              : `Order unchanged. ${describe(active.id)}.`,
-          onDragCancel: ({ active }) => `Reordering cancelled. ${describe(active.id)}.`,
+              ? t('{0} dropped at position {1} of {2}.', { 0: t(names[active.id as TileId]), 1: visible.indexOf(over.id as TileId) + 1, 2: visible.length })
+              : t('Order unchanged. {0}.', { 0: describe(active.id) }),
+          onDragCancel: ({ active }) => t('Reordering cancelled. {0}.', { 0: describe(active.id) }),
         },
         screenReaderInstructions: {
           draggable:
-            'Press Space to pick up a module, use arrow keys to move, Space to drop, or Escape to cancel.',
+            t('Press Space to pick up a module, use arrow keys to move, Space to drop, or Escape to cancel.'),
         },
       }}
       onDragEnd={({ active, over }) => {

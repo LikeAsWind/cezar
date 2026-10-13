@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { Component, type ReactNode } from 'react'
 
 import { toast } from '@/components/ui/toaster'
@@ -20,7 +21,7 @@ export class DialogErrorBoundary extends Component<
 
   override componentDidCatch(error: unknown): void {
     console.error(`[cezar] ${this.props.label} failed to render`, error)
-    toast(`${this.props.label} failed to open: ${error instanceof Error ? error.message : String(error)}`, {
+    toast(t('{0} failed to open: {1}', { 0: this.props.label, 1: error instanceof Error ? error.message : String(error) }), {
       tone: 'danger',
     })
     this.props.onError()

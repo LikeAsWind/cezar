@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { FileCogIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -48,14 +49,16 @@ const PRIVATE_MCP_STARTER = `{
 
 /** What this file actually governs for a run — the honest label the spec insists on. */
 function effectLabel(file: AgentConfigFile): string {
-  if (file.private) return 'Private to this project — added to every run at launch, takes effect on the next session. Never committed.'
-  if (file.seeded) return 'Copied into each run’s worktree — takes effect on your next run.'
-  if (file.tracked === 'tracked') return 'Runs read the committed copy — this edit applies after you commit it.'
-  if (file.tracked === 'outside-repo') return 'Applies to every session on this machine.'
-  return 'Personal, git-ignored.'
+  if (file.private) return t('Private to this project — added to every run at launch, takes effect on the next session. Never committed.')
+  if (file.seeded) return t('Copied into each run’s worktree — takes effect on your next run.')
+  if (file.tracked === 'tracked') return t('Runs read the committed copy — this edit applies after you commit it.')
+  if (file.tracked === 'outside-repo') return t('Applies to every session on this machine.')
+  return t('Personal, git-ignored.')
 }
 
 export function AgentConfigSection() {
+  useLocale()
+
   const listing = useAgentConfig()
   const health = useHealth()
   const installed = useMemo<Runner[]>(
@@ -65,9 +68,7 @@ export function AgentConfigSection() {
 
   if (listing.isPending) {
     return (
-      <p data-slot="agent-config-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
-        Loading agent config…
-      </p>
+      <p data-slot="agent-config-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading agent config…')}</p>
     )
   }
   if (listing.isError) {
@@ -75,7 +76,7 @@ export function AgentConfigSection() {
       <CenteredState
         icon={<FileCogIcon />}
         tone="danger"
-        title="Agent config did not load"
+        title={t('Agent config did not load')}
         subtitle={listing.error.message}
         heading="h2"
       />
@@ -85,6 +86,8 @@ export function AgentConfigSection() {
 }
 
 function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; installed: Runner[] }) {
+  useLocale()
+
   const [agentId, setAgentId] = useState<Runner>('claude')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const agent = descriptorFor(agentId)
@@ -101,10 +104,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
         <div
           data-slot="agent-config-readonly"
           className="rounded-md border border-border bg-muted/40 px-3 py-2 text-[13px] text-soft-foreground"
-        >
-          Read-only: agent config is edited from the machine that owns the checkout (this cockpit runs in hosted
-          mode). You can still see every file and which one wins.
-        </div>
+        >{t('Read-only: agent config is edited from the machine that owns the checkout (this cockpit runs in hosted mode). You can still see every file and which one wins.')}</div>
       )}
 
       <div data-slot="agent-config-agents" role="tablist" className="flex flex-wrap gap-1 rounded-md bg-muted/40 p-1">
@@ -125,9 +125,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
           >
             {d.label}
             {!installed.includes(d.id) && (
-              <Badge variant="outline" className="text-[10px] text-soft-foreground">
-                not installed
-              </Badge>
+              <Badge variant="outline" className="text-[10px] text-soft-foreground">{t('not installed')}</Badge>
             )}
           </button>
         ))}
@@ -135,7 +133,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
 
       {agent.note && (
         <p data-slot="agent-config-agent-note" className="text-[12px] text-soft-foreground">
-          {agent.note}
+          {t(agent.note)}
         </p>
       )}
 
@@ -153,9 +151,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
           {selected ? (
             <FileEditor key={selected.id} file={selected} />
           ) : (
-            <div className="flex h-full min-h-40 items-center justify-center rounded-md border border-dashed border-border text-[13px] text-soft-foreground">
-              Select a config file to view or edit it.
-            </div>
+            <div className="flex h-full min-h-40 items-center justify-center rounded-md border border-dashed border-border text-[13px] text-soft-foreground">{t('Select a config file to view or edit it.')}</div>
           )}
         </div>
       </div>
@@ -174,6 +170,8 @@ function AgentPane({
   selectedId: string | null
   onSelect: (id: string) => void
 }) {
+  useLocale()
+
   return (
     <>
       {agent.groups.map((g) => {
@@ -183,9 +181,9 @@ function AgentPane({
         return (
           <section key={g.id} data-slot="agent-config-group" data-group={g.id} data-agent={agent.id}>
             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-soft-foreground">
-              {g.label}
+              {t(g.label)}
             </p>
-            {g.note && <p className="mb-2 text-[12px] text-soft-foreground">{g.note}</p>}
+            {g.note && <p className="mb-2 text-[12px] text-soft-foreground">{t(g.note)}</p>}
             <ul className="flex flex-col gap-1">
               {files.map((file) => (
                 <li key={file.id}>
@@ -201,16 +199,12 @@ function AgentPane({
                   >
                     <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{file.label}</span>
                     {file.seeded && (
-                      <Badge variant="outline" className="shrink-0 text-[10px]">
-                        seeded
-                      </Badge>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">{t('seeded')}</Badge>
                     )}
                     {file.private && (
-                      <Badge variant="outline" className="shrink-0 text-[10px]">
-                        private
-                      </Badge>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">{t('private')}</Badge>
                     )}
-                    {!file.exists && <span className="shrink-0 text-[11px] text-soft-foreground">absent</span>}
+                    {!file.exists && <span className="shrink-0 text-[11px] text-soft-foreground">{t('absent')}</span>}
                   </button>
                 </li>
               ))}
@@ -226,13 +220,12 @@ function AgentPane({
 /** Claude's user/local MCP scopes live in ~/.claude.json (Claude's own state
  *  file) — listed read-only; cezar never edits it. */
 function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['userMcp']> }) {
+  useLocale()
+
   return (
     <div data-slot="agent-config-user-mcp" className="mt-3">
-      <h4 className="mb-1 text-[12px] font-semibold">User &amp; local scopes</h4>
-      <p className="mb-2 text-[12px] text-soft-foreground">
-        Managed by <code className="font-mono">claude mcp add</code> in {userMcp.path} — cezar does not edit
-        Claude’s state file.
-      </p>
+      <h4 className="mb-1 text-[12px] font-semibold">{t('User & local scopes')}</h4>
+      <p className="mb-2 text-[12px] text-soft-foreground">{t('Managed by')}{' '}<code className="font-mono">claude mcp add</code>{' '}{t('in')}{' '}{userMcp.path}{' '}{t('— cezar does not edit Claude’s state file.')}</p>
       {userMcp.readable ? (
         userMcp.servers.length > 0 ? (
           <ul className="flex flex-wrap gap-1">
@@ -245,16 +238,18 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
             ))}
           </ul>
         ) : (
-          <p className="text-[12px] text-soft-foreground">No user-scoped MCP servers.</p>
+          <p className="text-[12px] text-soft-foreground">{t('No user-scoped MCP servers.')}</p>
         )
       ) : (
-        <p className="text-[12px] text-soft-foreground">Could not read the file.</p>
+        <p className="text-[12px] text-soft-foreground">{t('Could not read the file.')}</p>
       )}
     </div>
   )
 }
 
 export function FileEditor({ file }: { file: AgentConfigFile }) {
+  useLocale()
+
   const fileQuery = useAgentConfigFile(file.id)
   const put = usePutAgentConfigFile(file.id)
   const [draft, setDraft] = useState<string | null>(null)
@@ -284,7 +279,7 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
       {
         onSuccess: () => {
           setDraft(null)
-          toast(`${file.exists ? 'Saved' : 'Created'} ${file.label}`)
+          toast(`${file.exists ? t('Saved') : t('Created')} ${file.label}`)
         },
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409) setConflict(true)
@@ -307,21 +302,19 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           target="_blank"
           rel="noreferrer"
           className="text-[12px] text-soft-foreground underline hover:text-foreground"
-        >
-          docs
-        </a>
+        >{t('docs')}</a>
       </div>
 
       <p data-slot="agent-config-precedence" className="text-[12px] text-soft-foreground">
-        {file.precedence}
+        {t(file.precedence)}
       </p>
       <p data-slot="agent-config-effect" className="text-[12px] text-foreground/80">
         {effectLabel(file)}
-        {file.hotReload ? ` ${file.hotReload}` : ''}
+        {file.hotReload ? ` ${t(file.hotReload)}` : ''}
       </p>
 
       {fileQuery.isPending ? (
-        <p className="text-[13px] text-soft-foreground">Loading file…</p>
+        <p className="text-[13px] text-soft-foreground">{t('Loading file…')}</p>
       ) : fileQuery.isError ? (
         <p className="text-[13px] text-destructive">{fileQuery.error.message}</p>
       ) : (
@@ -330,7 +323,7 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           language={file.format}
           readOnly={!canWrite}
           onChange={setDraft}
-          aria-label={`${file.label} contents`}
+          aria-label={t('{0} contents', { 0: file.label })}
           className="h-[26rem]"
         />
       )}
@@ -345,27 +338,23 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           data-slot="agent-config-conflict"
           className="flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px]"
         >
-          <span>The file changed on disk since you opened it.</span>
-          <Button size="sm" variant="outline" onClick={() => void fileQuery.refetch()}>
-            Reload from disk
-          </Button>
+          <span>{t('The file changed on disk since you opened it.')}</span>
+          <Button size="sm" variant="outline" onClick={() => void fileQuery.refetch()}>{t('Reload from disk')}</Button>
         </div>
       )}
 
       {canWrite && (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={save} disabled={!dirty || put.isPending}>
-            {file.exists ? 'Save' : 'Create'}
+            {file.exists ? t('Save') : t('Create')}
           </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={() => setDraft(null)}
             disabled={!dirty || put.isPending}
-          >
-            Revert
-          </Button>
-          {dirty && <span className="text-[12px] text-soft-foreground">Unsaved changes</span>}
+          >{t('Revert')}</Button>
+          {dirty && <span className="text-[12px] text-soft-foreground">{t('Unsaved changes')}</span>}
         </div>
       )}
     </div>

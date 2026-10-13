@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { Clock3Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -32,6 +33,8 @@ export const automationTemplatesQueryKey = (exclude: string | null) =>
  * automations. "Use this" hands the whole definition to the form and the palette closes.
  */
 export function TemplatePalette({ onPick }: { onPick: (template: TemplatePick) => void }) {
+  useLocale()
+
   const [tab, setTab] = useState<Tab>('builtin')
   const projectId = useActiveProjectId()
   const others = useQuery({
@@ -52,20 +55,20 @@ export function TemplatePalette({ onPick }: { onPick: (template: TemplatePick) =
   return (
     <Card flush data-slot="template-palette" className="pb-3">
       <div className="flex items-end gap-3 border-b border-border px-4 pt-2.5">
-        <div role="tablist" aria-label="Template source" className="flex shrink-0">
-          <PaletteTab active={tab === 'builtin'} onClick={() => setTab('builtin')}>Built-in</PaletteTab>
-          <PaletteTab active={tab === 'mine'} onClick={() => setTab('mine')}>From your other projects</PaletteTab>
+        <div role="tablist" aria-label={t('Template source')} className="flex shrink-0">
+          <PaletteTab active={tab === 'builtin'} onClick={() => setTab('builtin')}>{t('Built-in')}</PaletteTab>
+          <PaletteTab active={tab === 'mine'} onClick={() => setTab('mine')}>{t('From your other projects')}</PaletteTab>
         </div>
         <span className="ml-auto min-w-0 overflow-hidden pb-2 text-xs text-ellipsis whitespace-nowrap text-soft-foreground">
-          {tab === 'builtin' ? 'Built-in' : 'Registered in ~/.cezar/config.json'}
+          {tab === 'builtin' ? t('Built-in') : t('Registered in ~/.cezar/config.json')}
         </span>
       </div>
       {tab === 'mine' && others.isPending ? (
-        <p className="px-4 pt-3 text-xs text-soft-foreground">Loading…</p>
+        <p className="px-4 pt-3 text-xs text-soft-foreground">{t('Loading…')}</p>
       ) : tab === 'mine' && others.isError ? (
         <p role="alert" className="px-4 pt-3 text-xs text-danger">{others.error.message}</p>
       ) : items.length === 0 ? (
-        <p className="px-4 pt-3 text-xs text-soft-foreground">No automations in your other projects yet.</p>
+        <p className="px-4 pt-3 text-xs text-soft-foreground">{t('No automations in your other projects yet.')}</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2.5 px-4 pt-3">
           {items.map((item) => (
@@ -78,20 +81,18 @@ export function TemplatePalette({ onPick }: { onPick: (template: TemplatePick) =
                 {item.kind === 'github'
                   ? <GithubIcon aria-hidden="true" className="size-[13px] shrink-0 text-soft-foreground" />
                   : <Clock3Icon aria-hidden="true" className="size-[13px] shrink-0 text-soft-foreground" />}
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{tab === 'builtin' ? t(item.name) : item.name}</span>
                 {item.project ? <BranchChip className="ml-auto">{item.project}</BranchChip> : null}
               </div>
-              <div className="font-mono text-[11.5px] text-muted-foreground">{item.when}</div>
-              <div className="line-clamp-2 text-xs leading-[1.45] text-soft-foreground">{item.prompt}</div>
+              <div className="font-mono text-[11.5px] text-muted-foreground">{tab === 'builtin' ? t(item.when) : item.when}</div>
+              <div className="line-clamp-2 text-xs leading-[1.45] text-soft-foreground">{tab === 'builtin' ? t(item.prompt) : item.prompt}</div>
               <Button
                 variant="outline"
                 size="sm"
                 className="mt-0.5 self-start"
-                aria-label={`Use this: ${item.name}`}
+                aria-label={t('Use this: {0}', { 0: tab === 'builtin' ? t(item.name) : item.name })}
                 onClick={() => onPick(item)}
-              >
-                Use this
-              </Button>
+              >{t('Use this')}</Button>
             </div>
           ))}
         </div>
@@ -102,6 +103,8 @@ export function TemplatePalette({ onPick }: { onPick: (template: TemplatePick) =
 
 /** The `TabLink` grammar without a URL: the palette's tabs switch a panel, not a route. */
 function PaletteTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+  useLocale()
+
   return (
     <button
       type="button"

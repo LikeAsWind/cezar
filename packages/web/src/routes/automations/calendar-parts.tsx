@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { GithubIcon } from '@/components/icons'
 import {
   occurrencesBetween,
@@ -96,6 +97,8 @@ export function EventBlock({
   stack?: number
   wide?: boolean
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const time = hm(Math.floor(minute / 60), minute % 60)
   const runAs = [automation.task.workflow, automation.task.runner].filter(Boolean).join(' · ')
@@ -130,6 +133,8 @@ export function EventBlock({
 
 /** The 48px hour column: `01:00` … `23:00`, midnight left blank, each label nudged up onto its line. */
 export function HourGutter() {
+  useLocale()
+
   return (
     <div data-slot="hour-gutter" className="w-12 shrink-0">
       {Array.from({ length: 24 }, (_, hour) => (
@@ -147,6 +152,8 @@ export function HourGutter() {
 
 /** The current minute, as a 2px primary rule with an 8px dot at its left end. */
 export function NowLine({ minute }: { minute: number }) {
+  useLocale()
+
   return (
     <div
       aria-hidden="true"
@@ -161,6 +168,8 @@ export function NowLine({ minute }: { minute: number }) {
 
 /** The 24 hour rules of one column. */
 export function HourLines() {
+  useLocale()
+
   return (
     <>
       {Array.from({ length: 24 }, (_, hour) => (
@@ -176,11 +185,13 @@ export function HourLines() {
  * ENABLED poll; nothing at all when there is none.
  */
 export function PollBand({ automations }: { automations: readonly AutomationListEntry[] }) {
+  useLocale()
+
   const polls = automations.filter((automation) => automation.kind === 'github' && automation.enabled)
   if (!polls.length) return null
   return (
     <div data-slot="poll-band" className="grid grid-cols-[48px_minmax(0,1fr)] border-b border-border">
-      <div className="py-2 pr-2 text-right font-mono text-[10.5px] text-soft-foreground">poll</div>
+      <div className="py-2 pr-2 text-right font-mono text-[10.5px] text-soft-foreground">{t('poll')}</div>
       <div className="flex flex-col gap-1 border-l border-border px-2 py-1.5">
         {polls.map((automation) => (
           <div
@@ -194,8 +205,7 @@ export function PollBand({ automations }: { automations: readonly AutomationList
               {triggerLabel(automation)}
             </span>
             <span className="ml-auto shrink-0 font-mono text-[10.5px] font-normal whitespace-nowrap text-soft-foreground">
-              {automation.runs7d} runs
-            </span>
+              {automation.runs7d}{' '}{t('runs')}</span>
           </div>
         ))}
       </div>

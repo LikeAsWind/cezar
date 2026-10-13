@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { memo, useMemo, type ReactNode } from 'react'
 
 import type { ApiRun, UiMessageItem, UiReasoningItem, UiToolItem } from '@open-mercato/cezar-api-client'
@@ -236,6 +237,8 @@ export function SessionTranscript({
   renderMode,
   rowModels: providedRowModels,
 }: SessionTranscriptProps) {
+  const locale = useLocale()
+
   const rowModels = useMemo(
     () => providedRowModels ?? buildTranscriptRows(sections, runId),
     [providedRowModels, sections, runId],
@@ -255,7 +258,7 @@ export function SessionTranscript({
           />
         ),
       })),
-    [messageActions, renderAsk, rowModels, runId],
+    [messageActions, renderAsk, rowModels, runId, locale],
   )
   const rowMode = renderMode ?? threadRenderMode('', rows.length)
 
@@ -271,7 +274,7 @@ export function SessionTranscript({
       {mode === 'panel' ? (
         <div
           data-slot="transcript-viewport"
-          aria-label="Agent transcript"
+          aria-label={t('Agent transcript')}
           role="region"
           tabIndex={0}
           className="relative flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
@@ -349,6 +352,8 @@ function TranscriptUserBubble({
   message: TranscriptUserMessage
   actions?: TranscriptMessageActions
 }) {
+  useLocale()
+
   return (
     <UserBubble
       text={message.text}
@@ -374,6 +379,8 @@ const ThreadBlockRenderer = memo(function ThreadBlockRenderer({
   scope: string
   renderAsk?: (ask: ThreadAsk) => ReactNode
 }): ReactNode {
+  useLocale()
+
   switch (block.kind) {
     case 'entry':
       return <ThreadEntryRenderer entry={block.entry} scope={scope} renderAsk={renderAsk} />
@@ -412,6 +419,8 @@ function GroupedEntries({
   scope: string
   renderAsk?: (ask: ThreadAsk) => ReactNode
 }) {
+  useLocale()
+
   return groupThreadItems([...entries]).map((block) => (
     <ThreadBlockRenderer key={block.id} block={block} scope={scope} renderAsk={renderAsk} />
   ))
@@ -426,6 +435,8 @@ function ThreadEntryRenderer({
   scope: string
   renderAsk?: (ask: ThreadAsk) => ReactNode
 }): ReactNode {
+  useLocale()
+
   switch (entry.kind) {
     case 'message':
       return entry.role === 'assistant' ? (
@@ -445,9 +456,7 @@ function ThreadEntryRenderer({
       return renderAsk !== undefined ? (
         renderAsk(entry)
       ) : (
-        <div data-slot="ask-card" className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
-          The agent asked a question. Open the main session to answer it.
-        </div>
+        <div data-slot="ask-card" className="rounded-lg border border-border bg-card px-4 py-3 text-sm">{t('The agent asked a question. Open the main session to answer it.')}</div>
       )
     case 'provider-auth-required':
       return <ProviderAuthRequiredCard incident={entry} />
@@ -457,7 +466,7 @@ function ThreadEntryRenderer({
 }
 
 function assertNever(value: never): never {
-  throw new Error(`Unhandled transcript variant: ${JSON.stringify(value)}`)
+  throw new Error(t('Unhandled transcript variant: {0}', { 0: JSON.stringify(value) }))
 }
 
 function sameThreadBlockProps(

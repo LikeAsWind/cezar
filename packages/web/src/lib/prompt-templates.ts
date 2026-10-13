@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 /**
  * Follow-up prompt templates (#413): a small set of reusable snippets a user can insert into a
  * follow-up instructions box — the GitHub hand-over's custom prompt (`routes/github/hand-to-agent.tsx`)
@@ -38,27 +39,27 @@ const SKILLS_MAX = 50
 export const DEFAULT_PROMPT_TEMPLATES: readonly PromptTemplate[] = [
   {
     id: 'add-tests',
-    label: 'Add tests',
+    get label() { return t('Add tests') },
     text: 'Also add or update tests covering this change.',
   },
   {
     id: 'explain-change',
-    label: 'Explain the change',
+    get label() { return t('Explain the change') },
     text: 'Explain what changed and why before finishing.',
   },
   {
     id: 'keep-minimal',
-    label: 'Keep it minimal',
+    get label() { return t('Keep it minimal') },
     text: 'Keep the change as small and targeted as possible — no unrelated refactors.',
   },
   {
     id: 'update-docs',
-    label: 'Update docs',
+    get label() { return t('Update docs') },
     text: 'Also update any relevant documentation or comments.',
   },
   {
     id: 'check-edge-cases',
-    label: 'Double-check edge cases',
+    get label() { return t('Double-check edge cases') },
     text: 'Double-check edge cases and error handling before finishing.',
   },
   // The one built-in that DISPATCHES (spec `.ai/specs/2026-09-10-dispatch.md`): every template
@@ -68,7 +69,7 @@ export const DEFAULT_PROMPT_TEMPLATES: readonly PromptTemplate[] = [
   // `availablePromptTemplates` keeps it out of the composers (`DISPATCH_TEMPLATE_IDS`).
   {
     id: 'review-open-prs',
-    label: 'Review open PRs',
+    get label() { return t('Review open PRs') },
     text:
       "Check this repository's open pull requests that still need a review "
       + '(use `gh pr list --state open --json number,title,headRefName,isDraft,reviewDecision` '
@@ -90,7 +91,7 @@ export const DEFAULT_PROMPT_TEMPLATES: readonly PromptTemplate[] = [
   // refusal.
   {
     id: 'create-automation',
-    label: 'Create an automation',
+    get label() { return t('Create an automation') },
     skills: ['create-cezar-automation'],
     text:
       'Create an automation for this repository.\n'

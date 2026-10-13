@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import {
   GitBranchIcon,
   InboxIcon,
@@ -46,15 +47,15 @@ export type NavItem = {
  *  compare (`/compare/:groupId`) is open.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Tasks', icon: ListChecksIcon, match: ['/', '/tasks', '/compare'], badge: 'tasks-unread' },
-  { to: '/inbox', label: 'Inbox', icon: InboxIcon, match: ['/inbox'], badge: 'inbox-count', inbox: true },
-  { to: '/git', label: 'Git', icon: GitBranchIcon, match: ['/git'] },
-  { to: '/github', label: 'GitHub', icon: GithubIcon, match: ['/github'], forge: true },
-  { to: '/tracker', label: 'Tracker', icon: TicketIcon, match: ['/tracker'], tracker: true },
-  { to: '/automations', label: 'Automations', icon: ZapIcon, match: ['/automations'], automations: true },
-  { to: '/skills', label: 'Skills', icon: SparklesIcon, match: ['/skills'], badge: 'skills-update' },
-  { to: '/workflows', label: 'Workflows', icon: WorkflowIcon, match: ['/workflows'] },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, match: ['/settings'] },
+  { to: '/', get label() { return t('Tasks') }, icon: ListChecksIcon, match: ['/', '/tasks', '/compare'], badge: 'tasks-unread' },
+  { to: '/inbox', get label() { return t('Inbox') }, icon: InboxIcon, match: ['/inbox'], badge: 'inbox-count', inbox: true },
+  { to: '/git', get label() { return t('Git') }, icon: GitBranchIcon, match: ['/git'] },
+  { to: '/github', get label() { return t('GitHub') }, icon: GithubIcon, match: ['/github'], forge: true },
+  { to: '/tracker', get label() { return t('Tracker') }, icon: TicketIcon, match: ['/tracker'], tracker: true },
+  { to: '/automations', get label() { return t('Automations') }, icon: ZapIcon, match: ['/automations'], automations: true },
+  { to: '/skills', get label() { return t('Skills') }, icon: SparklesIcon, match: ['/skills'], badge: 'skills-update' },
+  { to: '/workflows', get label() { return t('Workflows') }, icon: WorkflowIcon, match: ['/workflows'] },
+  { to: '/settings', get label() { return t('Settings') }, icon: SettingsIcon, match: ['/settings'] },
 ]
 
 /** What `/api/health` says exists. All default to `false` — see `visibleNavItems`. */

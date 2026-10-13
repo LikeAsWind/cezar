@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import * as React from 'react'
 
 import { ReferenceChip } from '@/components/reference-chip'
@@ -41,6 +42,8 @@ export function ReferenceOverflow({
    *  registry). Omitted, the chips answer from the surrounding `ReferenceStatusProvider`. */
   projectId?: string
 }) {
+  useLocale()
+
   const [open, setOpen] = React.useState(false)
   // How it was opened decides whether focus moves into the list. A CLICK should hand the keyboard
   // the links; a hover must not yank focus out of whatever the reader was doing.
@@ -75,7 +78,7 @@ export function ReferenceOverflow({
         <button
           type="button"
           data-slot="reference-overflow"
-          aria-label={`Show all ${references.length} references for ${taskTitle}`}
+          aria-label={t('Show all {0} references for {1}', { 0: references.length, 1: taskTitle })}
           onPointerEnter={onPointerEnter}
           onPointerLeave={onPointerLeave}
           // A real press — mouse, tap or keyboard — is not a hover, whatever happened before it.
@@ -103,7 +106,7 @@ export function ReferenceOverflow({
           if (openedByHover.current) event.preventDefault()
         }}
       >
-        <p className="px-1 pb-1.5 text-[10.5px] text-soft-foreground">References</p>
+        <p className="px-1 pb-1.5 text-[10.5px] text-soft-foreground">{t('References')}</p>
         <span className="flex flex-col items-start gap-1">
           {references.map((reference) => (
             <ReferenceChip

@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/api/query-client'
 import { Trends } from './trends'
 import type { DashboardCosts, DashboardCostSeriesPoint } from '@open-mercato/cezar-api-client'
+import { setLocale, type Locale } from '@/lib/i18n'
 const at = '2026-09-19T00:00:00.000Z'
 function point(
   date: string,
@@ -123,11 +124,12 @@ it('keeps unknown daily amounts distinct from zero and names chart controls', as
   expect(document.querySelector('.print\\:hidden')).toBeNull()
 })
 
-// Match the project date convention in both Polish and English browser locales.
+// The explicit interface language wins over the browser's Polish date convention.
 it.each([
-  ['pl-PL', '19 wrz', '13 wrz'],
-  ['en-US', 'Sep 19', 'Sep 13'],
-])('uses browser locale %s across daily tables, chart axes and tooltips', async (browserLocale, lastDay, firstDay) => {
+  ['zh-CN', '9月19日', '9月13日', '已完成的任务'],
+  ['en', 'Sep 19', 'Sep 13', 'Completed tasks'],
+])('uses interface language %s across daily tables, chart axes and tooltips', async (interfaceLocale, lastDay, firstDay, heading) => {
+  setLocale(interfaceLocale as Locale)
   vi.stubGlobal('ResizeObserver', class {
     observe() {}
     unobserve() {}
@@ -137,16 +139,16 @@ it.each([
   const locale = vi.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(function (
     this: Date, locales, options,
   ) {
-    return original.call(this, locales ?? browserLocale, options)
+    return original.call(this, locales ?? 'pl-PL', options)
   })
   try {
     setup()
-    await screen.findByText('Completed tasks')
+    await screen.findByText(heading)
     const table = screen.getByRole('table')
     expect(table.textContent).toContain(lastDay)
     expect(screen.getAllByText(firstDay).length).toBeGreaterThan(1)
-    fireEvent.focus(screen.getByRole('button', { name: /^2026-09-19: 1 completed tasks/ }))
-    expect((await screen.findAllByText(`${lastDay} · 1 completed`)).length).toBeGreaterThan(0)
+    fireEvent.focus(screen.getByRole('button', { name: /^2026-09-19:/ }))
+    expect((await screen.findAllByText(new RegExp(`^${lastDay} ·`))).length).toBeGreaterThan(0)
   } finally {
     locale.mockRestore()
   }

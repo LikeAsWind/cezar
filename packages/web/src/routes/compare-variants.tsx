@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ChevronRightIcon, ScaleIcon, SearchXIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -48,6 +49,8 @@ import { CompareLoading } from './compare-loading'
  * success this navigates to its thread, where the review gate renders.
  */
 export function CompareVariantsRoute() {
+  useLocale()
+
   const { groupId } = useParams<{ groupId: string }>()
   const group = useGroup(groupId)
   const health = useHealth()
@@ -78,15 +81,15 @@ export function CompareVariantsRoute() {
         <CenteredState
           icon={notFound ? <SearchXIcon /> : <ScaleIcon />}
           tone={notFound ? 'neutral' : 'danger'}
-          title={notFound ? 'No such variant group' : 'Could not load the variants'}
+          title={notFound ? t('No such variant group') : t('Could not load the variants')}
           subtitle={
             notFound
-              ? 'No runs share this group id. The group may have been deleted, or a winner was already picked and the others removed.'
+              ? t('No runs share this group id. The group may have been deleted, or a winner was already picked and the others removed.')
               : group.error.message
           }
           actions={
             <Button asChild variant="outline">
-              <Link to="/">Back to tasks</Link>
+              <Link to="/">{t('Back to tasks')}</Link>
             </Button>
           }
         />
@@ -115,6 +118,8 @@ function CompareView({
   showTokens: boolean
   showCost: boolean
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState<GroupVariant | null>(null)
@@ -146,9 +151,7 @@ function CompareView({
           </span>
         </h1>
         <p className="text-[13px] text-muted-foreground">
-          {variants.length} variants of the same task, each in its own worktree — pick the diff you
-          want to keep. The others are cancelled and archived, their worktrees and branches removed.
-        </p>
+          {variants.length}{' '}{t('variants of the same task, each in its own worktree — pick the diff you want to keep. The others are cancelled and archived, their worktrees and branches removed.')}</p>
       </header>
 
       <div
@@ -171,7 +174,7 @@ function CompareView({
         ))}
       </div>
 
-      <section aria-label="Full diffs" className="flex flex-col gap-2">
+      <section aria-label={t('Full diffs')} className="flex flex-col gap-2">
         {variants.map((variant) => (
           <VariantDiff key={variant.id} variant={variant} />
         ))}
@@ -180,16 +183,12 @@ function CompareView({
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Pick variant {confirming?.variant}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Variant {confirming?.variant}'s changes go to the review gate. The other{' '}
-              {variants.length - 1 === 1 ? 'variant is' : `${variants.length - 1} variants are`}{' '}
-              cancelled if still open, archived, and their worktrees and branches removed. There is
-              no undo.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('Pick variant')}{' '}{confirming?.variant}?</AlertDialogTitle>
+            <AlertDialogDescription>{t('Variant')}{' '}{confirming?.variant}{t('\'s changes go to the review gate. The other')}{' '}
+              {variants.length - 1 === 1 ? t('variant is') : t('{0} variants are', { 0: variants.length - 1 })}{' '}{t('cancelled if still open, archived, and their worktrees and branches removed. There is no undo.')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep comparing</AlertDialogCancel>
+            <AlertDialogCancel>{t('Keep comparing')}</AlertDialogCancel>
             <AlertDialogAction
               data-slot="confirm-pick"
               onClick={() => {
@@ -197,8 +196,7 @@ function CompareView({
                 setConfirming(null)
               }}
             >
-              <CheckIcon aria-hidden="true" />
-              Pick variant {confirming?.variant}
+              <CheckIcon aria-hidden="true" />{t('Pick variant')}{' '}{confirming?.variant}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -224,6 +222,8 @@ function VariantColumn({
   showTokens: boolean
   showCost: boolean
 }) {
+  useLocale()
+
   const attention = deriveAttention(variant)
   const cost = formatCost(variant.costUsd)
   const hasDirectionalUsage = variant.inputTokens !== undefined || variant.outputTokens !== undefined
@@ -236,7 +236,7 @@ function VariantColumn({
       <div className="flex items-center gap-2">
         <span
           data-slot="variant-letter"
-          aria-label={`Variant ${variant.variant}`}
+          aria-label={t('Variant {0}', { 0: variant.variant })}
           className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-violet/15 font-mono text-xs font-semibold text-violet"
         >
           {variant.variant}
@@ -278,9 +278,7 @@ function VariantColumn({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-[10.5px] font-semibold tracking-[0.04em] text-soft-foreground uppercase">
-          Progress
-        </span>
+        <span className="text-[10.5px] font-semibold tracking-[0.04em] text-soft-foreground uppercase">{t('Progress')}</span>
         {variant.handoffExcerpt ? (
           <div
             data-slot="variant-progress"
@@ -289,9 +287,7 @@ function VariantColumn({
             <Markdown>{variant.handoffExcerpt}</Markdown>
           </div>
         ) : (
-          <p data-slot="variant-progress" className="text-xs text-soft-foreground">
-            (no progress notes)
-          </p>
+          <p data-slot="variant-progress" className="text-xs text-soft-foreground">{t('(no progress notes)')}</p>
         )}
       </div>
 
@@ -299,15 +295,13 @@ function VariantColumn({
         data-slot="variant-pick"
         title={
           allTerminal
-            ? `Keep variant ${variant.variant}'s changes and archive the others`
-            : 'Every variant must finish before you can pick'
+            ? t('Keep variant {0}\'s changes and archive the others', { 0: variant.variant })
+            : t('Every variant must finish before you can pick')
         }
         disabled={!allTerminal || pickPending}
         onClick={onPick}
       >
-        <CheckIcon aria-hidden="true" />
-        Pick this one
-      </Button>
+        <CheckIcon aria-hidden="true" />{t('Pick this one')}</Button>
     </article>
   )
 }
@@ -315,6 +309,8 @@ function VariantColumn({
 /** A variant's full worktree diff, collapsed by default — `RunDiff` mounts (and fetches) only
  *  on first expand, so opening the compare view costs three stats, not three full diffs. */
 function VariantDiff({ variant }: { variant: GroupVariant }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   return (
     <Collapsible
@@ -328,9 +324,7 @@ function VariantDiff({ variant }: { variant: GroupVariant }) {
         <ChevronRightIcon
           className={cn('size-3.5 shrink-0 text-soft-foreground transition-transform', open && 'rotate-90')}
           aria-hidden="true"
-        />
-        Variant {variant.variant} — full diff
-      </CollapsibleTrigger>
+        />{t('Variant')}{' '}{variant.variant}{' '}{t('— full diff')}</CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t border-border/50 px-3 py-3">
           <RunDiff runId={variant.id} />

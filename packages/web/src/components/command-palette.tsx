@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { CheckIcon, FolderOpenIcon, LayersIcon, MoonIcon, PlusIcon } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate as useRouterNavigate } from 'react-router'
@@ -201,6 +202,8 @@ export function orderProjects(
 }
 
 export function CommandPalette() {
+  useLocale()
+
   const [open, setOpen] = React.useState(false)
   const navigate = useNavigate()
 
@@ -225,8 +228,8 @@ export function CommandPalette() {
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Command palette"
-      description="Search projects, tasks, views, actions, and skills"
+      title={t('Command palette')}
+      description={t('Search projects, tasks, views, actions, and skills')}
       showCloseButton={false}
       filter={paletteScore}
       // Two overrides of the shared dialog, both for this surface only — every other dialog in
@@ -263,6 +266,8 @@ function TaskItem({
   now: number
   onSelect: (task: PaletteTask) => void
 }) {
+  useLocale()
+
   const attention = deriveAttention(task)
   const label = runTitle(task)
   return (
@@ -299,6 +304,8 @@ function TaskItem({
 }
 
 function PaletteContent({ close }: { close: () => void }) {
+  useLocale()
+
   const navigate = useNavigate()
   // The UNSCOPED twin, for the handful of targets that live outside every project (`/tasks`).
   const routerNavigate = useRouterNavigate()
@@ -392,7 +399,7 @@ function PaletteContent({ close }: { close: () => void }) {
   return (
     <>
       <CommandInput
-        placeholder="Search projects, tasks, views, actions, skills…"
+        placeholder={t('Search projects, tasks, views, actions, skills…')}
         value={search}
         onValueChange={setSearch}
       />
@@ -401,7 +408,7 @@ function PaletteContent({ close }: { close: () => void }) {
           `min-h` keeps a short result set from collapsing the box to nothing, which would move
           the bottom edge as violently as the old centring moved the top. */}
       <CommandList className="max-h-[55vh] min-h-[14rem] sm:max-h-[60vh] lg:max-h-[68vh]">
-        <CommandEmpty>Nothing matches.</CommandEmpty>
+        <CommandEmpty>{t('Nothing matches.')}</CommandEmpty>
 
         {/* First, headless, and the row an empty query pre-selects: opening ⌘K and pressing
             Enter starts a task. It used to sit ninth in Views with a duplicate down in Actions;
@@ -413,9 +420,7 @@ function PaletteContent({ close }: { close: () => void }) {
             data-nav-to="/new"
             onSelect={() => go('/new')}
           >
-            <PlusIcon aria-hidden="true" />
-            New task
-            <CommandShortcut>C</CommandShortcut>
+            <PlusIcon aria-hidden="true" />{t('New task')}<CommandShortcut>{t('C')}</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
@@ -423,7 +428,7 @@ function PaletteContent({ close }: { close: () => void }) {
             floats a section of near-misses above the exact match you are looking for, purely
             because that section renders first. Searching gets one ranked Tasks list. */}
         {!searching && recentlyFinished.length > 0 ? (
-          <CommandGroup heading="Recently finished">
+          <CommandGroup heading={t("Recently finished")}>
             {recentlyFinished.map((task) => (
               <TaskItem
                 key={taskKey(task)}
@@ -448,9 +453,7 @@ function PaletteContent({ close }: { close: () => void }) {
               data-nav-to="/tasks"
               onSelect={() => goGlobal('/tasks')}
             >
-              <LayersIcon aria-hidden="true" />
-              All tasks
-            </CommandItem>
+              <LayersIcon aria-hidden="true" />{t('All tasks')}</CommandItem>
           ) : null}
           {visibleNavItems({
             forge: health.data?.forge?.available === true,
@@ -501,7 +504,7 @@ function PaletteContent({ close }: { close: () => void }) {
                   <FolderOpenIcon aria-hidden="true" />
                   <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   {missing ? (
-                    <span className="shrink-0 text-xs text-soft-foreground">folder not found</span>
+                    <span className="shrink-0 text-xs text-soft-foreground">{t('folder not found')}</span>
                   ) : project.branch !== undefined ? (
                     <span className="shrink-0 font-mono text-xs text-soft-foreground">
                       {project.branch}
@@ -541,9 +544,7 @@ function PaletteContent({ close }: { close: () => void }) {
               close()
             }}
           >
-            <MoonIcon aria-hidden="true" />
-            Toggle theme
-            <CommandShortcut className="tracking-normal">
+            <MoonIcon aria-hidden="true" />{t('Toggle theme')}<CommandShortcut className="tracking-normal">
               {theme} → {nextTheme}
             </CommandShortcut>
           </CommandItem>

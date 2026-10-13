@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { CreateRunInput, Runner } from '@open-mercato/cezar-api-client'
 
 import { buildCreateRunBody, type TaskSource } from './new-task-form'
@@ -63,22 +64,22 @@ export function deepLinkToast(
   unknownSkill: string,
 ): { message: string; tone: 'default' | 'danger' } {
   if (notice.kind === 'failed') {
-    return { message: `Auto-start failed: ${notice.message} — review and press Start`, tone: 'danger' }
+    return { message: t('Auto-start failed: {0} — review and press Start', { 0: notice.message }), tone: 'danger' }
   }
   if (notice.kind === 'blocked') {
-    return { message: 'Auto-start blocked (bad key) — review and press Start', tone: 'danger' }
+    return { message: t('Auto-start blocked (bad key) — review and press Start'), tone: 'danger' }
   }
   if (unknownSkill !== '') {
     return {
-      message: `Unknown skill "${unknownSkill}" — prefilled for quick-task; review and press Start`,
+      message: t('Unknown skill "{0}" — prefilled for quick-task; review and press Start', { 0: unknownSkill }),
       tone: 'danger',
     }
   }
-  return { message: 'Prefilled from link — review and press Start', tone: 'default' }
+  return { message: t('Prefilled from link — review and press Start'), tone: 'default' }
 }
 
 /** Legacy's prefill for a skill the picker cannot select: the intent goes into the task text
  *  verbatim (`initFromQuery` wrote exactly this string) and quick-task resolves it from prose. */
 export function unknownSkillPrefillText(skill: string, ref: string): string {
-  return `Use the "${skill}" skill on: ${ref}`
+  return t('Use the "{0}" skill on: {1}', { 0: skill, 1: ref })
 }

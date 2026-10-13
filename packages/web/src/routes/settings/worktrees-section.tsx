@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FolderGit2Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -26,13 +27,13 @@ const WORKTREE_RETENTION_MIN = 0
 const WORKTREE_RETENTION_MAX = 1000
 
 export function WorktreesSection() {
+  useLocale()
+
   const config = useConfig()
 
   if (config.isPending) {
     return (
-      <p data-slot="worktrees-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
-        Loading worktree settings…
-      </p>
+      <p data-slot="worktrees-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading worktree settings…')}</p>
     )
   }
   if (config.isError) {
@@ -40,7 +41,7 @@ export function WorktreesSection() {
       <CenteredState
         icon={<FolderGit2Icon />}
         tone="danger"
-        title="Worktree settings did not load"
+        title={t('Worktree settings did not load')}
         subtitle={config.error.message}
         heading="h2"
       />
@@ -50,6 +51,8 @@ export function WorktreesSection() {
 }
 
 function WorktreesForm({ config }: { config: ConfigResponse }) {
+  useLocale()
+
   const queryClient = useQueryClient()
 
   const save = useMutation({
@@ -77,8 +80,8 @@ function WorktreesForm({ config }: { config: ConfigResponse }) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
           toast(
             retentionNum === 0
-              ? 'Keeping all worktrees (unlimited)'
-              : `Keeping the last ${retentionNum} finished worktree${retentionNum === 1 ? '' : 's'}`,
+              ? t('Keeping all worktrees (unlimited)')
+              : t('Keeping the last {0} finished worktree{1}', { 0: retentionNum, 1: retentionNum === 1 ? '' : 's' }),
           )
         },
       },
@@ -90,8 +93,8 @@ function WorktreesForm({ config }: { config: ConfigResponse }) {
       className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       <SettingsField
-        title="Keep last N worktrees"
-        hint="Older finished worktrees are reclaimed to free disk; their branch is kept so the work stays recoverable. 0 = unlimited. In-review and running tasks are never reclaimed, so the count on disk can exceed this."
+        title={t('Keep last N worktrees')}
+        hint={t('Older finished worktrees are reclaimed to free disk; their branch is kept so the work stays recoverable. 0 = unlimited. In-review and running tasks are never reclaimed, so the count on disk can exceed this.')}
       >
         <div className="flex items-center gap-2">
           <input
@@ -100,14 +103,14 @@ function WorktreesForm({ config }: { config: ConfigResponse }) {
             min={WORKTREE_RETENTION_MIN}
             max={WORKTREE_RETENTION_MAX}
             step={1}
-            aria-label="Keep last N finished worktrees"
+            aria-label={t('Keep last N finished worktrees')}
             data-slot="resources-worktree-retention"
             value={retention}
             disabled={save.isPending}
             onChange={(event) => setRetention(event.target.value)}
             className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
           />
-          <span className="text-xs text-soft-foreground">worktrees</span>
+          <span className="text-xs text-soft-foreground">{t('worktrees')}</span>
           <Button
             type="button"
             variant="outline"
@@ -115,24 +118,20 @@ function WorktreesForm({ config }: { config: ConfigResponse }) {
             data-action="resources-save-retention"
             disabled={retentionSaved || retentionInvalid || save.isPending}
             onClick={saveRetention}
-          >
-            Save
-          </Button>
+          >{t('Save')}</Button>
         </div>
         {retentionInvalid ? (
-          <p data-slot="resources-retention-invalid" className="text-[11px] text-danger">
-            Enter a whole number from {WORKTREE_RETENTION_MIN} to {WORKTREE_RETENTION_MAX} (0 = unlimited).
-          </p>
+          <p data-slot="resources-retention-invalid" className="text-[11px] text-danger">{t('Enter a whole number from')}{' '}{WORKTREE_RETENTION_MIN}{' '}{t('to')}{' '}{WORKTREE_RETENTION_MAX}{' '}{t('(0 = unlimited).')}</p>
         ) : (
           <p className="text-[11px] text-soft-foreground">
-            {retentionNum === 0 ? 'Keeping every finished worktree.' : `Keeping the last ${retentionNum} finished worktree${retentionNum === 1 ? '' : 's'} on disk.`}
+            {retentionNum === 0 ? t('Keeping every finished worktree.') : t('Keeping the last {0} finished worktree{1} on disk.', { 0: retentionNum, 1: retentionNum === 1 ? '' : 's' })}
           </p>
         )}
       </SettingsField>
 
       <SettingsField
-        title="Worktrees"
-        hint="Task worktrees currently on disk. Delete one to reclaim its space now, or reclaim everything past the keep-limit at once. Branches are always kept, so the work stays recoverable."
+        title={t('Worktrees')}
+        hint={t('Task worktrees currently on disk. Delete one to reclaim its space now, or reclaim everything past the keep-limit at once. Branches are always kept, so the work stays recoverable.')}
       >
         <WorktreesPanel />
       </SettingsField>

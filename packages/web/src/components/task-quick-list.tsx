@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon, ScaleIcon } from 'lucide-react'
 import * as React from 'react'
 import { useHealth, usePinRun, useReferenceProjectId, useRunsForProject } from '@/api/queries'
@@ -65,6 +66,8 @@ export function TaskQuickList({
    *  belongs to is a container's question — this list is painted for other projects too. */
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  useLocale()
+
   const counts = listCounts(runs)
   const buckets = groupRuns(runs, view)
   // Withheld in the archived view, where `groupRuns` answers one `Archived` bucket and never
@@ -77,22 +80,18 @@ export function TaskQuickList({
           must not be able to hide that the view is filtered. */}
       <div className="sticky top-0 z-10 bg-sidebar pt-2 pb-1">
         <div className="inline-flex w-full gap-0.5 rounded-md bg-muted p-[3px]">
-          <ViewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>
-            Active
-            {/* The one reason to look at a tab you are not on. */}
+          <ViewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>{t('Active')}{/* The one reason to look at a tab you are not on. */}
             {counts.waiting > 0 && view !== 'active' ? (
-              <StatusDot tone="pending" pulse data-slot="waiting-dot" aria-label="needs you" />
+              <StatusDot tone="pending" pulse data-slot="waiting-dot" aria-label={t('needs you')} />
             ) : null}
           </ViewTab>
-          <ViewTab view="archived" current={view} onSelect={onViewChange} count={counts.archived}>
-            Archived
-          </ViewTab>
+          <ViewTab view="archived" current={view} onSelect={onViewChange} count={counts.archived}>{t('Archived')}</ViewTab>
         </div>
       </div>
 
       {buckets.length === 0 ? (
         <p className="px-3 py-3.5 text-xs text-soft-foreground">
-          {view === 'archived' ? 'Nothing archived yet.' : 'No tasks yet — describe one.'}
+          {view === 'archived' ? t('Nothing archived yet.') : t('No tasks yet — describe one.')}
         </p>
       ) : (
         <QuickListBuckets
@@ -132,6 +131,8 @@ export function QuickListBuckets({
   showCost?: boolean
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  useLocale()
+
   // Which variant groups are open. Local: it is view state about this list, nothing else reads it.
   const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(() => new Set())
   const toggleGroup = (groupId: string) =>
@@ -144,7 +145,7 @@ export function QuickListBuckets({
   return (
     <>
       {buckets.map((bucket) => (
-        <div key={bucket.label} data-slot="quick-list-bucket" data-bucket={bucket.label}>
+        <div key={t(bucket.label)} data-slot="quick-list-bucket" data-bucket={bucket.label}>
           <h2 className="px-3 pt-2.5 pb-1 text-[11px] font-semibold tracking-[0.04em] text-soft-foreground uppercase">
             {bucket.label}
           </h2>
@@ -206,6 +207,8 @@ function ViewTab({
   count: number
   children: React.ReactNode
 }) {
+  useLocale()
+
   const isActive = view === current
   return (
     <button
@@ -255,6 +258,8 @@ function Row({
   showCost: boolean
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  useLocale()
+
   if (row.kind === 'run') {
     return (
       <RunRow
@@ -298,8 +303,8 @@ function Row({
         <Link
           to={scopeTo(scope, `/compare/${row.groupId}`)}
           data-slot="group-compare"
-          title="Compare the variants"
-          aria-label={`Compare the variants of ${row.title}`}
+          title={t('Compare the variants')}
+          aria-label={t('Compare the variants of {0}', { 0: row.title })}
           className="mr-1.5 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-soft-foreground hover:bg-violet/10 hover:text-violet"
         >
           <ScaleIcon className="size-3.5" aria-hidden="true" />
@@ -416,6 +421,8 @@ const RunRow = React.memo(function RunRow({
   showCost: boolean
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  useLocale()
+
   const attention = deriveAttention(run)
   const isActive = run.id === currentRunId
   // The strongest tracker reference the run knows about — the PR once one exists, else the issue
@@ -616,6 +623,8 @@ function variantLabel(run: RunRecord, showTokens: boolean, showCost: boolean): s
  * the sidebar and the Tasks table (Step 3.4) always show the same filter.
  */
 export function TaskQuickListContainer() {
+  useLocale()
+
   const health = useHealth()
   const activeProjectId = useActiveProjectId()
   const runs = useRunsForProject(activeProjectId, health.data?.bootProject ?? null)

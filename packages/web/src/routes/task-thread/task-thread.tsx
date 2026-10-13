@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { MessageSquareTextIcon, SearchXIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useParams } from 'react-router'
@@ -75,17 +76,19 @@ import {
  * below ~300 rows; virtua above).
  */
 export function TaskThreadRoute() {
+  const locale = useLocale()
+
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
   const history = useRunHistory(id)
   const runStatus = run.data?.status
   const thread = useMemo(
     () => reduceThread(history.visibleEvents, { activeTurn: runStatus === 'running' }),
-    [history.visibleEvents, runStatus],
+    [history.visibleEvents, runStatus, locale],
   )
   const currentThread = useMemo(
     () => reduceThread(history.currentEvents, { activeTurn: runStatus === 'running' }),
-    [history.currentEvents, runStatus],
+    [history.currentEvents, runStatus, locale],
   )
 
   // Read receipt (#unread-done-items): opening a finished task's thread marks it read — the same
@@ -144,15 +147,15 @@ export function TaskThreadRoute() {
         <CenteredState
           icon={notFound ? <SearchXIcon /> : <MessageSquareTextIcon />}
           tone={notFound ? 'neutral' : 'danger'}
-          title={notFound ? 'Task not found' : 'Could not load this task'}
+          title={notFound ? t('Task not found') : t('Could not load this task')}
           subtitle={
             notFound
-              ? 'No run has this id. It may have been deleted, or the link is from another machine.'
+              ? t('No run has this id. It may have been deleted, or the link is from another machine.')
               : run.error.message
           }
           actions={
             <Button asChild variant="outline">
-              <Link to="/">Back to tasks</Link>
+              <Link to="/">{t('Back to tasks')}</Link>
             </Button>
           }
         />
@@ -191,6 +194,8 @@ export function ThreadView({
    *  header's other three tabs, have no such effect to suppress. */
   onMarkedUnread?: (runId: string) => void
 }) {
+  const locale = useLocale()
+
   const footer = threadFooter(run.status, run.error, isAwaitingAnswer(run))
   const markedUnread = useCallback(() => onMarkedUnread?.(run.id), [onMarkedUnread, run.id])
   // The dock's data: the latest plan snapshot across turns (full replacement — an emptied
@@ -282,7 +287,7 @@ export function ThreadView({
           onRemoveMessage: (msgId: string) => removeQueuedAsync(msgId).then(() => undefined),
         }
       : undefined,
-    [queued, patchRunAsync, editQueuedAsync, removeQueuedAsync],
+    [queued, patchRunAsync, editQueuedAsync, removeQueuedAsync, locale],
   )
 
   const sections = useMemo(() => mainTranscriptSections(run, thread), [run, thread])
@@ -293,7 +298,7 @@ export function ThreadView({
     const actions: Record<string, TranscriptMessageActions> = {
       // `draftSurface` (#939) is what makes an unsaved edit survive leaving the task: the bubble
       // writes it to the run's draft store and re-opens holding it on return.
-      task: { onEdit: edit.onEditTask, editLabel: 'Edit the prompt', draftSurface: 'task-prompt' },
+      task: { onEdit: edit.onEditTask, editLabel: t('Edit the prompt'), draftSurface: 'task-prompt' },
     }
     for (const message of run.queuedMessages ?? []) {
       actions[`queued:${message.id}`] = {
@@ -305,7 +310,7 @@ export function ThreadView({
       }
     }
     return actions
-  }, [edit, run.queuedMessages])
+  }, [edit, run.queuedMessages, locale])
   // #526: the footer's issue link may be synthesized from the CEZ:ISSUE marker, and the only
   // repository it may ever name is the one on screen — never the transcript's.
   const issueUrl = taskIssueUrl(run, useProjectRepoBase())
@@ -361,9 +366,7 @@ export function ThreadView({
           run.status === 'queued' ? (
             <QueuedPlaceholder run={run} />
           ) : (
-            <p data-slot="thread-empty" className="py-6 text-center text-xs text-soft-foreground">
-              No session events yet.
-            </p>
+            <p data-slot="thread-empty" className="py-6 text-center text-xs text-soft-foreground">{t('No session events yet.')}</p>
           )
         ) : null}
 
@@ -397,8 +400,8 @@ export function ThreadView({
                 continuable
                   ? undefined
                   : continueAction.providerPending
-                    ? 'Checking the agent provider…'
-                    : (continueAction.reason ?? 'Connect an agent provider to continue.')
+                    ? t('Checking the agent provider…')
+                    : (continueAction.reason ?? t('Connect an agent provider to continue.'))
               }
             />
             {/* href protocol guard (#431): link only for http(s) URLs. */}
@@ -411,9 +414,7 @@ export function ThreadView({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                PR ↗
-              </a>
+              >{t('PR ↗')}</a>
             ) : null}
             {/* #526: an issue-subject run (om-prepare-issue) links the issue it created — it
                 declares no PR, so without this the created issue was unreachable from the UI. */}
@@ -424,9 +425,7 @@ export function ThreadView({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                Issue ↗
-              </a>
+              >{t('Issue ↗')}</a>
             ) : null}
           </div>
         ) : null}
@@ -486,9 +485,7 @@ export function ThreadView({
             data-slot="budget-hint"
             className="flex items-center gap-2 px-1 text-xs text-muted-foreground"
           >
-            <StatusDot tone="pending" pulse />
-            Budget reached — spent ${budget.spent.toFixed(2)} of ${budget.ceiling.toFixed(2)}; send a message to continue.
-            {run.status === 'waiting' ? (
+            <StatusDot tone="pending" pulse />{t('Budget reached — spent $')}{budget.spent.toFixed(2)}{' '}{t('of $')}{budget.ceiling.toFixed(2)}{t('; send a message to continue.')}{run.status === 'waiting' ? (
               <>
                 <span aria-hidden="true">·</span>
                 <EndSessionButton runId={run.id} />
@@ -500,9 +497,7 @@ export function ThreadView({
             data-slot="paused-hint"
             className="flex items-center gap-2 px-1 text-xs text-muted-foreground"
           >
-            <StatusDot tone="pending" pulse />
-            The agent is paused, waiting for your reply
-            {/* The other answer to "your turn": not replying at all. It sits beside the hint
+            <StatusDot tone="pending" pulse />{t('The agent is paused, waiting for your reply')}{/* The other answer to "your turn": not replying at all. It sits beside the hint
                 because that is the moment the choice is made — reply below, or end it here. */}
             <span aria-hidden="true">·</span>
             <EndSessionButton runId={run.id} />
@@ -514,9 +509,7 @@ export function ThreadView({
             data-slot="queued-hint"
             className="flex items-center gap-2 px-1 text-xs text-muted-foreground"
           >
-            <StatusDot tone="pending" />
-            Messages you add now are folded into the prompt before the run starts.
-          </div>
+            <StatusDot tone="pending" />{t('Messages you add now are folded into the prompt before the run starts.')}</div>
         ) : null}
 
         <TaskComposer
@@ -546,6 +539,8 @@ function FooterLabel({
   /** Why it cannot run yet (provider loading or disconnected): the button shows, disabled. */
   blockedReason?: string
 }) {
+  useLocale()
+
   const [pending, setPending] = useState(false)
   const match = onContinue ? CONTINUE_ADVICE.exec(label) : null
   if (!onContinue || !match) return <span>{label}</span>
@@ -558,7 +553,7 @@ function FooterLabel({
         type="button"
         data-slot="footer-continue"
         disabled={pending || blockedReason !== undefined}
-        title={blockedReason ?? 'Reopen the session and pick up where it stopped'}
+        title={blockedReason ?? t('Reopen the session and pick up where it stopped')}
         onClick={() => {
           setPending(true)
           onContinue()
@@ -570,10 +565,7 @@ function FooterLabel({
         // A text button in the message's own red: it is part of the sentence it completes, so it
         // keeps that sentence's colour; the weight and underline are what mark it as the action.
         className="rounded-sm font-semibold underline underline-offset-2 hover:brightness-125 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:no-underline disabled:opacity-60"
-      >
-        Continue
-      </button>{' '}
-      to {after}
+      >{t('Continue')}</button>{' '}{t('to')}{' '}{after}
     </span>
   )
 }
@@ -582,18 +574,18 @@ function FooterLabel({
  *  the worktree holds changes. A text button, like the footer's Continue — part of the hint line
  *  it answers, not a toolbar control. */
 function EndSessionButton({ runId }: { runId: string }) {
+  useLocale()
+
   const finish = useFinishRun(runId)
   return (
     <button
       type="button"
       data-slot="end-session"
-      title="Close the session — the task finishes (or goes to review if it changed files)"
+      title={t('Close the session — the task finishes (or goes to review if it changed files)')}
       disabled={finish.isPending}
       onClick={() => finish.mutate()}
       className="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
-    >
-      End session
-    </button>
+    >{t('End session')}</button>
   )
 }
 
@@ -612,19 +604,17 @@ function HistoryBoundary({
   retainedPages: number
   onLoad: () => void
 }) {
+  useLocale()
+
   if (fallback) {
     return (
-      <p data-slot="history-fallback" className="text-center text-xs text-soft-foreground" role="status">
-        Progressive history is unavailable; showing the complete session.
-      </p>
+      <p data-slot="history-fallback" className="text-center text-xs text-soft-foreground" role="status">{t('Progressive history is unavailable; showing the complete session.')}</p>
     )
   }
   if (!hasOlder && !error) {
     return (
       <div data-slot="history-start" className="flex items-center gap-3 text-[11px] text-soft-foreground">
-        <span aria-hidden className="h-px flex-1 bg-border" />
-        Start of session
-        <span aria-hidden className="h-px flex-1 bg-border" />
+        <span aria-hidden className="h-px flex-1 bg-border" />{t('Start of session')}<span aria-hidden className="h-px flex-1 bg-border" />
       </div>
     )
   }
@@ -642,13 +632,13 @@ function HistoryBoundary({
         className="rounded-md px-3 py-1.5 font-medium hover:bg-muted disabled:cursor-wait"
       >
         {loading ?
-          'Loading 100 earlier items…'
+          t('Loading 100 earlier items…')
         : error ?
-          'Couldn’t load earlier items · Retry'
-        : 'Load 100 earlier items'}
+          t('Couldn’t load earlier items · Retry')
+        : t('Load 100 earlier items')}
       </button>
       <span className="sr-only" aria-live="polite">
-        {loading ? 'Loading earlier session history' : error ? error : ''}
+        {loading ? t('Loading earlier session history') : error ? error : ''}
       </span>
     </div>
   )
@@ -668,17 +658,17 @@ export function liveTurnStart(run: ApiRun, thread: ThreadState): string | undefi
  *  instead of a blank thread the placeholder names the parked state and its live position in
  *  the FIFO queue (from the runs list — the same feed the sidebar uses). */
 function QueuedPlaceholder({ run }: { run: ApiRun }) {
+  useLocale()
+
   const runs = useRuns()
   const position = queuePosition(runs.data ?? [], run.id)
   return (
     <div data-slot="queued-state" className="flex flex-col items-center gap-1.5 py-10 text-center">
       <StatusDot tone="pending" pulse />
-      <p className="text-[13px] font-medium">
-        Waiting for a free agent slot{position !== undefined ? ` — #${position} in queue` : ''}
+      <p className="text-[13px] font-medium">{t('Waiting for a free agent slot')}{position !== undefined ? t(' — #{0} in queue', { 0: position }) : ''}
       </p>
       <p className="text-xs text-soft-foreground">
-        {run.workflow} · starts automatically when a slot frees up
-      </p>
+        {run.workflow}{' '}{t('· starts automatically when a slot frees up')}</p>
     </div>
   )
 }

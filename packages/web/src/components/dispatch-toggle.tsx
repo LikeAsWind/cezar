@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon, SplitIcon } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 
@@ -64,6 +65,8 @@ export function DispatchToggle({
    *  inherit the runner. */
   parentModels: readonly ModelPreset[]
 }) {
+  useLocale()
+
   const [open, setOpenState] = useState(false)
   const desktop = useIsDesktop()
   // The limits last seen while on — what a re-enable restores.
@@ -102,7 +105,7 @@ export function DispatchToggle({
       type="button"
       role="switch"
       aria-checked={on}
-      aria-label="Dispatch"
+      aria-label={t('Dispatch')}
       data-slot="dispatch-toggle"
       data-state={on ? 'on' : 'off'}
       {...press}
@@ -133,13 +136,13 @@ export function DispatchToggle({
 
   const tooltip = (
     <TooltipContent side="top" sideOffset={6} className="max-w-[260px]">
-      <div className="font-medium">{on ? 'Dispatch — on' : 'Dispatch — off'}</div>
+      <div className="font-medium">{on ? t('Dispatch — on') : t('Dispatch — off')}</div>
       <div className="text-contrast-foreground/80">
         {on
-          ? 'Splits this task into subtasks it runs as separate tasks'
-          : 'Let this task split into subtasks'}
+          ? t('Splits this task into subtasks it runs as separate tasks')
+          : t('Let this task split into subtasks')}
       </div>
-      {desktop ? <div className="mt-0.5 text-contrast-foreground/60">▾ limits and subtask defaults</div> : null}
+      {desktop ? <div className="mt-0.5 text-contrast-foreground/60">{t('▾ limits and subtask defaults')}</div> : null}
     </TooltipContent>
   )
 
@@ -161,7 +164,7 @@ export function DispatchToggle({
       </TooltipProvider>
       <button
         type="button"
-        aria-label="Dispatch settings"
+        aria-label={t('Dispatch settings')}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-slot="dispatch-settings-trigger"
@@ -197,10 +200,8 @@ export function DispatchToggle({
             className="rounded-t-xl p-4 pt-16 pb-[max(1rem,env(safe-area-inset-bottom))]"
           >
             {/* Radix wants a title on every dialog; the form's own header is the visible one. */}
-            <SheetTitle className="sr-only">Dispatch</SheetTitle>
-            <SheetDescription className="sr-only">
-              Split this task into subtasks run as separate tasks
-            </SheetDescription>
+            <SheetTitle className="sr-only">{t('Dispatch')}</SheetTitle>
+            <SheetDescription className="sr-only">{t('Split this task into subtasks run as separate tasks')}</SheetDescription>
             {settings}
           </SheetContent>
         </Sheet>
@@ -225,6 +226,8 @@ export function DispatchToggle({
 
 /** The mockup's row: label left, control right. */
 function Row({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  useLocale()
+
   return (
     <div className="flex items-center justify-between gap-3">
       <label htmlFor={htmlFor} className="shrink-0 text-xs text-foreground">
@@ -275,6 +278,8 @@ function DispatchSettings({
    *  which owns the fetch. */
   models: readonly ModelPreset[]
 }) {
+  useLocale()
+
   const id = useId()
   const on = value !== null
   const intent = value ?? remembered
@@ -299,13 +304,11 @@ function DispatchSettings({
           <SplitIcon className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-semibold leading-tight text-foreground">Dispatch</div>
-          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-            Split this task into subtasks run as separate tasks
-          </p>
+          <div className="text-[13px] font-semibold leading-tight text-foreground">{t('Dispatch')}</div>
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{t('Split this task into subtasks run as separate tasks')}</p>
         </div>
         <Switch
-          aria-label="Dispatch"
+          aria-label={t('Dispatch')}
           data-slot="dispatch-settings-switch"
           checked={on}
           onCheckedChange={(next) => onChange(next ? remembered : null)}
@@ -313,7 +316,7 @@ function DispatchSettings({
       </header>
 
       <div className="flex flex-col gap-2 border-t border-border pt-3">
-        <Row label="Max subtasks" htmlFor={`${id}-max`}>
+        <Row label={t('Max subtasks')} htmlFor={`${id}-max`}>
           <select
             id={`${id}-max`}
             data-slot="dispatch-max-subtasks"
@@ -323,7 +326,7 @@ function DispatchSettings({
               set({ maxSubtasks: event.target.value === '' ? undefined : Number(event.target.value) })
             }
           >
-            <option value="">unlimited</option>
+            <option value="">{t('unlimited')}</option>
             {maxChoices.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -331,7 +334,7 @@ function DispatchSettings({
             ))}
           </select>
         </Row>
-        <Row label="In flight at once" htmlFor={`${id}-flight`}>
+        <Row label={t('In flight at once')} htmlFor={`${id}-flight`}>
           <select
             id={`${id}-flight`}
             data-slot="dispatch-in-flight"
@@ -350,7 +353,7 @@ function DispatchSettings({
             ))}
           </select>
         </Row>
-        <Row label="Subtask runner" htmlFor={`${id}-runner`}>
+        <Row label={t('Subtask runner')} htmlFor={`${id}-runner`}>
           <select
             id={`${id}-runner`}
             data-slot="dispatch-runner"
@@ -365,7 +368,7 @@ function DispatchSettings({
               })
             }
           >
-            <option value="">same as parent</option>
+            <option value="">{t('same as parent')}</option>
             {runnerOptions.map((runner) => (
               <option key={runner.id} value={runner.id}>
                 {runner.label}
@@ -373,7 +376,7 @@ function DispatchSettings({
             ))}
           </select>
         </Row>
-        <Row label="Subtask model" htmlFor={`${id}-model`}>
+        <Row label={t('Subtask model')} htmlFor={`${id}-model`}>
           <select
             id={`${id}-model`}
             data-slot="dispatch-model"
@@ -383,7 +386,7 @@ function DispatchSettings({
               set({ model: event.target.value === '' ? undefined : event.target.value })
             }
           >
-            <option value="">same as parent</option>
+            <option value="">{t('same as parent')}</option>
             {models.map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.label}
@@ -396,14 +399,14 @@ function DispatchSettings({
             ) : null}
           </select>
         </Row>
-        <Row label="Budget per subtask" htmlFor={`${id}-budget`}>
+        <Row label={t('Budget per subtask')} htmlFor={`${id}-budget`}>
           <span className="flex items-center gap-1.5">
             <Input
               id={`${id}-budget`}
               data-slot="dispatch-budget"
               type="number"
               inputMode="decimal"
-              placeholder="none"
+              placeholder={t('none')}
               step={0.5}
               min={BUDGET_MIN_USD}
               max={BUDGET_MAX_USD}
@@ -420,15 +423,12 @@ function DispatchSettings({
                 })
               }}
             />
-            <span className="text-xs text-muted-foreground">USD</span>
+            <span className="text-xs text-muted-foreground">{t('USD')}</span>
           </span>
         </Row>
       </div>
 
-      <p className="text-xs leading-snug text-muted-foreground">
-        The engine keeps its own brakes: {DISPATCH_MAX_IN_FLIGHT} in flight and budgets carved out
-        of this task&apos;s. These only tell the agent what you want.
-      </p>
+      <p className="text-xs leading-snug text-muted-foreground">{t('The engine keeps its own brakes:')}{' '}{DISPATCH_MAX_IN_FLIGHT}{' '}{t('in flight and budgets carved out of this task\'s. These only tell the agent what you want.')}</p>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronRightIcon } from 'lucide-react'
 import { useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Virtualizer, type VirtualizerHandle } from 'virtua'
@@ -130,6 +131,8 @@ export function DiffView({
   onRemoveComment,
   className,
 }: DiffProps) {
+  useLocale()
+
   const stat: DiffStat = useMemo(
     () => ({
       adds: files.reduce((sum, file) => sum + file.adds, 0),
@@ -441,8 +444,7 @@ export function DiffView({
     >
       <p data-slot="diff-totals" className="flex items-center gap-2 px-1 pb-3 text-xs text-muted-foreground">
         <span>
-          {stat.files} {stat.files === 1 ? 'file' : 'files'} changed
-        </span>
+          {stat.files} {stat.files === 1 ? t('file') : t('files')}{' '}{t('changed')}</span>
         <DiffStatLabel stat={stat} />
       </p>
       {renderMode === 'virtual' ? (
@@ -531,6 +533,8 @@ function VirtualFiles({
   card: (file: DiffFileChange) => React.ReactNode
   endRoom: number
 }) {
+  useLocale()
+
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   // virtua needs the distance between the scroller's content start and the virtualizer (the
@@ -628,6 +632,8 @@ function DiffFileCard({
   imageSrc?: (path: string) => string
   onOpenInApp?: (path: string) => void
 }) {
+  useLocale()
+
   const badge = STATUS_BADGE[file.status]
   const commentCount = useLineComments()?.comments.filter((comment) => comment.path === file.path).length ?? 0
   return (
@@ -677,18 +683,12 @@ function DiffFileCard({
             </span>
           ) : null}
           {file.image ? (
-            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-              image
-            </span>
+            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">{t('image')}</span>
           ) : file.binary ? (
-            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-              binary
-            </span>
+            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">{t('binary')}</span>
           ) : null}
           {preview ? (
-            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-              preview
-            </span>
+            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">{t('preview')}</span>
           ) : null}
           <span className="ml-auto flex shrink-0 items-center gap-2">
             <CommentCount count={commentCount} />
@@ -733,6 +733,8 @@ function DiffFileBody({
   imageSrc?: (path: string) => string
   onOpenInApp?: (path: string) => void
 }) {
+  useLocale()
+
   const parsed = useMemo(() => parsePatch(file.patch), [file.patch])
   // The trailing (after-last-hunk) region has an unknown length — only offer it when a
   // loader can actually materialize it, and never for fully-new or deleted files.
@@ -814,10 +816,10 @@ function DiffFileBody({
     return <ImagePreview file={file} imageSrc={imageSrc} onOpenInApp={onOpenInApp} />
   }
   if (file.binary) {
-    return <Note>Binary file — no text diff.</Note>
+    return <Note>{t('Binary file — no text diff.')}</Note>
   }
   if (parsed.hunks.length === 0) {
-    return <Note>{parsed.truncated ? 'Patch truncated by the server.' : 'No content changes (metadata only).'}</Note>
+    return <Note>{parsed.truncated ? t('Patch truncated by the server.') : t('No content changes (metadata only).')}</Note>
   }
 
   const tokensFor = (line: HunkLine): SynToken[] | null => {
@@ -856,7 +858,7 @@ function DiffFileBody({
           : null}
       </div>
       </FileLinesContext.Provider>
-      {parsed.truncated ? <Note>Patch truncated by the server — counts above remain exact.</Note> : null}
+      {parsed.truncated ? <Note>{t('Patch truncated by the server — counts above remain exact.')}</Note> : null}
     </div>
   )
 }
@@ -885,6 +887,8 @@ function useFileTokens(path: string, lineList: HunkLine[]): SynToken[][] | null 
 }
 
 function Note({ children }: { children: React.ReactNode }) {
+  useLocale()
+
   return <p className="px-4 py-2.5 text-xs text-soft-foreground">{children}</p>
 }
 
@@ -900,6 +904,8 @@ const MARKER: Record<HunkLine['kind'], string> = { add: '+', del: '−', context
 const FLASH = 'transition-shadow duration-500 data-[flash=true]:ring-2 data-[flash=true]:ring-inset data-[flash=true]:ring-primary'
 
 function HunkHeaderRow({ hunk }: { hunk: Hunk }) {
+  useLocale()
+
   return (
     <div data-slot="diff-hunk" className="bg-muted/40 px-4 py-0.5 whitespace-pre text-soft-foreground">
       {hunk.header}
@@ -909,7 +915,9 @@ function HunkHeaderRow({ hunk }: { hunk: Hunk }) {
 
 /** "⋯ N unchanged lines" — a button when expansion is wired, a separator otherwise. */
 function GapRow({ gap, onExpand }: { gap: ContextGap; onExpand?: (gap: ContextGap) => void }) {
-  const label = gap.count === undefined ? '⋯ unchanged lines to end of file' : `⋯ ${gap.count} unchanged ${gap.count === 1 ? 'line' : 'lines'}`
+  useLocale()
+
+  const label = gap.count === undefined ? t('⋯ unchanged lines to end of file') : t('⋯ {0} unchanged {1}', { 0: gap.count, 1: gap.count === 1 ? 'line' : 'lines' })
   if (!onExpand) {
     return (
       <div data-slot="diff-gap" className="border-y border-border/40 bg-muted/20 px-4 py-0.5 text-[11px] text-soft-foreground">
@@ -924,13 +932,14 @@ function GapRow({ gap, onExpand }: { gap: ContextGap; onExpand?: (gap: ContextGa
       onClick={() => onExpand(gap)}
       className="block w-full border-y border-border/40 bg-muted/20 px-4 py-0.5 text-left text-[11px] text-soft-foreground hover:bg-muted/50 hover:text-foreground"
     >
-      {label} — expand
-    </button>
+      {label}{' '}{t('— expand')}</button>
   )
 }
 
 /** A line's content: syntax tokens × word marks, empty lines kept one row tall. */
 function LineContent({ cell, tokens, wrap }: { cell: DiffCell; tokens: SynToken[] | null; wrap: boolean }) {
+  useLocale()
+
   const segments = overlaySegments(tokens, cell.spans, cell.line.text)
   const markClass = cell.line.kind === 'add' ? 'bg-diff-add-strong' : 'bg-diff-del-strong'
   return (
@@ -951,6 +960,8 @@ function LineContent({ cell, tokens, wrap }: { cell: DiffCell; tokens: SynToken[
 }
 
 function Gutter({ value }: { value: number | undefined }) {
+  useLocale()
+
   return (
     <span className="w-10 shrink-0 pr-2 text-right text-soft-foreground/70 tabular-nums select-none">
       {value ?? ''}
@@ -971,6 +982,8 @@ function UnifiedRowView({
   tokensFor: (line: HunkLine) => SynToken[] | null
   onExpand?: (gap: ContextGap) => void
 }) {
+  useLocale()
+
   const comments = useLineComments()
   const fileLines = useContext(FileLinesContext)
   if (row.type === 'hunk') return <HunkHeaderRow hunk={row.hunk} />
@@ -1022,6 +1035,8 @@ function SplitRowView({
   tokensFor: (line: HunkLine) => SynToken[] | null
   onExpand?: (gap: ContextGap) => void
 }) {
+  useLocale()
+
   if (row.type === 'hunk') return <HunkHeaderRow hunk={row.hunk} />
   if (row.type === 'gap') return <GapRow gap={row.gap} onExpand={onExpand} />
   const leftAnchor = row.left ? anchorForLine(path, row.left.line) : undefined
@@ -1050,6 +1065,8 @@ function SplitCell({
   tokensFor: (line: HunkLine) => SynToken[] | null
   wrap: boolean
 }) {
+  useLocale()
+
   const comments = useLineComments()
   const fileLines = useContext(FileLinesContext)
   if (!cell) {

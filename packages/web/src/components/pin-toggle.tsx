@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { PinIcon } from 'lucide-react'
 import { IconTooltip } from '@/components/ui/icon-tooltip'
 import { cn } from '@/lib/utils'
@@ -36,15 +37,17 @@ export function PinToggle({
   onToggle: (pinned: boolean) => void
   className?: string
 }) {
+  useLocale()
+
   return (
-    <IconTooltip label={pinned ? 'Unpin from the top of the list' : 'Pin to the top of the list'}>
+    <IconTooltip label={pinned ? t('Unpin from the top of the list') : t('Pin to the top of the list')}>
       <button
         type="button"
         data-slot="pin-toggle"
         data-pinned={pinned ? 'true' : undefined}
         // A toggle, so `aria-pressed` — the same call `ViewTab` and the column headers make.
         aria-pressed={pinned}
-        aria-label={pinned ? 'Unpin task' : 'Pin task'}
+        aria-label={pinned ? t('Unpin task') : t('Pin task')}
         // Deliberately never disabled while the mutation is in flight: `usePinRun` invalidates
         // rather than patching optimistically, so a row's `run.pinned` is stale until the refetch
         // lands, and a second click would only re-send an idempotent `{pinned: true}`. Greying the

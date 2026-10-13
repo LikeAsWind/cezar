@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ArrowUpRightIcon, Clock3Icon, GitForkIcon, ZapIcon } from 'lucide-react'
 import type { SyntheticEvent } from 'react'
 import { nextOccurrence, type AutomationListEntry, type AutomationsResponse } from '@open-mercato/cezar-api-client'
@@ -35,20 +36,22 @@ export function AutomationsTable({
   actions: AutomationActions
   now?: number
 }) {
+  useLocale()
+
   const showCost = AUTOMATION_COST_VISIBLE && (data.stats.costUsd !== undefined || data.automations.some((automation) => automation.costUsd7d !== undefined))
   return (
     <Card flush data-slot="automations-table" className="min-w-0 overflow-x-auto">
       <table className="w-full border-collapse [&_tbody_tr:last-child>td]:border-b-0">
         <thead>
           <tr>
-            <th className={cn(TH, 'pl-4')}>State</th>
-            <th className={TH}>Automation</th>
-            <th className={TH}>Trigger</th>
-            <th className={cn(TH, WIDE)}>Runs as</th>
-            <th className={TH}>Next run</th>
-            <th className={TH}>Last run</th>
-            <th className={cn(TH, WIDE, 'text-right')}>Runs 7d</th>
-            {showCost ? <th className={cn(TH, WIDE, 'text-right')}>Cost 7d</th> : null}
+            <th className={cn(TH, 'pl-4')}>{t('State')}</th>
+            <th className={TH}>{t('Automation')}</th>
+            <th className={TH}>{t('Trigger')}</th>
+            <th className={cn(TH, WIDE)}>{t('Runs as')}</th>
+            <th className={TH}>{t('Next run')}</th>
+            <th className={TH}>{t('Last run')}</th>
+            <th className={cn(TH, WIDE, 'text-right')}>{t('Runs 7d')}</th>
+            {showCost ? <th className={cn(TH, WIDE, 'text-right')}>{t('Cost 7d')}</th> : null}
             <th className={cn(TH, 'pr-4')} />
           </tr>
         </thead>
@@ -86,6 +89,8 @@ function AutomationRow({
   showCost: boolean
   now: number
 }) {
+  useLocale()
+
   const navigate = useNavigate()
   const github = automation.kind === 'github'
   const capabilityPaused = github && !available
@@ -104,10 +109,10 @@ function AutomationRow({
     >
       <td className={cn(TD, 'pl-4')}>
         {capabilityPaused ? (
-          <Pill dot="neutral">paused by capability</Pill>
+          <Pill dot="neutral">{t('paused by capability')}</Pill>
         ) : (
           <Pill dot={automation.enabled ? 'success' : 'neutral'} pulse={automation.enabled && github}>
-            {automation.enabled ? 'enabled' : 'paused'}
+            {automation.enabled ? t('enabled') : t('paused')}
           </Pill>
         )}
       </td>
@@ -118,7 +123,7 @@ function AutomationRow({
           {dispatch ? (
             <span
               data-slot="dispatch-badge"
-              title={`dispatch · up to ${dispatch.maxSubtasks ?? 1} subtasks`}
+              title={t('dispatch · up to {0} subtasks', { 0: dispatch.maxSubtasks ?? 1 })}
               className="inline-flex shrink-0 items-center gap-[3px] rounded-full bg-muted px-1.5 py-px text-[10.5px] font-medium text-muted-foreground"
             >
               <GitForkIcon className="size-2.5" />×{dispatch.maxSubtasks ?? 1}
@@ -141,7 +146,7 @@ function AutomationRow({
             {automation.task.autonomous ? (
               <>
                 <span className="text-soft-foreground">·</span>
-                <span title="autonomous" data-slot="autonomous-mark" className="inline-flex">
+                <span title={t('autonomous')} data-slot="autonomous-mark" className="inline-flex">
                   <ZapIcon aria-hidden="true" className="size-[11px] text-soft-foreground" />
                 </span>
               </>
@@ -168,9 +173,7 @@ function AutomationRow({
               data-slot="task-link"
               onClick={stop}
               className="inline-flex items-center gap-0.5 rounded-full border border-violet/40 px-1.5 py-px font-mono text-[10.5px] font-semibold text-violet"
-            >
-              task
-              <ArrowUpRightIcon className="size-[9px]" />
+            >{t('task')}<ArrowUpRightIcon className="size-[9px]" />
             </Link>
           </span>
         ) : (

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router'
 import type { Capabilities } from '@open-mercato/cezar-api-client'
@@ -60,10 +61,12 @@ function SectionNav({
   activeId: SettingsSection['id'] | null
   capabilities?: Partial<Pick<Capabilities, 'singleProject'>>
 }) {
+  useLocale()
+
   const { NavLink } = navComponents(scope)
   return (
     <nav
-      aria-label="Settings sections"
+      aria-label={t('Settings sections')}
       data-slot="settings-nav"
       data-scope={scope}
       className="hidden w-52 shrink-0 flex-col gap-1 border-r border-border p-3 md:flex"
@@ -80,9 +83,7 @@ function SectionNav({
             : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         )}
       >
-        <SlidersHorizontalIcon aria-hidden="true" className="size-4 shrink-0" />
-        General
-      </NavLink>
+        <SlidersHorizontalIcon aria-hidden="true" className="size-4 shrink-0" />{t('General')}</NavLink>
       {visibleSettingsSections(scope, capabilities).map((section) => (
         <NavLink
           key={section.id}
@@ -104,7 +105,7 @@ function SectionNav({
           Global: settings are per USER, not per repo, said once where the choice to write there
           is being made. Project: WHICH repo, by its absolute path on disk. */}
       {scope === 'global' ? (
-        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.cezar</p>
+        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">{t('Stored in ~/.cezar')}</p>
       ) : (
         <ProjectLocationNav />
       )}
@@ -122,10 +123,12 @@ function SectionPills({
   activeId: SettingsSection['id']
   capabilities?: Partial<Pick<Capabilities, 'singleProject'>>
 }) {
+  useLocale()
+
   const { NavLink } = navComponents(scope)
   return (
     <nav
-      aria-label="Settings sections"
+      aria-label={t('Settings sections')}
       data-slot="settings-nav-mobile"
       className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-3 py-2.5 md:hidden"
     >
@@ -136,9 +139,7 @@ function SectionPills({
         end
         data-slot="settings-nav-index"
         className="rounded-full border border-border bg-card px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors"
-      >
-        General
-      </NavLink>
+      >{t('General')}</NavLink>
       {visibleSettingsSections(scope, capabilities).map((section) => (
         <NavLink
           key={section.id}
@@ -169,6 +170,8 @@ export function SettingsSectionRoute({
   scope: SettingsScope
   capabilities?: Partial<Pick<Capabilities, 'singleProject'>>
 }) {
+  useLocale()
+
   const Body = section.component
   return (
     <div
@@ -181,9 +184,7 @@ export function SettingsSectionRoute({
         <h1 className="text-base font-semibold">{section.title}</h1>
         <p className="text-[13px] text-soft-foreground">{section.description}</p>
         {scope === 'global' ? (
-          <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">
-            Global settings
-          </span>
+          <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">{t('Global settings')}</span>
         ) : null}
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
@@ -203,16 +204,18 @@ export function SettingsIndexRoute({ scope, capabilities }: {
   scope: SettingsScope
   capabilities?: Partial<Pick<Capabilities, 'singleProject'>>
 }) {
+  useLocale()
+
   const { Link } = navComponents(scope)
   const global = scope === 'global'
   return (
     <div data-route={global ? 'settings-global' : 'settings'} className="flex min-h-full flex-col">
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">{global ? 'Global settings' : 'Settings'}</h1>
+        <h1 className="text-base font-semibold">{global ? t('Global settings') : t('Settings')}</h1>
         <p className="text-[13px] text-soft-foreground">
           {global
-            ? 'Preferences for you and this machine, shared by every project.'
-            : 'Configure this project and its agents.'}
+            ? t('Preferences for you and this machine, shared by every project.')
+            : t('Configure this project and its agents.')}
         </p>
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
@@ -258,17 +261,14 @@ export function SettingsIndexRoute({ scope, capabilities }: {
               each half says where the other one is. */}
           <p className="mx-auto mt-4 w-full max-w-2xl text-[12px] text-soft-foreground">
             {global ? (
-              <>Agents, worktrees, bookmarklets and prompt templates are per project.</>
+              <>{t('Agents, worktrees, bookmarklets and prompt templates are per project.')}</>
             ) : (
-              <>
-                Appearance, notifications, host resources and the project registry live in{' '}
+              <>{t('Appearance, notifications, host resources and the project registry live in')}{' '}
                 <RouterLink
                   to={settingsIndexPath('global')}
                   data-slot="settings-global-link"
                   className="underline underline-offset-2 hover:text-foreground"
-                >
-                  Global settings
-                </RouterLink>
+                >{t('Global settings')}</RouterLink>
                 .
               </>
             )}

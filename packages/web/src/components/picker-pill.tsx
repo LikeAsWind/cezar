@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { SearchIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -56,6 +57,8 @@ export function PickerPill({
   /** Add a name filter above longer option catalogs. */
   searchPlaceholder?: string
 }) {
+  useLocale()
+
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
@@ -159,7 +162,7 @@ export function PickerPill({
           ))}
         </DropdownMenuRadioGroup>
         {searchPlaceholder && visibleOptions.length === 0 ? (
-          <p className="px-2 py-5 text-center text-xs text-muted-foreground">No branches found.</p>
+          <p className="px-2 py-5 text-center text-xs text-muted-foreground">{t('No branches found.')}</p>
         ) : null}
         {status ? (
           <DropdownMenuItem disabled className="border-t border-border text-[11.5px] text-muted-foreground">
@@ -233,6 +236,8 @@ export function RunnerPill({
   /** What the repo's setting resolves to per runner — the row that is selected until overridden. */
   repoAccount?: Partial<Record<Runner, string>>
 }) {
+  useLocale()
+
   const available = RUNNERS.filter((r) => runners.includes(r.id))
   const options = available.flatMap((runner) => {
     const logins = accounts.filter((entry) => entry.provider === runner.id)
@@ -258,7 +263,7 @@ export function RunnerPill({
   return (
     <PickerPill
       slot="runner-pill"
-      ariaLabel="Runner"
+      ariaLabel={t('Runner')}
       label={options.find((option) => option.value === value_)?.label ?? value}
       value={value_}
       disabled={disabled}

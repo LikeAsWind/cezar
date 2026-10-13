@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { lazy, memo, Suspense } from 'react'
 import {
   matchPath,
@@ -112,6 +113,8 @@ const AutomationsRoute = lazyRoute('automations', () =>
  *  preserving the `?skill=` selection and any hash — so pasted links and saved bookmarklets
  *  still land. The scoped Navigate keeps the redirect inside the active project. */
 function SettingsSkillsRedirect() {
+  useLocale()
+
   const location = useLocation()
   const legacySkill = new URLSearchParams(location.search).get('skill')
   if (legacySkill === '__bm') {
@@ -131,6 +134,8 @@ function SettingsSkillsRedirect() {
  *  SECOND hop (`LegacyPathRedirect` first), and dropping either half there would silently undo
  *  what that hop just preserved. Plain Navigate — the target is outside every project. */
 function MovedSettingsSectionRedirect({ sectionId }: { sectionId: SettingsSectionId }) {
+  useLocale()
+
   const location = useLocation()
   return (
     <Navigate
@@ -148,9 +153,11 @@ function MovedSettingsSectionRedirect({ sectionId }: { sectionId: SettingsSectio
  *  the registry from `/api/projects`). Deliberately quiet: the answer arrives in one local round
  *  trip, and any real screen here would flash the WRONG screen (spec, "URL scheme"). */
 function ScopeResolving() {
+  useLocale()
+
   return (
     <div data-route="scope-resolving" className="flex min-h-full flex-col">
-      <p className="px-4 py-6 text-center text-xs text-soft-foreground">Loading…</p>
+      <p className="px-4 py-6 text-center text-xs text-soft-foreground">{t('Loading…')}</p>
     </div>
   )
 }
@@ -172,6 +179,8 @@ function ScopeResolving() {
  * for an unreachable server — a permanent "Loading…" here would not be.
  */
 function ProjectScopeRoute() {
+  useLocale()
+
   const { projectId = '' } = useParams()
   const location = useLocation()
   const projects = useProjects()
@@ -236,6 +245,8 @@ function ProjectScopeRoute() {
  * deep-link capture all start from the project the URL now names.
  */
 function NewTaskProjectRoute() {
+  useLocale()
+
   const { projectId = '' } = useParams()
   return <NewTaskRoute key={projectId} />
 }
@@ -250,6 +261,8 @@ function NewTaskProjectRoute() {
  * `replace` keeps Back from bouncing off either startup redirect.
  */
 function LegacyPathRedirect() {
+  useLocale()
+
   const location = useLocation()
   const health = useHealth()
   const projects = useProjects()
@@ -303,21 +316,21 @@ export interface PageTitleContext {
 }
 
 const PAGE_TITLE_ROUTES = [
-  { pattern: '/', pageLabel: 'Tasks' },
+  { pattern: '/', get pageLabel() { return t('Tasks') } },
   // The global page. It is not project-scoped, so it never carries a `/p/` prefix to strip —
   // but it goes through the same table, because the browser title is one mechanism.
-  { pattern: '/tasks', pageLabel: 'All tasks' },
-  { pattern: '/dashboard', pageLabel: 'Dashboard' },
-  { pattern: '/new', pageLabel: 'New task' },
-  { pattern: '/compare/:groupId', pageLabel: 'Compare' },
-  { pattern: '/git/*', pageLabel: 'Git' },
-  { pattern: '/github/*', pageLabel: 'GitHub' },
-  { pattern: '/tracker/*', pageLabel: 'Tracker' },
-  { pattern: '/automations/*', pageLabel: 'Automations' },
-  { pattern: '/skills', pageLabel: 'Skills' },
-  { pattern: '/inbox', pageLabel: 'Inbox' },
-  { pattern: '/workflows/*', pageLabel: 'Workflows' },
-  { pattern: '/settings/*', pageLabel: 'Settings' },
+  { pattern: '/tasks', get pageLabel() { return t('All tasks') } },
+  { pattern: '/dashboard', get pageLabel() { return t('Dashboard') } },
+  { pattern: '/new', get pageLabel() { return t('New task') } },
+  { pattern: '/compare/:groupId', get pageLabel() { return t('Compare') } },
+  { pattern: '/git/*', get pageLabel() { return t('Git') } },
+  { pattern: '/github/*', get pageLabel() { return t('GitHub') } },
+  { pattern: '/tracker/*', get pageLabel() { return t('Tracker') } },
+  { pattern: '/automations/*', get pageLabel() { return t('Automations') } },
+  { pattern: '/skills', get pageLabel() { return t('Skills') } },
+  { pattern: '/inbox', get pageLabel() { return t('Inbox') } },
+  { pattern: '/workflows/*', get pageLabel() { return t('Workflows') } },
+  { pattern: '/settings/*', get pageLabel() { return t('Settings') } },
 ] as const
 
 /** Browser-title context from the project-relative route map; raw ids are lookup keys only. */
@@ -343,6 +356,8 @@ export function pageTitleContext(pathname: string): PageTitleContext {
  *  stay stable — they are what teammates paste, and the legacy flat URLs redirect onto them.
  */
 export const AppRoutes = memo(function AppRoutes() {
+  useLocale()
+
   const capabilities = useHealth().data?.capabilities
   return (
     <Routes>
@@ -639,7 +654,7 @@ export const AppRoutes = memo(function AppRoutes() {
           keep redirecting to the boot project's thread (`LegacyPathRedirect` below owns it).
           React Router ranks this static segment above that `*`, so the two never compete. */}
       <Route path="/tasks" element={<GlobalTasksRoute />} />
-      <Route path="/dashboard" element={<Suspense fallback={<div role="status" className="p-6 text-sm text-muted-foreground">Loading dashboard…</div>}><DashboardRoute /></Suspense>} />
+      <Route path="/dashboard" element={<Suspense fallback={<div role="status" className="p-6 text-sm text-muted-foreground">{t('Loading dashboard…')}</div>}><DashboardRoute /></Suspense>} />
 
       {/* Global settings (multi-project spec, step 3.5) — the one cockpit area that is NOT
           under `/p/:projectId`, because nothing here belongs to a project: appearance and

@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useEffect, useImperativeHandle, useRef, useState, type ComponentType } from 'react'
 
 import type { DiffStat } from '@open-mercato/cezar-api-client'
@@ -28,6 +29,8 @@ import type { DiffFileChange, DiffProps } from './types'
  * degraded, never blank.
  */
 export function Diff(props: DiffProps) {
+  useLocale()
+
   const [engine, setEngine] = useState<{ View: ComponentType<DiffProps> } | 'failed' | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -47,17 +50,13 @@ export function Diff(props: DiffProps) {
   // The empty state needs no engine — render it synchronously, chunk or no chunk.
   if (props.files.length === 0) {
     return (
-      <p data-slot="diff-empty" className={cn('px-1 text-xs text-soft-foreground', props.className)}>
-        No changes.
-      </p>
+      <p data-slot="diff-empty" className={cn('px-1 text-xs text-soft-foreground', props.className)}>{t('No changes.')}</p>
     )
   }
   if (engine === 'failed') return <DiffFallback {...props} />
   if (engine === null) {
     return (
-      <p data-slot="diff-loading" className={cn('px-1 text-xs text-soft-foreground', props.className)}>
-        Loading diff…
-      </p>
+      <p data-slot="diff-loading" className={cn('px-1 text-xs text-soft-foreground', props.className)}>{t('Loading diff…')}</p>
     )
   }
   return <engine.View {...props} />
@@ -70,6 +69,8 @@ export function Diff(props: DiffProps) {
  * patch; that is documented degradation, not a bug.
  */
 export function DiffFallback({ files, wrap = false, imageSrc, onOpenInApp, viewRef, className }: DiffProps) {
+  useLocale()
+
   const stat: DiffStat = {
     adds: files.reduce((sum, file) => sum + file.adds, 0),
     dels: files.reduce((sum, file) => sum + file.dels, 0),
@@ -97,8 +98,7 @@ export function DiffFallback({ files, wrap = false, imageSrc, onOpenInApp, viewR
     <div ref={root} data-slot="diff" data-fallback="true" className={cn('flex min-w-0 flex-col gap-3', className)}>
       <p data-slot="diff-totals" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
         <span>
-          {stat.files} {stat.files === 1 ? 'file' : 'files'} changed
-        </span>
+          {stat.files} {stat.files === 1 ? t('file') : t('files')}{' '}{t('changed')}</span>
         <DiffStatLabel stat={stat} />
       </p>
       {files.map((file) => (
@@ -125,6 +125,8 @@ function FallbackFile({
   imageSrc?: (path: string) => string
   onOpenInApp?: (path: string) => void
 }) {
+  useLocale()
+
   return (
     <section
       data-slot="diff-file"
@@ -142,9 +144,9 @@ function FallbackFile({
       {shouldPreviewImage(file) ? (
         <ImagePreview file={file} imageSrc={imageSrc} onOpenInApp={onOpenInApp} />
       ) : file.binary ? (
-        <p className="px-4 py-2.5 text-xs text-soft-foreground">Binary file — no text diff.</p>
+        <p className="px-4 py-2.5 text-xs text-soft-foreground">{t('Binary file — no text diff.')}</p>
       ) : file.patch === '' ? (
-        <p className="px-4 py-2.5 text-xs text-soft-foreground">No content changes (metadata only).</p>
+        <p className="px-4 py-2.5 text-xs text-soft-foreground">{t('No content changes (metadata only).')}</p>
       ) : (
         <pre
           className={cn(

@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { AgentConfigFile, Runner } from '@open-mercato/cezar-api-client'
 
 /**
@@ -65,7 +66,7 @@ function group(
 export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
   {
     id: 'claude',
-    label: 'Claude',
+    get label() { return t('Claude') },
     groups: [
       group('claude', 'settings', 'Settings'),
       group(
@@ -79,7 +80,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
   },
   {
     id: 'codex',
-    label: 'Codex',
+    get label() { return t('Codex') },
     note: EDITOR_PLUS_COMMIT,
     groups: [
       group('codex', 'settings', 'Settings'),
@@ -94,7 +95,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
   },
   {
     id: 'copilot',
-    label: 'GitHub Copilot',
+    get label() { return t('GitHub Copilot') },
     note: EDITOR_PLUS_COMMIT,
     groups: [
       group('copilot', 'settings', 'Settings'),
@@ -109,7 +110,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
   },
   {
     id: 'opencode',
-    label: 'OpenCode',
+    get label() { return t('OpenCode') },
     note: EDITOR_PLUS_COMMIT,
     groups: [
       group('opencode', 'settings', 'Settings'),
@@ -124,8 +125,8 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
   },
   {
     id: 'cursor',
-    label: 'Cursor',
-    note: 'Cursor Agent CLI (`agent`). Auth via `agent login` or CURSOR_API_KEY. No separate memory file — instructions live in rules/MCP elsewhere.',
+    get label() { return t('Cursor') },
+    get note() { return t('Cursor Agent CLI (`agent`). Auth via `agent login` or CURSOR_API_KEY. No separate memory file — instructions live in rules/MCP elsewhere.') },
     groups: [
       group('cursor', 'settings', 'Settings'),
       group(
@@ -140,6 +141,6 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
 
 export function descriptorFor(agent: Runner): AgentDescriptor {
   const found = AGENT_DESCRIPTORS.find((d) => d.id === agent)
-  if (!found) throw new Error(`no agent descriptor for ${agent}`)
+  if (!found) throw new Error(t('no agent descriptor for {0}', { 0: agent }))
   return found
 }

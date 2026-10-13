@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { CacheSnapshot } from 'virtua'
 
 /**
@@ -43,7 +44,7 @@ export const VIRTUALIZE_THRESHOLD = 300
  */
 export function threadRowClass(scrollAnchoring: boolean): string {
   const base = 'flex w-full flex-col pb-2.5'
-  return scrollAnchoring ? `${base} [contain-intrinsic-block-size:auto_3rem] [content-visibility:auto]` : base
+  return scrollAnchoring ? t('{0} [contain-intrinsic-block-size:auto_3rem] [content-visibility:auto]', { 0: base }) : base
 }
 
 /** ~80px per the research: pin-to-bottom while streaming only when the reader is this close. */

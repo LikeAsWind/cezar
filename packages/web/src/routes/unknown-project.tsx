@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { FolderSearchIcon } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -20,6 +21,8 @@ export function UnknownProjectRoute({
   projectId: string
   registry: ProjectsResponse
 }) {
+  useLocale()
+
   // The boot project is always openable even when the registry list is degraded-empty
   // (read-only home: the workspace file may not exist, but the boot repo is being served).
   const projects = registry.projects.length
@@ -31,13 +34,13 @@ export function UnknownProjectRoute({
       <CenteredState
         icon={<FolderSearchIcon />}
         tone="neutral"
-        title={`“${projectId}” isn’t registered here`}
+        title={t('“{0}” isn’t registered here', { 0: projectId })}
         // "can open", not "registered on this one": the list below is the
         // `GET /api/v1/projects` payload, which since seed-once leads with the
         // folder cezar is serving WITHOUT having registered it. Offering that row
         // under a sentence calling it registered contradicts the "· not registered"
         // marker the same folder carries in Settings.
-        subtitle="This workspace doesn’t serve a project by that id. The link may come from another machine’s workspace — these are the projects this one can open:"
+        subtitle={t('This workspace doesn’t serve a project by that id. The link may come from another machine’s workspace — these are the projects this one can open:')}
       >
         <ul data-slot="registered-projects" className="mx-auto flex w-full max-w-xs flex-col gap-1.5 text-left">
           {projects.map((project) => (

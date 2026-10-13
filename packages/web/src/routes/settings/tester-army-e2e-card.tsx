@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ExternalLinkIcon, MinusIcon } from 'lucide-react'
 import { useState } from 'react'
@@ -16,10 +17,10 @@ export const TESTER_ARMY_REPO = 'https://github.com/tester-army/e2e'
 
 /** The provider behind each key, as the person picking one knows it. */
 const PROVIDER_LABELS: Record<E2eCredentialName, string> = {
-  AI_GATEWAY_API_KEY: 'Vercel AI Gateway',
-  OPENAI_API_KEY: 'OpenAI',
-  ANTHROPIC_API_KEY: 'Anthropic',
-  OPENROUTER_API_KEY: 'OpenRouter',
+  get AI_GATEWAY_API_KEY() { return t('Vercel AI Gateway') },
+  get OPENAI_API_KEY() { return t('OpenAI') },
+  get ANTHROPIC_API_KEY() { return t('Anthropic') },
+  get OPENROUTER_API_KEY() { return t('OpenRouter') },
 }
 
 const IN_FLIGHT: ReadonlySet<RunStatus> = new Set(['queued', 'running', 'waiting'])
@@ -30,17 +31,19 @@ const IN_FLIGHT: ReadonlySet<RunStatus> = new Set(['queued', 'running', 'waiting
  * off by default and `done` alone would read as "nothing left to do".
  */
 function setupLine(status: RunStatus, landed: boolean, branch: string | undefined, prUrl: string | undefined): string {
-  if (IN_FLIGHT.has(status)) return 'Setting up — cezar is installing and configuring e2e in its own worktree.'
+  if (IN_FLIGHT.has(status)) return t('Setting up — cezar is installing and configuring e2e in its own worktree.')
   const mergeIt = prUrl
     ? 'its draft PR is ready — merge it to finish.'
     : `merge ${branch ? `branch ${branch}` : 'the setup task’s branch'} to finish.`
-  if (status === 'review') return `Ready for review — ${mergeIt}`
-  if (status === 'done') return landed ? 'Setup finished.' : `Setup finished — ${mergeIt}`
-  if (status === 'failed') return 'The last setup failed — open the task to see why, then try again.'
-  return 'The last setup was cancelled.'
+  if (status === 'review') return t('Ready for review — {0}', { 0: mergeIt })
+  if (status === 'done') return landed ? t('Setup finished.') : t('Setup finished — {0}', { 0: mergeIt })
+  if (status === 'failed') return t('The last setup failed — open the task to see why, then try again.')
+  return t('The last setup was cancelled.')
 }
 
 function Row({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  useLocale()
+
   return (
     <li className="flex items-center gap-2 text-sm" data-ok={ok}>
       {ok ? <CheckIcon className="size-4 text-success" aria-hidden /> : <MinusIcon className="size-4 text-muted-foreground" aria-hidden />}
@@ -57,6 +60,8 @@ function Row({ ok, children }: { ok: boolean; children: React.ReactNode }) {
  * steps only, never to an agent.
  */
 export function TesterArmyE2eCard() {
+  useLocale()
+
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const status = useE2eStatus()
@@ -89,7 +94,7 @@ export function TesterArmyE2eCard() {
         queryClient.invalidateQueries({ queryKey: queryKeys.e2e.allFor(projectId ?? '') }),
         queryClient.invalidateQueries({ queryKey: queryKeys.secrets.allFor(projectId ?? '') }),
       ])
-      toast('e2e setup started')
+      toast(t('e2e setup started'))
       if (queryScope() === projectId) void navigate(scopeTo(projectId, `/tasks/${runId}`))
     },
     // Keep the key on failure: a transient 409 should not cost a re-paste.
@@ -104,7 +109,7 @@ export function TesterArmyE2eCard() {
           <img src={testerArmyLogo} alt="" width={40} height={40} className="size-10 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-sm font-semibold">TesterArmy e2e</h2>
+              <h2 className="text-sm font-semibold">{t('TesterArmy e2e')}</h2>
               <span data-slot="e2e-badge" data-state={inFlight ? 'setting-up' : installed ? 'installed' : 'none'}
                 className={installed && !inFlight
                   ? 'rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success'
@@ -112,27 +117,23 @@ export function TesterArmyE2eCard() {
                 {badge}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">Agentic browser end-to-end testing</p>
+            <p className="text-xs text-muted-foreground">{t('Agentic browser end-to-end testing')}</p>
           </div>
           <a href={TESTER_ARMY_REPO} target="_blank" rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-            tester-army/e2e <ExternalLinkIcon className="size-3" aria-hidden />
+            className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">{t('tester-army/e2e')}{' '}<ExternalLinkIcon className="size-3" aria-hidden />
           </a>
         </div>
-        <p className="mt-3 text-sm text-muted-foreground">
-          cezar installs it for this project, points it at your dev server, writes a smoke test and an
-          {' '}<code>implement-and-e2e</code> workflow, proves it all passes in a real browser and opens a draft PR for you to merge.
-        </p>
-        {status.isPending ? <p className="mt-4 text-sm text-muted-foreground">Loading…</p> : null}
+        <p className="mt-3 text-sm text-muted-foreground">{t('cezar installs it for this project, points it at your dev server, writes a smoke test and an')}{' '}<code>implement-and-e2e</code>{' '}{t('workflow, proves it all passes in a real browser and opens a draft PR for you to merge.')}</p>
+        {status.isPending ? <p className="mt-4 text-sm text-muted-foreground">{t('Loading…')}</p> : null}
         {status.isError ? <p role="alert" className="mt-4 text-sm text-danger">{status.error.message}</p> : null}
         {status.data ? (
-          <ul className="mt-4 flex flex-col gap-1.5" aria-label="e2e status">
-            <Row ok={Boolean(status.data.configFile)}>{status.data.configFile ? <>Configured (<code>{status.data.configFile}</code>)</> : 'Not configured in this checkout'}</Row>
-            <Row ok={status.data.workflow}><code>implement-and-e2e</code> workflow {status.data.workflow ? 'available' : 'not added yet'}</Row>
+          <ul className="mt-4 flex flex-col gap-1.5" aria-label={t('e2e status')}>
+            <Row ok={Boolean(status.data.configFile)}>{status.data.configFile ? <>{t('Configured (')}<code>{status.data.configFile}</code>)</> : t('Not configured in this checkout')}</Row>
+            <Row ok={status.data.workflow}><code>implement-and-e2e</code>{' '}{t('workflow')}{' '}{status.data.workflow ? t('available') : t('not added yet')}</Row>
             <Row ok={credentials.length > 0}>
               {credentials.length > 0
-                ? <>Model key: <code>{credentials.join(', ')}</code></>
-                : 'No model key — smoke tests run without one; agent steps need one'}
+                ? <>{t('Model key:')}{' '}<code>{credentials.join(', ')}</code></>
+                : t('No model key — smoke tests run without one; agent steps need one')}
             </Row>
           </ul>
         ) : null}
@@ -140,35 +141,32 @@ export function TesterArmyE2eCard() {
           <p className="mt-3 text-sm" data-slot="e2e-setup-run" data-status={setupStatus}>
             {setupLine(setupStatus, Boolean(status.data.configFile), setupRun.data?.branch, prUrl)}{' '}
             {prUrl && !status.data.configFile ? (
-              <><a className="underline" href={prUrl} target="_blank" rel="noreferrer">Open the draft PR</a>{' · '}</>
+              <><a className="underline" href={prUrl} target="_blank" rel="noreferrer">{t('Open the draft PR')}</a>{' · '}</>
             ) : null}
-            <Link className="underline" to={scopeTo(queryScope(), `/tasks/${status.data.setup.runId}`)}>Open the setup task</Link>
+            <Link className="underline" to={scopeTo(queryScope(), `/tasks/${status.data.setup.runId}`)}>{t('Open the setup task')}</Link>
           </p>
         ) : null}
       </section>
 
       <form className="rounded-lg border border-border bg-card p-4" autoComplete="off" onSubmit={(event) => { event.preventDefault(); starting.mutate() }}>
-        <h2 className="text-sm font-semibold">{installed ? 'Set up again' : 'Set up e2e'}</h2>
-        <label className="mt-3 block text-sm">Model provider
-          <select aria-label="Model provider" value={provider} onChange={(event) => setProvider(event.target.value as E2eCredentialName)}
+        <h2 className="text-sm font-semibold">{installed ? t('Set up again') : t('Set up e2e')}</h2>
+        <label className="mt-3 block text-sm">{t('Model provider')}<select aria-label={t('Model provider')} value={provider} onChange={(event) => setProvider(event.target.value as E2eCredentialName)}
             className="mt-1 block w-full rounded border border-border bg-background p-2 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
             {E2E_CREDENTIAL_NAMES.map((name) => (
-              <option key={name} value={name}>{PROVIDER_LABELS[name]} ({name}){credentials.includes(name) ? ' — stored' : ''}</option>
+              <option key={name} value={name}>{PROVIDER_LABELS[name]} ({name}){credentials.includes(name) ? t(' — stored') : ''}</option>
             ))}
           </select>
         </label>
-        <label className="mt-3 block text-sm">API key <span className="text-muted-foreground">(optional)</span>
-          <input aria-label="API key" type="password" autoComplete="off" value={key} onChange={(event) => setKey(event.target.value)}
-            placeholder={credentials.includes(provider) ? 'stored — leave empty to keep it' : ''}
+        <label className="mt-3 block text-sm">{t('API key')}{' '}<span className="text-muted-foreground">{t('(optional)')}</span>
+          <input aria-label={t('API key')} type="password" autoComplete="off" value={key} onChange={(event) => setKey(event.target.value)}
+            placeholder={credentials.includes(provider) ? t('stored — leave empty to keep it') : ''}
             className="mt-1 block w-full rounded border border-border bg-background p-2" />
         </label>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Stored encrypted as a project secret for check steps only — never handed to an agent session.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('Stored encrypted as a project secret for check steps only — never handed to an agent session.')}</p>
         {error ? <p role="alert" className="mt-2 text-sm text-danger">{error}</p> : null}
         <div className="mt-3">
           <Button type="submit" disabled={starting.isPending || inFlight || !status.data}>
-            {inFlight ? 'Setup in progress…' : installed ? 'Set up again' : 'Set up e2e'}
+            {inFlight ? t('Setup in progress…') : installed ? t('Set up again') : t('Set up e2e')}
           </Button>
         </div>
       </form>

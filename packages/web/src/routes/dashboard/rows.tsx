@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ExportRows } from './export-rows'
 import { useContext } from 'react'
 import { DashboardReconciledContext } from './state'
@@ -28,6 +29,8 @@ export function TaskRow({
   removed?: boolean
   queue?: boolean
 }) {
+  useLocale()
+
   const reconciled = useContext(DashboardReconciledContext) && !checking && !checkFailed
   const truth = useDashboardTruth(row)
   removed = removed || truth === null || (queue && truth?.archived === true)
@@ -52,7 +55,7 @@ export function TaskRow({
             section: 'task',
             entity: taskKey(row),
             metric: 'status',
-            value: inactive ? 'Not currently actionable' : row.status,
+            value: inactive ? t('Not currently actionable') : row.status,
           },
           { section: 'task', entity: taskKey(row), metric: 'createdAt', value: row.createdAt },
         ]}
@@ -80,19 +83,19 @@ export function TaskRow({
             <span className="font-mono text-[11px] text-soft-foreground">{row.projectId}</span>
             <span>
               {checkFailed
-                ? 'Could not check current state'
+                ? t('Could not check current state')
                 : !reconciled
-                  ? 'Checking current state…'
+                  ? t('Checking current state…')
                   : removed
                     ? queue && truth !== null
-                      ? 'No longer needs you'
-                      : 'Task removed'
+                      ? t('No longer needs you')
+                      : t('Task removed')
                     : obsolete
-                      ? 'No longer needs you'
+                      ? t('No longer needs you')
                       : attention.label}
             </span>
             <span>{shortAge(row.createdAt)}</span>
-            {row.dispatch && <span>Subtask</span>}
+            {row.dispatch && <span>{t('Subtask')}</span>}
             {!inactive &&
               taskReferences(row).map((ref) => (
                 <ReferenceChip
@@ -118,35 +121,34 @@ export function Coverage({
   count?: number
   retry: () => void
 }) {
+  useLocale()
+
   const unavailable = coverage.projects.filter((p) => p.state !== 'complete')
   if (!unavailable.length) return null
   return (
     <div className="rounded-lg border border-pending/40 bg-card-2 p-3 text-sm" role="status">
       <p>
         {count !== undefined
-          ? `${count} tasks need you in the available data. Complete coverage: ${coverage.projects.length - unavailable.length} of ${coverage.projects.length} projects. `
+          ? t('{0} tasks need you in the available data. Complete coverage: {1} of {2} projects. ', { 0: count, 1: coverage.projects.length - unavailable.length, 2: coverage.projects.length })
           : ''}
         {unavailable.length === 1
           ? unavailable[0]!.state === 'unavailable'
-            ? 'One project is unavailable.'
-            : 'One project has incomplete coverage.'
-          : `${unavailable.length} projects have incomplete coverage.`}
+            ? t('One project is unavailable.')
+            : t('One project has incomplete coverage.')
+          : t('{0} projects have incomplete coverage.', { 0: unavailable.length })}
       </p>
       <details className="mt-2">
         <summary className={`${disclosureSummary} min-h-11`}>
-          <DisclosureChevron />
-          View unavailable {unavailable.length === 1 ? 'project' : 'projects'}
+          <DisclosureChevron />{t('View unavailable')}{' '}{unavailable.length === 1 ? t('project') : t('projects')}
         </summary>
         {unavailable.map((p) => (
           <p key={p.projectId}>
             {p.projectId}: {p.reason ?? p.state}
-            {p.omittedRuns > 0 ? ` · ${p.omittedRuns} omitted tasks` : ''}
+            {p.omittedRuns > 0 ? t(' · {0} omitted tasks', { 0: p.omittedRuns }) : ''}
           </p>
         ))}
       </details>
-      <Button variant="outline" onClick={retry} className="min-h-11">
-        Retry
-      </Button>
+      <Button variant="outline" onClick={retry} className="min-h-11">{t('Retry')}</Button>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from '@/lib/i18n'
 import {
   FolderIcon,
   FolderOpenIcon,
@@ -139,6 +140,8 @@ const AppShellMain = React.memo(function AppShellMain({
   children: ReactNode
   mainRef: React.RefObject<HTMLElement | null>
 }) {
+  useLocale()
+
   return (
     <main
       ref={mainRef}
@@ -203,6 +206,8 @@ export const AppShell = React.memo(function AppShell({
   brandName = 'cezar',
   brandLogoUrl = null,
 }: AppShellProps) {
+  useLocale()
+
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
   // (multi-project spec, step 3.2) so `/p/cezar/git/commits` still lights Git.
@@ -356,6 +361,8 @@ export const AppShell = React.memo(function AppShell({
  * warning instead and waits for "Update & restart": a restart interrupts them.
  */
 function TitlebarUpdateButton({ latestVersion, brandName }: { latestVersion: string; brandName: string }) {
+  useLocale()
+
   const [open, setOpen] = React.useState(false)
   return (
     <>
@@ -363,12 +370,11 @@ function TitlebarUpdateButton({ latestVersion, brandName }: { latestVersion: str
         type="button"
         data-slot="titlebar-update"
         onClick={() => setOpen(true)}
-        title={`Update ${brandName} to v${latestVersion} and restart`}
+        title={t('Update {0} to v{1} and restart', { 0: brandName, 1: latestVersion })}
         className="inline-flex h-[18px] items-center gap-1 rounded-full border border-primary/40 bg-primary/15 px-2 text-[11px] font-semibold text-foreground transition-colors hover:bg-primary/30"
       >
-        <StatusDot tone="pending" pulse className="size-[5px] shrink-0" />
-        Update {brandName}
-        <span className="font-mono font-medium text-muted-foreground">v{latestVersion}</span>
+        <StatusDot tone="pending" pulse className="size-[5px] shrink-0" />{t('Update')}{' '}{brandName}
+        <span className="font-mono font-medium text-muted-foreground">{t('v')}{latestVersion}</span>
       </button>
       {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} autoApply={latestVersion} brandName={brandName} /> : null}
     </>
@@ -423,6 +429,8 @@ const Sidebar = React.memo(function Sidebar({
   desktop = null,
   ...props
 }: NavProps & SidebarResize & { desktop?: 'macos' | 'windows' | 'linux' | null }) {
+  useLocale()
+
   return (
     <aside
       data-slot="sidebar"
@@ -461,6 +469,8 @@ type SidebarResize = {
  * column's height without a second element having to track it.
  */
 function SidebarResizeHandle({ width, onWidthChange }: SidebarResize) {
+  useLocale()
+
   // The width the drag started from, plus the pointer x it started at. Refs, not state: they
   // change on every pointermove and nothing renders from them.
   const origin = React.useRef<{ x: number; width: number } | null>(null)
@@ -514,7 +524,7 @@ function SidebarResizeHandle({ width, onWidthChange }: SidebarResize) {
       data-slot="sidebar-resize-handle"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the sidebar"
+      aria-label={t('Resize the sidebar')}
       aria-valuenow={width}
       aria-valuemin={MIN_SIDEBAR_WIDTH}
       aria-valuemax={MAX_SIDEBAR_WIDTH}
@@ -525,7 +535,7 @@ function SidebarResizeHandle({ width, onWidthChange }: SidebarResize) {
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
       onDoubleClick={() => onWidthChange(DEFAULT_SIDEBAR_WIDTH)}
-      title="Drag to resize the sidebar — double-click to reset"
+      title={t('Drag to resize the sidebar — double-click to reset')}
       // A 5px grab strip straddling the border, invisible until you reach for it. `touch-none`
       // is load-bearing rather than decorative: without it a touch drag is claimed by the
       // browser's own panning and scrolls the page instead of resizing the column.
@@ -544,6 +554,8 @@ function SidebarResizeHandle({ width, onWidthChange }: SidebarResize) {
  * modality (it does not set `aria-modal`; `hideOthers` is the stronger guarantee).
  */
 const MobileNavDrawer = React.memo(function MobileNavDrawer({ onNavigate, ...props }: NavProps & { onNavigate: () => void }) {
+  useLocale()
+
   return (
     <SheetContent
       side="left"
@@ -556,14 +568,14 @@ const MobileNavDrawer = React.memo(function MobileNavDrawer({ onNavigate, ...pro
       aria-describedby={undefined}
     >
       {/* The dialog's accessible name. Visually redundant with the brand lockup below. */}
-      <SheetTitle className="sr-only">Navigation</SheetTitle>
+      <SheetTitle className="sr-only">{t('Navigation')}</SheetTitle>
       <SidebarContent
         {...props}
         onNavigate={onNavigate}
         headerAction={
           <SheetClose asChild>
             {/* size-11: the ≥44px touch target the spec's mobile rules require. */}
-            <Button variant="ghost" size="icon" aria-label="Close menu" className="-mr-2 size-11">
+            <Button variant="ghost" size="icon" aria-label={t('Close menu')} className="-mr-2 size-11">
               <XIcon className="size-[17px]" aria-hidden="true" />
             </Button>
           </SheetClose>
@@ -615,6 +627,8 @@ function SidebarContent({
    *  below the traffic lights. */
   compactHeader?: boolean
 }) {
+  useLocale()
+
   return (
     <div
       data-slot="sidebar-content"
@@ -648,17 +662,13 @@ function SidebarContent({
               bookmarklet contract) land on the shell like any route (static-ui.ts) — the
               React composer has owned auto-start parity since R4 Step 1.3. */}
           <Link to="/new" onClick={onNavigate}>
-            <PlusIcon className="size-[15px]" aria-hidden="true" />
-            New task
-            {/* Decorative: the `c`-to-create accelerator is registered in the command palette.
+            <PlusIcon className="size-[15px]" aria-hidden="true" />{t('New task')}{/* Decorative: the `c`-to-create accelerator is registered in the command palette.
                 (⌘N is also bound there, but only the desktop shell receives it — the browser
                 reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
             <kbd
               aria-hidden="true"
               className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-[5px] py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
-            >
-              C
-            </kbd>
+            >{t('C')}</kbd>
           </Link>
         </Button>
         {singleProject ? null : <AddProjectMenu />}
@@ -693,7 +703,7 @@ function SidebarContent({
         </>
       ) : (
         <>
-          <nav aria-label="Main" className="px-2.5 py-1.5">
+          <nav aria-label={t('Main')} className="px-2.5 py-1.5">
             {items.map((item) => {
               const isActive = item.to === activeTo
               const Icon = item.icon
@@ -729,7 +739,7 @@ function SidebarContent({
                   {item.badge === 'tasks-unread' && unreadCount ? (
                     <span
                       data-slot="nav-unread-badge"
-                      title={`${unreadCount} unread finished ${unreadCount === 1 ? 'task' : 'tasks'}`}
+                      title={t('{0} unread finished {1}', { 0: unreadCount, 1: unreadCount === 1 ? 'task' : 'tasks' })}
                       className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
                     >
                       {unreadCount}
@@ -741,7 +751,7 @@ function SidebarContent({
                       className="ml-auto flex items-center"
                     >
                       <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
-                      <span className="sr-only">Skills update available</span>
+                      <span className="sr-only">{t('Skills update available')}</span>
                     </span>
                   ) : null}
                 </Link>
@@ -819,6 +829,8 @@ function sidebarSectionIconClass(isActive: boolean) {
  * lit across all of them where a `pathname ===` check on a full location would not.
  */
 function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
+  useLocale()
+
   return (
     <NavLink
       to="/dashboard"
@@ -828,9 +840,7 @@ function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
     >
       {({ isActive }) => (
         <>
-          <LayoutDashboardIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />
-          Dashboard
-        </>
+          <LayoutDashboardIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />{t('Dashboard')}</>
       )}
     </NavLink>
   )
@@ -846,6 +856,8 @@ function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
  * checklist) so the two Tasks surfaces never read as the same button.
  */
 function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
+  useLocale()
+
   const { pathname } = useLocation()
   const isActive = pathname === '/tasks'
   return (
@@ -859,9 +871,7 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
       // rows are muted.
       className={cn(SIDEBAR_SECTION_LINK_CLASS, isActive && 'bg-muted')}
     >
-      <LayersIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />
-      All tasks
-    </RouterLink>
+      <LayersIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />{t('All tasks')}</RouterLink>
   )
 }
 
@@ -880,13 +890,15 @@ function GlobalSettingsLink({
   className?: string
   onNavigate?: () => void
 }) {
+  useLocale()
+
   return (
     <Button asChild variant="ghost" size="icon" className={cn('size-7', className)}>
       <RouterLink
         to="/settings/global"
         data-slot="global-settings-link"
-        aria-label="Global settings"
-        title="Global settings"
+        aria-label={t('Global settings')}
+        title={t('Global settings')}
         onClick={onNavigate}
       >
         <SettingsIcon className="size-4" aria-hidden="true" />
@@ -915,6 +927,8 @@ function GlobalSettingsLink({
  * cheaper half of the trade.
  */
 function AddProjectMenu() {
+  useLocale()
+
   const [browsing, setBrowsing] = React.useState(false)
   const [cloning, setCloning] = React.useState(false)
   const [creating, setCreating] = React.useState(false)
@@ -925,15 +939,15 @@ function AddProjectMenu() {
         <Button
           variant="outline"
           size="icon"
-          aria-label="Add project"
-          title="Add project"
+          aria-label={t('Add project')}
+          title={t('Add project')}
           className="size-11 shrink-0 md:size-9"
         >
           <FolderOpenIcon className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="text-xs text-soft-foreground">Add project</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-soft-foreground">{t('Add project')}</DropdownMenuLabel>
         <DropdownMenuItem
           data-slot="add-project-local"
           onSelect={() => {
@@ -941,9 +955,7 @@ function AddProjectMenu() {
             trackAddProjectOpened('folder')
           }}
         >
-          <FolderIcon aria-hidden="true" />
-          Open local folder…
-        </DropdownMenuItem>
+          <FolderIcon aria-hidden="true" />{t('Open local folder…')}</DropdownMenuItem>
         <DropdownMenuItem
           data-slot="add-project-clone"
           onSelect={() => {
@@ -951,9 +963,7 @@ function AddProjectMenu() {
             trackAddProjectOpened('clone')
           }}
         >
-          <GithubIcon aria-hidden="true" />
-          Clone from GitHub…
-        </DropdownMenuItem>
+          <GithubIcon aria-hidden="true" />{t('Clone from GitHub…')}</DropdownMenuItem>
         <DropdownMenuItem
           data-slot="add-project-create"
           onSelect={() => {
@@ -961,22 +971,20 @@ function AddProjectMenu() {
             trackAddProjectOpened('new')
           }}
         >
-          <FolderPlusIcon aria-hidden="true" />
-          New project…
-        </DropdownMenuItem>
+          <FolderPlusIcon aria-hidden="true" />{t('New project…')}</DropdownMenuItem>
       </DropdownMenuContent>
       {browsing ? (
-        <DialogErrorBoundary label="Open local folder" onError={() => setBrowsing(false)}>
+        <DialogErrorBoundary label={t('Open local folder')} onError={() => setBrowsing(false)}>
           <AddProjectDialog open onOpenChange={setBrowsing} />
         </DialogErrorBoundary>
       ) : null}
       {cloning ? (
-        <DialogErrorBoundary label="Clone from GitHub" onError={() => setCloning(false)}>
+        <DialogErrorBoundary label={t('Clone from GitHub')} onError={() => setCloning(false)}>
           <CloneProjectDialog open onOpenChange={setCloning} />
         </DialogErrorBoundary>
       ) : null}
       {creating ? (
-        <DialogErrorBoundary label="New project" onError={() => setCreating(false)}>
+        <DialogErrorBoundary label={t('New project')} onError={() => setCreating(false)}>
           <CreateProjectDialog open onOpenChange={setCreating} />
         </DialogErrorBoundary>
       ) : null}
@@ -1000,16 +1008,18 @@ function AddProjectMenu() {
  * hardware, per the spec's platform-symbol rule.
  */
 function CommandPaletteHint() {
+  useLocale()
+
   return (
     <button
       type="button"
       data-slot="command-palette-hint"
-      title="Search — command palette (⌘K / Ctrl+K)"
+      title={t('Search — command palette (⌘K / Ctrl+K)')}
       onClick={() => openCommandPalette()}
       className="flex w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-left text-xs font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
       <SearchIcon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="truncate">Search…</span>
+      <span className="truncate">{t('Search…')}</span>
       <kbd
         aria-hidden="true"
         className="ml-auto shrink-0 rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
@@ -1035,6 +1045,8 @@ function CommandPaletteHint() {
  * even with no update to announce.
  */
 function VersionChip({ version, latestVersion, brandName }: { version: string; latestVersion: string | null; brandName: string }) {
+  useLocale()
+
   const updateAvailable = Boolean(latestVersion && latestVersion !== version)
   // The chip opens the self-update dialog (PoC): channel, latest, and a version picker.
   const [open, setOpen] = React.useState(false)
@@ -1044,13 +1056,13 @@ function VersionChip({ version, latestVersion, brandName }: { version: string; l
         type="button"
         data-slot="version-chip"
         data-update-available={updateAvailable ? 'true' : undefined}
-        title={updateAvailable ? `v${version} — update available: v${latestVersion}` : `v${version}`}
-        aria-label={updateAvailable ? `${brandName} v${version}, update to v${latestVersion} available — open updater` : `${brandName} v${version} — open updater`}
+        title={updateAvailable ? t('v{0} — update available: v{1}', { 0: version, 1: latestVersion }) : t('v{0}', { 0: version })}
+        aria-label={updateAvailable ? t('{0} v{1}, update to v{2} available — open updater', { 0: brandName, 1: version, 2: latestVersion }) : t('{0} v{1} — open updater', { 0: brandName, 1: version })}
         onClick={() => setOpen(true)}
         className="flex min-w-0 cursor-pointer items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         {updateAvailable ? <StatusDot tone="pending" pulse className="size-[5px] shrink-0" /> : null}
-        <span className="truncate">v{version}</span>
+        <span className="truncate">{t('v')}{version}</span>
       </button>
       {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} brandName={brandName} /> : null}
     </>
@@ -1074,6 +1086,8 @@ function VersionChip({ version, latestVersion, brandName }: { version: string; l
  * whole point of the ask is that github.com learns nothing about the person making it.
  */
 function StarChip({ count }: { count: number }) {
+  useLocale()
+
   const formatted = formatStarCount(count)
   return (
     <a
@@ -1081,8 +1095,8 @@ function StarChip({ count }: { count: number }) {
       href={CEZAR_REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      title={`Star cezar on GitHub — ${count.toLocaleString()} stars`}
-      aria-label={`Star cezar on GitHub — ${count.toLocaleString()} stars`}
+      title={t('Star cezar on GitHub — {0} stars', { 0: count.toLocaleString(getLocale()) })}
+      aria-label={t('Star cezar on GitHub — {0} stars', { 0: count.toLocaleString(getLocale()) })}
       className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <span aria-hidden="true">⭐</span>
@@ -1093,6 +1107,8 @@ function StarChip({ count }: { count: number }) {
 
 /** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
 function MobileTopBar({ title }: { title: string }) {
+  useLocale()
+
   return (
     <header
       data-slot="mobile-top-bar"
@@ -1107,7 +1123,7 @@ function MobileTopBar({ title }: { title: string }) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open menu"
+            aria-label={t('Open menu')}
             // 44px: the minimum touch target, overriding the 36px desktop icon-button size.
             className="-ml-1.5 size-11"
           >

@@ -1,3 +1,4 @@
+import { t, dateTimeFormat } from '@/lib/i18n'
 import type {
   ProcessUsage,
   ReferenceStatus,
@@ -35,9 +36,9 @@ const FINISHED_STATUSES: ReadonlySet<RunStatus> = new Set(['done', 'failed', 'ca
  */
 export function formatMem(bytes: number | undefined): string {
   if (!bytes) return ''
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
-  return `${Math.round(bytes / 1024)} kB`
+  if (bytes >= 1024 ** 3) return t('{0} GB', { 0: (bytes / 1024 ** 3).toFixed(1) })
+  if (bytes >= 1024 ** 2) return t('{0} MB', { 0: Math.round(bytes / 1024 ** 2) })
+  return t('{0} kB', { 0: Math.round(bytes / 1024) })
 }
 
 /** `$0.31` / `$12` — two decimals until the cents stop mattering. Legacy `fmtCost`; '' when the
@@ -67,15 +68,15 @@ export function scheduledResume(
   const at = new Date(run.autoResumeAt)
   if (!Number.isFinite(at.getTime())) return undefined
   const sameDay = at.toDateString() === now.toDateString()
-  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(at)
+  const time = dateTimeFormat({ hour: 'numeric', minute: '2-digit' }).format(at)
   return {
     label: sameDay
       ? time
-      : `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(at)} ${time}`,
-    title: `Resumes automatically at ${new Intl.DateTimeFormat(undefined, {
+      : `${dateTimeFormat({ month: 'short', day: 'numeric' }).format(at)} ${time}`,
+    title: t('Resumes automatically at {0}', { 0: dateTimeFormat({
       dateStyle: 'medium',
       timeStyle: 'long',
-    }).format(at)}`,
+    }).format(at) }),
   }
 }
 
@@ -423,9 +424,9 @@ export function usageCells(
     cpu: { text: '', kind: 'none' },
     mem: peakMem
       ? {
-          text: `peak ${peakMem}`,
+          text: t('peak {0}', { 0: peakMem }),
           kind: 'peak',
-          title: `peak — run finished${run.peakProcCount ? ` · ${run.peakProcCount} procs` : ''}`,
+          title: t('peak — run finished{0}', { 0: run.peakProcCount ? ` · ${run.peakProcCount} procs` : '' }),
         }
       : { text: '', kind: 'none' },
   }

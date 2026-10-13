@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { defaultUrlTransform, type UrlTransform } from 'streamdown'
 
@@ -24,6 +25,8 @@ export function MarkdownPreview({
   loadFileText?: (path: string) => Promise<string | null>
   imageSrc?: (path: string) => string
 }) {
+  useLocale()
+
   const fromPatch = useMemo(() => newSideFromPatch(file), [file])
   // The loader is usually an inline arrow — a ref keeps it out of the effect's deps, so a
   // parent re-render never re-fetches; a changed patch (the 4s poll saw a write) does.
@@ -57,14 +60,14 @@ export function MarkdownPreview({
   // up until the new one lands — swapping in "Loading…" on every poll would jump the page.
   const current = loaded?.path === file.path ? loaded : null
   if (canLoad && current === null) {
-    return <p className="px-4 py-2.5 text-xs text-soft-foreground">Loading preview…</p>
+    return <p className="px-4 py-2.5 text-xs text-soft-foreground">{t('Loading preview…')}</p>
   }
   const full = current?.text ?? null
   const partial = full === null && !fromPatch.complete
   return (
     <div data-slot="diff-markdown-preview" className="px-6 py-6">
       {partial ? (
-        <p className="mx-auto mb-4 max-w-[72ch] text-xs text-soft-foreground">Showing the changed sections only.</p>
+        <p className="mx-auto mb-4 max-w-[72ch] text-xs text-soft-foreground">{t('Showing the changed sections only.')}</p>
       ) : null}
       <Markdown variant="document" urlTransform={urlTransform}>
         {full ?? fromPatch.text}

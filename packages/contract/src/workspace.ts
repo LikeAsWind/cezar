@@ -258,6 +258,8 @@ export const dashboardPreferencesSchema = z.looseObject({
 }).catch({});
 
 export const workspaceUiStateSchema = z.looseObject({
+  /** Global interface language; missing preferences use Simplified Chinese. */
+  locale: z.enum(['zh-CN', 'en']).catch('zh-CN').optional(),
   dashboard: dashboardPreferencesSchema.optional(),
   sidebar: z
     .looseObject({
@@ -324,6 +326,7 @@ const TASK_TABLE_MAX_COLUMNS = 50;
 export const setWorkspaceUiStateInputSchema = z
   .looseObject({
     ...workspaceUiStateSchema.shape,
+    locale: z.enum(['zh-CN', 'en']).optional(),
     dashboard: dashboardPreferencesInputSchema.optional(),
     sidebar: z
       .looseObject({

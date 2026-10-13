@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { ArrowDownIcon } from 'lucide-react'
 import {
   useCallback,
@@ -507,6 +508,8 @@ export function ThreadRows({
   mode: 'flat' | 'virtual'
   controls: ThreadScrollControls
 }) {
+  useLocale()
+
   if (mode === 'virtual') return <VirtualRows runId={runId} rows={rows} controls={controls} />
   // content-visibility skips render work for off-screen rows, and the intrinsic-size hint keeps
   // the scrollbar stable before a skipped row is first measured — but only an engine with scroll
@@ -532,6 +535,8 @@ function VirtualRows({
   rows: ThreadRow[]
   controls: ThreadScrollControls
 }) {
+  useLocale()
+
   const containerRef = useRef<HTMLDivElement | null>(null)
   // The per-run measurement cache: read once per mount (only honored at the row count the
   // snapshot was taken at — virtua's caveat), written back with the final count on detach.
@@ -607,6 +612,8 @@ function VirtualRows({
 
 /** The floating "Jump to latest" pill, absolutely positioned above the dock by its caller. */
 export function JumpToLatestPill({ onJump }: { onJump: () => void }) {
+  useLocale()
+
   return (
     <button
       type="button"
@@ -614,8 +621,6 @@ export function JumpToLatestPill({ onJump }: { onJump: () => void }) {
       onClick={onJump}
       className="pointer-events-auto inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3.5 text-xs font-medium text-muted-foreground shadow-modal hover:text-foreground"
     >
-      <ArrowDownIcon aria-hidden className="size-3.5" />
-      Jump to latest
-    </button>
+      <ArrowDownIcon aria-hidden className="size-3.5" />{t('Jump to latest')}</button>
   )
 }

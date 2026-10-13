@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useQueryClient } from '@tanstack/react-query'
 import * as React from 'react'
 
@@ -47,6 +48,8 @@ const AppearanceContext = React.createContext<AppearanceContextValue | null>(nul
  *  re-applied — the control must not claim a persistence the file never got.
  */
 export function AppearanceProvider({ children }: { children: React.ReactNode }) {
+  useLocale()
+
   const queryClient = useQueryClient()
   const uiState = useWorkspaceUiState()
   const [appearance, setAppearanceState] = React.useState<Appearance>(readStoredAppearance)
@@ -111,6 +114,6 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 
 export function useAppearance(): AppearanceContextValue {
   const context = React.useContext(AppearanceContext)
-  if (!context) throw new Error('cezar: useAppearance() must be called inside <AppearanceProvider>')
+  if (!context) throw new Error(t('cezar: useAppearance() must be called inside <AppearanceProvider>'))
   return context
 }

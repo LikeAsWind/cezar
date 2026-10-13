@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import { formatAmount } from './format'
 export type ExportRecord = {
   section: string
@@ -33,17 +34,17 @@ const scope =
   'Visible modules and loaded rows only. Filters and report availability apply. Retained task usage is not an invoice or a complete history.'
 const confidential = 'Confidential — internal distribution only'
 const summaryLabels: Record<string, { label: string; usd?: boolean }> = {
-  costUsd: { label: 'Reported cost', usd: true },
-  inputTokens: { label: 'Input tokens' },
-  outputTokens: { label: 'Output tokens' },
-  needsYou: { label: 'Needs you' },
-  running: { label: 'Running now' },
-  completed: { label: 'Completed in period' },
-  failed: { label: 'Failed outcomes in period' },
-  medianCycleHours: { label: 'Median cycle (hours)' },
+  costUsd: { get label() { return t('Reported cost') }, usd: true },
+  inputTokens: { get label() { return t('Input tokens') } },
+  outputTokens: { get label() { return t('Output tokens') } },
+  needsYou: { get label() { return t('Needs you') } },
+  running: { get label() { return t('Running now') } },
+  completed: { get label() { return t('Completed in period') } },
+  failed: { get label() { return t('Failed outcomes in period') } },
+  medianCycleHours: { get label() { return t('Median cycle (hours)') } },
 }
 function formatSummaryValue(value: number | string | null, usd?: boolean) {
-  if (value == null) return 'Unavailable'
+  if (value == null) return t('Unavailable')
   if (typeof value === 'string') return value
   return formatAmount(value, usd)
 }
@@ -62,11 +63,11 @@ function summaryTiles(report: DashboardExport) {
         value: formatSummaryValue(row.value, spec.usd),
         note: [
           row.metric === 'needsYou' || row.metric === 'running'
-            ? row.note || 'Current non-archived state'
+            ? row.note || t('Current non-archived state')
             : module.filters,
-          row.asOf ? `Data as of ${row.asOf}` : '',
+          row.asOf ? t('Data as of {0}', { 0: row.asOf }) : '',
           row.reportedTasks != null
-            ? `${row.reportedTasks} of ${row.totalTasks} tasks reported`
+            ? t('{0} of {1} tasks reported', { 0: row.reportedTasks, 1: row.totalTasks })
             : '',
         ]
           .filter(Boolean)
@@ -95,7 +96,7 @@ function sanitizeModule(source: HTMLElement) {
     .forEach((el) => el.classList.add('report-row'))
   node.querySelectorAll('summary').forEach((el) => {
     const heading = document.createElement('h3')
-    heading.textContent = el.getAttribute('data-export-heading') || el.textContent
+    heading.textContent = el.getAttribute('data-export-heading') ? t(el.getAttribute('data-export-heading')!) : el.textContent
     el.replaceWith(heading)
   })
   node.querySelectorAll('button').forEach((button) => {
@@ -146,7 +147,7 @@ export function collectDashboardExport(
         const filters = [...module.querySelectorAll('select')]
           .map(
             (select) =>
-              `${select.closest('label')?.childNodes[0]?.textContent?.trim() ?? 'Filter'}: ${select.selectedOptions[0]?.textContent}`,
+              `${select.closest('label')?.childNodes[0]?.textContent?.trim() ?? t('Filter')}: ${select.selectedOptions[0]?.textContent}`,
           )
           .concat(
             [...module.querySelectorAll<HTMLElement>('[data-export-context]')].map(
@@ -220,14 +221,14 @@ export function dashboardCsv(report: DashboardExport) {
       'context',
       '',
       'scope',
-      scope,
+      t(scope),
       '',
       '',
       '',
       '',
       '',
       [
-        ...(report.title ? [`Report title: ${report.title}`] : []),
+        ...(report.title ? [t('Report title: {0}', { 0: report.title })] : []),
         ...report.notices,
         module.notes,
       ].join(' | '),
@@ -258,11 +259,11 @@ export function dashboardCsv(report: DashboardExport) {
 }
 export function printableDashboard(report: DashboardExport, styles: string[]) {
   const tiles = summaryTiles(report)
-  return `<!doctype html><html class="light"><head><meta charset="utf-8"><title>${escape(report.title || 'Dashboard')} ${escape(report.generatedAt.slice(0, 10))}</title>${styles.join('')}<style>
+  return `<!doctype html><html class="light"><head><meta charset="utf-8"><title>${escape(report.title || t('Dashboard'))} ${escape(report.generatedAt.slice(0, 10))}</title>${styles.join('')}<style>
 @page {
   size:A4; margin:14mm 14mm 18mm;
-  @bottom-left { content:"${confidential}"; font-family:system-ui,sans-serif; font-size:9px; color:var(--muted-foreground); }
-  @bottom-right { content:"Page " counter(page) " of " counter(pages); font-family:system-ui,sans-serif; font-size:9px; color:var(--muted-foreground); }
+  @bottom-left { content:"${t(confidential)}"; font-family:system-ui,sans-serif; font-size:9px; color:var(--muted-foreground); }
+  @bottom-right { content:"${t('Page ')}" counter(page) "${t(' of ')}" counter(pages); font-family:system-ui,sans-serif; font-size:9px; color:var(--muted-foreground); }
 }
 html,body { height:auto!important; overflow:visible!important; background:var(--background)!important; color:var(--foreground)!important; }
 * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -299,14 +300,12 @@ body { margin:0; font:12px/1.5 system-ui,sans-serif; }
 .report-module [role=region] > div, .report-module [role=region] > p { break-inside:avoid; }
 .report-module .sr-only { display:none!important; }
 .report-context { font-size:11px; color:var(--muted-foreground); margin:0 0 8px; }
-</style></head><body><header class="report-heading"><h1>${escape(report.title || 'Dashboard report')}</h1><p>${escape(report.generatedAt)} · ${escape(report.source)}</p><span class="report-confidential">${confidential}</span><p>${escape(scope)}</p>${report.notices.map((note) => `<p>${escape(note)}</p>`).join('')}</header>${
-    tiles.length
-      ? `<section class="report-summary"><h2>Executive summary</h2><div class="summary-grid">${tiles
+</style></head><body><header class="report-heading"><h1>${escape(report.title || t('Dashboard report'))}</h1><p>${escape(report.generatedAt)} · ${escape(report.source)}</p><span class="report-confidential">${escape(t(confidential))}</span><p>${escape(t(scope))}</p>${report.notices.map((note) => `<p>${escape(note)}</p>`).join('')}</header>${tiles.length
+      ? `<section class="report-summary"><h2>${escape(t('Executive summary'))}</h2><div class="summary-grid">${tiles
           .map(
             (tile) =>
               `<div class="summary-tile"><span class="summary-value">${escape(tile.value)}</span><span class="summary-label">${escape(tile.label)}</span>${tile.note ? `<span class="summary-note">${escape(tile.note)}</span>` : ''}</div>`,
           )
           .join('')}</div></section>`
-      : ''
-  }${report.modules.map((module) => `<section class="report-module${module.id === 'usage' ? ' report-module-usage' : module.id === 'fleet' ? ' report-module-fleet' : ''}"><p class="report-context">${escape(module.filters)}</p>${module.html}</section>`).join('')}</body></html>`
+      : ''}${report.modules.map((module) => `<section class="report-module${module.id === 'usage' ? " report-module-usage" : module.id === 'fleet' ? " report-module-fleet" : ''}"><p class="report-context">${escape(module.filters)}</p>${module.html}</section>`).join('')}</body></html>`
 }

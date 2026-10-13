@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { LoaderCircleIcon } from 'lucide-react'
 
 import { CenteredState } from '@/components/centered-state'
@@ -9,13 +10,15 @@ import { CenteredState } from '@/components/centered-state'
  * that keeps Streamdown/remark off the main bundle quietly disappears.
  */
 export function ThreadLoading() {
+  useLocale()
+
   return (
     <div data-route="task-thread" className="flex min-h-full flex-col">
       <CenteredState
         icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
         tone="neutral"
-        title="Loading task…"
-        subtitle="Fetching the run and its session transcript."
+        title={t('Loading task…')}
+        subtitle={t('Fetching the run and its session transcript.')}
       />
     </div>
   )

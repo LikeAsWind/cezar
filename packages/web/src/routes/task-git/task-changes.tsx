@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileDiffIcon, GitCommitHorizontalIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
@@ -44,6 +45,8 @@ import { trackDiffCommentAdded } from '@/lib/telemetry'
  * diff file header. Below `md` the page scrolls as one, as before.
  */
 export function TaskChangesRoute() {
+  useLocale()
+
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
 
@@ -55,6 +58,8 @@ export function TaskChangesRoute() {
 }
 
 function ChangesView({ run }: { run: ApiRun }) {
+  useLocale()
+
   const health = useHealth()
   // The remote that decides whether Push is offered comes from the PROJECT-scoped `/repo`, not
   // from `/api/health.repo`: health is bound to the boot folder, so a cezar booted outside a git
@@ -190,22 +195,18 @@ function ChangesView({ run }: { run: ApiRun }) {
       />
 
       {changes.data?.repointedHead ? (
-        <p data-slot="repointed-head-note" className="border-b px-4 py-2 text-xs text-soft-foreground md:px-6">
-          HEAD is on <code>{changes.data.repointedHead.headBranch}</code>, not this task&apos;s branch{' '}
-          <code>{changes.data.repointedHead.taskBranch}</code> — showing only what this task changed there.
-        </p>
+        <p data-slot="repointed-head-note" className="border-b px-4 py-2 text-xs text-soft-foreground md:px-6">{t('HEAD is on')}{' '}<code>{changes.data.repointedHead.headBranch}</code>{t(', not this task\'s branch')}{' '}
+          <code>{changes.data.repointedHead.taskBranch}</code>{' '}{t('— showing only what this task changed there.')}</p>
       ) : null}
 
       {changes.isPending ? (
-        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading changes…
-        </p>
+        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">{t('Loading changes…')}</p>
       ) : changes.isError ? (
         <CenteredState
           icon={changesRefused ? <FileDiffIcon /> : <GitCommitHorizontalIcon />}
           tone={changesRefused ? 'neutral' : 'danger'}
           heading="h2"
-          title={changesRefused ? 'No changes to show' : 'Could not load the changes'}
+          title={changesRefused ? t('No changes to show') : t('Could not load the changes')}
           subtitle={changes.error.message}
         />
       ) : files.length === 0 ? (
@@ -213,8 +214,8 @@ function ChangesView({ run }: { run: ApiRun }) {
           icon={<FileDiffIcon />}
           tone="neutral"
           heading="h2"
-          title="No changes yet"
-          subtitle="The worktree matches its base branch. Changes appear here as the agent works."
+          title={t('No changes yet')}
+          subtitle={t('The worktree matches its base branch. Changes appear here as the agent works.')}
         />
       ) : (
         // The dock floats over the bottom of this body (see `dockHeight`). The body itself must
@@ -307,6 +308,8 @@ function ChangesView({ run }: { run: ApiRun }) {
  * not on every visit to the tab.
  */
 function DockedComposer(props: Omit<ComponentProps<typeof TaskComposer>, 'continueAction'>) {
+  useLocale()
+
   const continueAction = useContinueAction(props.run)
   useKeyboardInsetVar()
   return <TaskComposer {...props} continueAction={continueAction} />

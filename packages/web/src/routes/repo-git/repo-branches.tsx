@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, GitBranchIcon, GitPullRequestIcon, PlusIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
@@ -23,6 +24,8 @@ import { cn, isHttpUrl } from '@/lib/utils'
  * `/api/github`) only behind it.
  */
 export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: RepoInfo }) {
+  useLocale()
+
   const health = useHealth()
   const queryClient = useQueryClient()
   const onError = (error: Error) => toast(error.message, { tone: 'danger' })
@@ -30,7 +33,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
   const branchAction = useMutation({
     mutationFn: (name: string) => createRepoBranch({ name }),
     onSuccess: async (result) => {
-      toast(result.created ? `Created and switched to ${result.branch}` : `Switched to ${result.branch}`)
+      toast(result.created ? t('Created and switched to {0}', { 0: result.branch }) : t('Switched to {0}', { 0: result.branch }))
       // Refresh the rest of both payloads first, then preserve the mutation's authoritative
       // checkout result even if a read races and briefly returns the previous HEAD.
       await Promise.all([
@@ -55,8 +58,8 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
     onSuccess: (result) => {
       toast(
         result.baseBranch
-          ? `Agents now branch from ${result.baseBranch}`
-          : 'Agents now fork from the checked-out branch',
+          ? t('Agents now branch from {0}', { 0: result.baseBranch })
+          : t('Agents now fork from the checked-out branch'),
       )
       void queryClient.invalidateQueries({ queryKey: queryKeys.repo })
     },
@@ -79,10 +82,10 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
   return (
     <section data-slot="repo-branches" className="flex flex-col gap-6 px-4 py-4 md:px-6">
       <div>
-        <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">Branches</h2>
+        <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">{t('Branches')}</h2>
         <Input
-          aria-label="Filter branches"
-          placeholder="Filter branches…"
+          aria-label={t('Filter branches')}
+          placeholder={t('Filter branches…')}
           value={branchQuery}
           onChange={(event) => setBranchQuery(event.target.value)}
           className="mt-2 max-w-xl"
@@ -99,9 +102,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
                     data-slot="branch-current"
                     className="flex shrink-0 items-center gap-1 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
                   >
-                    <CheckIcon aria-hidden="true" className="size-3" />
-                    current
-                  </span>
+                    <CheckIcon aria-hidden="true" className="size-3" />{t('current')}</span>
                 ) : (
                   <Button
                     variant="ghost"
@@ -110,23 +111,20 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
                     className="ml-auto"
                     disabled={branchAction.isPending}
                     onClick={() => branchAction.mutate(name)}
-                  >
-                    Switch
-                  </Button>
+                  >{t('Switch')}</Button>
                 )}
               </li>
             )
           })}
           {filteredBranches.length === 0 ? (
-            <li data-slot="branch-empty" className="py-3 text-xs text-soft-foreground">
-              No branches match “{branchQuery.trim()}”.
+            <li data-slot="branch-empty" className="py-3 text-xs text-soft-foreground">{t('No branches match “')}{branchQuery.trim()}”.
             </li>
           ) : null}
         </ul>
 
         <form data-slot="branch-create" className="mt-3 flex max-w-md items-center gap-2" onSubmit={submitCreate}>
           <Input
-            aria-label="New branch name"
+            aria-label={t('New branch name')}
             placeholder="new-branch-name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
@@ -138,9 +136,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
             data-action="create-branch"
             disabled={!newName.trim() || branchAction.isPending}
           >
-            <PlusIcon aria-hidden="true" />
-            Create
-          </Button>
+            <PlusIcon aria-hidden="true" />{t('Create')}</Button>
         </form>
       </div>
 
@@ -148,9 +144,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
         <label
           htmlFor="base-branch-picker"
           className="text-xs font-semibold tracking-wide text-soft-foreground uppercase"
-        >
-          Agents’ base branch
-        </label>
+        >{t('Agents’ base branch')}</label>
         {/* A native <select>: a handful of branch names needs no popover machinery, and the
             OS picker is the better control on phones. */}
         <select
@@ -161,14 +155,14 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
           onChange={(event) => setBase.mutate(event.target.value === '' ? null : event.target.value)}
           className="mt-1.5 block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
         >
-          <option value="">follow checked-out branch (default)</option>
+          <option value="">{t('follow checked-out branch (default)')}</option>
           {repo.branches.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
           ))}
         </select>
-        <p className="mt-1 text-[11px] text-soft-foreground">New task worktrees branch from this.</p>
+        <p className="mt-1 text-[11px] text-soft-foreground">{t('New task worktrees branch from this.')}</p>
       </div>
 
       {health.data?.forge?.available ? <ForgePullRequests /> : null}
@@ -180,20 +174,22 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
  *  available. The payload itself still degrades (`available:false` + reason) — rendered
  *  honestly rather than hidden, since at this point a forge was detected. */
 function ForgePullRequests() {
+  useLocale()
+
   const github = useGithub({ limit: 20 })
   return (
     <div data-slot="repo-prs" className="max-w-xl">
-      <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">Open pull requests</h2>
+      <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">{t('Open pull requests')}</h2>
       {github.isPending ? (
-        <p className="mt-2 text-xs text-soft-foreground">Loading pull requests…</p>
+        <p className="mt-2 text-xs text-soft-foreground">{t('Loading pull requests…')}</p>
       ) : github.isError ? (
         <p className="mt-2 text-xs text-soft-foreground">{github.error.message}</p>
       ) : !github.data.available ? (
         <p data-slot="repo-prs-unavailable" className="mt-2 text-xs text-soft-foreground">
-          {github.data.reason ?? 'The forge is unreachable right now.'}
+          {github.data.reason ?? t('The forge is unreachable right now.')}
         </p>
       ) : github.data.prs.length === 0 ? (
-        <p className="mt-2 text-xs text-soft-foreground">No open pull requests.</p>
+        <p className="mt-2 text-xs text-soft-foreground">{t('No open pull requests.')}</p>
       ) : (
         <ul className="mt-2 flex flex-col divide-y divide-border">
           {github.data.prs.map((pr) => (
@@ -206,6 +202,8 @@ function ForgePullRequests() {
 }
 
 function PullRequestRow({ pr }: { pr: GithubItem }) {
+  useLocale()
+
   const inner = (
     <>
       <GitPullRequestIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
@@ -231,6 +229,8 @@ function PullRequestRow({ pr }: { pr: GithubItem }) {
 
 /** The checks badge — the same three words the GitHub tab uses, tinted by outcome. */
 function ChecksBadge({ checks }: { checks: 'passing' | 'failing' | 'pending' }) {
+  useLocale()
+
   return (
     <span
       data-slot="pr-checks"

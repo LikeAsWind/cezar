@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n'
 import type { UiToolItem } from '@open-mercato/cezar-api-client'
 
 import type { ThreadEntry } from './thread-state'
@@ -69,12 +70,12 @@ export function contextGroupLabel(files: number, searches: number): string {
   const parts: string[] = []
   if (files > 0) parts.push(plural(files, 'file', 'files'))
   if (searches > 0) parts.push(plural(searches, 'search', 'searches'))
-  return `Explored ${parts.join(' · ')}`
+  return t('Explored {0}', { 0: parts.join(' · ') })
 }
 
 /** "3 earlier tool calls" — the legacy streak toggle line (chevron is the component's). */
 export function streakLabel(count: number): string {
-  return `${count} earlier tool call${count === 1 ? '' : 's'}`
+  return t('{0} earlier tool call{1}', { 0: count, 1: count === 1 ? '' : 's' })
 }
 
 /**

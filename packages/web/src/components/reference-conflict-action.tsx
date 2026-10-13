@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { Fragment, useState } from 'react'
 import type { ApiRun } from '@open-mercato/cezar-api-client'
 
@@ -34,6 +35,8 @@ export function ResolveConflictsButton({
   projectId?: string
   prNumber?: number
 }) {
+  useLocale()
+
   // Whichever seam this run's state allows — a live message, or a continue for a task parked at
   // review. Offering a prompt that only worked on a running task would offer it exactly when it
   // could not be taken: a conflicting PR is usually attached to a task that has already finished.
@@ -59,9 +62,7 @@ export function ResolveConflictsButton({
       if (failure) toast(failure, { tone: 'danger' })
       else {
         toast(
-          `${reopened ? 'Task reopened' : 'Sent to the task'} — resolving conflicts${
-            prNumber ? ` in PR #${prNumber}` : ''
-          }`,
+          t('{0} — resolving conflicts{1}', { 0: reopened ? 'Task reopened' : 'Sent to the task', 1: prNumber ? ` in PR #${prNumber}` : '' }),
         )
         close()
       }
@@ -83,7 +84,7 @@ export function ResolveConflictsButton({
         onClick={() => void press()}
         className="h-7 w-full text-xs"
       >
-        {pending ? 'Sending…' : 'Resolve conflicts'}
+        {pending ? t('Sending…') : t('Resolve conflicts')}
       </Button>
       {/* Only the REFUSAL is spelled out. What the button will do is the button's own words —
           quoting the prompt underneath said the same thing twice, at four times the length. */}
@@ -110,11 +111,13 @@ export function ResolveConflictsForRun({
   runId: string
   prNumber?: number
 }) {
+  useLocale()
+
   const run = useProjectRun(projectId, runId)
   if (!run.data) {
     return (
       <Button type="button" size="sm" disabled className="h-7 w-full text-xs">
-        {run.isError ? 'Unavailable' : 'Loading…'}
+        {run.isError ? t('Unavailable') : t('Loading…')}
       </Button>
     )
   }
@@ -142,6 +145,8 @@ export function TaskReferenceChip({
    *  there is room for words in a panel wherever the row it hangs off is. */
   compact?: boolean
 }) {
+  useLocale()
+
   const { lookup, projectId } = useReferenceStatusLookup()
   // The caller supplies the already-resolved primary (including a repoBase-synthesized URL).
   // Add only additional PRs when that primary is a PR; an issue chip must not suddenly grow an

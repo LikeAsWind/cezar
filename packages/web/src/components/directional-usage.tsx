@@ -1,3 +1,4 @@
+import { t, useLocale, numberFormat } from '@/lib/i18n'
 import { compactTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -12,11 +13,11 @@ interface DirectionalUsageProps {
 }
 
 function exactTokens(value: number | undefined): string {
-  return value === undefined ? 'unknown' : new Intl.NumberFormat().format(value)
+  return value === undefined ? 'unknown' : numberFormat({}).format(value)
 }
 
 export function directionalUsageLabel(inputTokens?: number, outputTokens?: number): string {
-  return `Input tokens: ${exactTokens(inputTokens)}; output tokens: ${exactTokens(outputTokens)}`
+  return t('Input tokens: {0}; output tokens: {1}', { 0: exactTokens(inputTokens), 1: exactTokens(outputTokens) })
 }
 
 export function directionalUsageText(
@@ -26,7 +27,7 @@ export function directionalUsageText(
 ): string {
   const input = inputTokens === undefined ? '—' : compactTokens(inputTokens)
   const output = outputTokens === undefined ? '—' : compactTokens(outputTokens)
-  return variant === 'table' ? `${input} / ${output}` : `IN ${input} · OUT ${output}`
+  return variant === 'table' ? `${input} / ${output}` : t('IN {0} · OUT {1}', { 0: input, 1: output })
 }
 
 /** One honest input/output rendering shared by header, table, cards, quick lists, and variants. */
@@ -37,6 +38,8 @@ export function DirectionalUsage({
   omitWhenUnknown = true,
   className,
 }: DirectionalUsageProps) {
+  useLocale()
+
   if (omitWhenUnknown && inputTokens === undefined && outputTokens === undefined) return null
 
   return (

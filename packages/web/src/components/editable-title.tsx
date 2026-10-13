@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -77,10 +78,12 @@ export function useTitleEditor(title: string, onCommit: (next: string) => void):
  *  except for an untouched editor restored from a draft (`commitOnBlur`).
  *  Sizing/typography come from the surface via `className`; the chrome is shared. */
 export function TitleEditInput({ editor, className }: { editor: TitleEditor; className?: string }) {
+  useLocale()
+
   return (
     <input
       data-slot="title-input"
-      aria-label="Task title"
+      aria-label={t('Task title')}
       // eslint-disable-next-line jsx-a11y/no-autofocus — the user just asked to edit this field
       autoFocus
       value={editor.draft}

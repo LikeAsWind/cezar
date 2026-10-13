@@ -1,3 +1,4 @@
+import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
@@ -32,6 +33,8 @@ type Confirming = { kind: 'reclaim' } | { kind: 'delete'; runId: string; title: 
  * Live-updates through the global event stream (queryKeys.worktrees).
  */
 export function WorktreesPanel() {
+  useLocale()
+
   const worktrees = useWorktrees()
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState<Confirming>(null)
@@ -43,8 +46,8 @@ export function WorktreesPanel() {
       void refresh()
       toast(
         result.reclaimed.length === 0
-          ? 'Nothing to reclaim — all worktrees are within the limit'
-          : `Reclaimed ${result.reclaimed.length} worktree${result.reclaimed.length === 1 ? '' : 's'} (branch kept)`,
+          ? t('Nothing to reclaim — all worktrees are within the limit')
+          : t('Reclaimed {0} worktree{1} (branch kept)', { 0: result.reclaimed.length, 1: result.reclaimed.length === 1 ? '' : 's' }),
       )
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
@@ -54,22 +57,19 @@ export function WorktreesPanel() {
     mutationFn: (runId: string) => removeRunWorktree(runId),
     onSuccess: () => {
       void refresh()
-      toast('Worktree removed')
+      toast(t('Worktree removed'))
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
 
   if (worktrees.isPending) {
     return (
-      <p data-slot="worktrees-loading" className="text-[13px] text-soft-foreground">
-        Loading worktrees…
-      </p>
+      <p data-slot="worktrees-loading" className="text-[13px] text-soft-foreground">{t('Loading worktrees…')}</p>
     )
   }
   if (worktrees.isError) {
     return (
-      <p data-slot="worktrees-error" className="text-[13px] text-danger">
-        Worktrees did not load: {worktrees.error.message}
+      <p data-slot="worktrees-error" className="text-[13px] text-danger">{t('Worktrees did not load:')}{' '}{worktrees.error.message}
       </p>
     )
   }
@@ -86,20 +86,18 @@ export function WorktreesPanel() {
   return (
     <div data-slot="worktrees-panel" className="flex flex-col gap-3">
       {rows.length === 0 ? (
-        <p data-slot="worktrees-empty" className="text-[13px] text-soft-foreground">
-          No task worktrees on disk.
-        </p>
+        <p data-slot="worktrees-empty" className="text-[13px] text-soft-foreground">{t('No task worktrees on disk.')}</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full border-collapse text-sm">
-            <caption className="sr-only">Task worktrees currently materialized on disk</caption>
+            <caption className="sr-only">{t('Task worktrees currently materialized on disk')}</caption>
             <thead>
               <tr className="border-b border-border text-left text-[12px] text-soft-foreground">
-                <th scope="col" className="px-3 py-2 font-medium">Task</th>
-                <th scope="col" className="px-3 py-2 font-medium">Status</th>
-                <th scope="col" className="px-3 py-2 font-medium">Size</th>
-                <th scope="col" className="px-3 py-2 font-medium">Age</th>
-                <th scope="col" className="px-3 py-2 font-medium text-right">Actions</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t('Task')}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t('Status')}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t('Size')}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t('Age')}</th>
+                <th scope="col" className="px-3 py-2 font-medium text-right">{t('Actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -118,10 +116,10 @@ export function WorktreesPanel() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p data-slot="worktrees-footer" className="text-[12px] text-soft-foreground">
-          {rows.length} worktree{rows.length === 1 ? '' : 's'}
-          {totalBytes !== null ? ` · ${formatMem(totalBytes) || '0 kB'} on disk` : ' · size unavailable'}
+          {rows.length}{' '}{t('worktree')}{rows.length === 1 ? '' : t('s')}
+          {totalBytes !== null ? t(' · {0} on disk', { 0: formatMem(totalBytes) || '0 kB' }) : t(' · size unavailable')}
           {' · '}
-          {keep === 0 ? 'keeping all (unlimited)' : `keeping the last ${keep}`}
+          {keep === 0 ? t('keeping all (unlimited)') : t('keeping the last {0}', { 0: keep })}
         </p>
         <Button
           type="button"
@@ -130,39 +128,34 @@ export function WorktreesPanel() {
           data-action="worktrees-reclaim-now"
           disabled={busy}
           onClick={() => setConfirming({ kind: 'reclaim' })}
-        >
-          Reclaim now
-        </Button>
+        >{t('Reclaim now')}</Button>
       </div>
 
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirming?.kind === 'delete' ? 'Delete this worktree?' : 'Reclaim old worktrees?'}
+              {confirming?.kind === 'delete' ? t('Delete this worktree?') : t('Reclaim old worktrees?')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirming?.kind === 'delete' ? (
-                <>
-                  This removes the worktree directory and its branch — the local-only work is not
-                  recoverable afterwards.
-                  <span className="mt-1 block truncate font-medium text-foreground" title={confirming.title}>
+                <>{t('This removes the worktree directory and its branch — the local-only work is not recoverable afterwards.')}<span className="mt-1 block truncate font-medium text-foreground" title={confirming.title}>
                     {confirming.title}
                   </span>
                 </>
               ) : (
-                'Finished worktrees beyond the keep-limit are reclaimed now (directory only). Their branches are kept, so the work stays recoverable.'
+                t('Finished worktrees beyond the keep-limit are reclaimed now (directory only). Their branches are kept, so the work stays recoverable.')
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogCancel>{t('Keep it')}</AlertDialogCancel>
             <AlertDialogAction
               data-action="worktrees-confirm"
               className={confirming?.kind === 'delete' ? 'bg-danger text-danger-foreground hover:brightness-[0.96]' : undefined}
               onClick={runConfirmed}
             >
-              {confirming?.kind === 'delete' ? 'Delete' : 'Reclaim now'}
+              {confirming?.kind === 'delete' ? t('Delete') : t('Reclaim now')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -180,6 +173,8 @@ function WorktreeRow({
   disabled: boolean
   onDelete: () => void
 }) {
+  useLocale()
+
   return (
     <tr data-slot="worktree-row" data-run={worktree.runId} className="border-b border-border last:border-0">
       <th scope="row" className="max-w-[220px] px-3 py-2 text-left font-normal">
@@ -191,13 +186,11 @@ function WorktreeRow({
       <td className="px-3 py-2">
         <span className="text-[12px] text-soft-foreground">{worktree.status}</span>
         {worktree.reclaimable ? (
-          <span data-slot="worktree-reclaimable" className="ml-1 text-[11px] text-soft-foreground">
-            (reclaimable)
-          </span>
+          <span data-slot="worktree-reclaimable" className="ml-1 text-[11px] text-soft-foreground">{t('(reclaimable)')}</span>
         ) : null}
       </td>
       <td className="px-3 py-2 tabular-nums text-soft-foreground">
-        {worktree.sizeBytes !== null ? formatMem(worktree.sizeBytes) || '0 kB' : '—'}
+        {worktree.sizeBytes !== null ? formatMem(worktree.sizeBytes) || t('0 kB') : '—'}
       </td>
       <td className="px-3 py-2 tabular-nums text-soft-foreground">{shortAge(worktree.finishedAt ?? undefined) || '—'}</td>
       <td className="px-3 py-2 text-right">
@@ -206,12 +199,10 @@ function WorktreeRow({
           variant="ghost"
           size="sm"
           data-action="worktree-delete"
-          aria-label={`Delete the worktree for ${worktree.title}`}
+          aria-label={t('Delete the worktree for {0}', { 0: worktree.title })}
           disabled={disabled}
           onClick={onDelete}
-        >
-          Delete
-        </Button>
+        >{t('Delete')}</Button>
       </td>
     </tr>
   )
