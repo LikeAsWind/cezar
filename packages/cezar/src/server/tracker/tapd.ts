@@ -15,16 +15,20 @@ import type { TrackerDriver, TrackerProvider } from './types.ts';
 const apiOrigin = 'https://api.tapd.cn';
 const webOrigin = 'https://www.tapd.cn';
 const vendorPageSize = 200;
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
 // A single filtered read may scan this many upstream pages before yielding a
 // continuation. Test-only override keeps the bound honest without 4,000 fixture rows.
-const maximumScanPages = Number(process.env.CEZ_TAPD_MAX_SCAN_PAGES) > 0 ? Number(process.env.CEZ_TAPD_MAX_SCAN_PAGES) : 20;
+const maximumScanPages = positiveInt(process.env.CEZ_TAPD_MAX_SCAN_PAGES, 20);
 // A read stops scanning early once it has made this many upstream requests; the
 // result is flagged scan-incomplete so the UI offers Continue scanning rather
 // than presenting a partial filtered page as ordinary pagination (spec §4/§5).
-const defaultScanPageRequestLimit = Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT) > 0 ? Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT) : 4;
+// Read per call (not snapshotted) so a test can drive the budget via the env var.
 function scanPageRequestLimit(): number {
-  const override = Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT);
-  return override > 0 ? override : defaultScanPageRequestLimit;
+  return positiveInt(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT, 4);
 }
 
 const numericId = z.string().regex(/^\d+$/).max(64);
