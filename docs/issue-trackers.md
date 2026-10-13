@@ -1,17 +1,38 @@
-# Jira Cloud and Linear
+# Jira Cloud, Linear and TAPD
 
-Cezar can browse a Jira Cloud project or a Linear team and hand a selected issue to an
+Cezar can browse a Jira Cloud project, a Linear team or a TAPD workspace and hand a
+selected issue to an
 agent. Each local project has one saved tracker connection. GitHub remains independent.
 Browsing performs no vendor writes. Enabled event automations can launch agent workflows as described below. The visible issue list checks its first page every 60 seconds; it stops when hidden or closed.
 
 ## Connect
 
-Open the project's **Settings → Issue tracker**, then **Configure Jira credentials** or
-**Configure Linear credentials**. Jira needs the site URL, account email and API token;
-Linear needs an API key. Use a token with read access restricted to the intended data.
-Save it, choose **Browse**, search for the project/team, then **Connect**. Discovery is
+Open the project's **Settings → Issue tracker**, then **Configure Jira credentials**,
+**Configure Linear credentials** or **Configure TAPD credentials**. Jira needs the site URL, account email and API token;
+Linear needs an API key. TAPD needs the Company ID, an Open API account and password, and a
+timezone. Use a token with read access restricted to the intended data.
+Save it, choose **Browse**, search for the project/team/workspace, then **Connect**. Discovery is
 paginated; **Load more** reaches later results. No server restart or environment editing
 is needed. Saving credentials is local; Browse/Connect verifies vendor access.
+
+For TAPD, the Company ID is the numeric company identifier shown in TAPD. The API account
+and password are the **TAPD Open API** credentials, not your ordinary website login
+password. The timezone is a user-selected IANA zone (for example `Asia/Shanghai`) used to
+convert TAPD's offset-less `created`/`modified` timestamps; it is never guessed from the
+host clock or the tapd.cn domain. One cezar project binds one TAPD workspace; the browser
+shows **Stories** and **Bugs** tabs for that workspace, each with its own search,
+Active/All filter, labels, detail and task handoff. Only TAPD public-cloud standard
+projects are supported; light-collaboration projects, private deployments and OAuth are
+outside this integration.
+
+**TAPD verification status.** The TAPD adapter ships with offline (mocked, dry-run and
+unit) coverage only. No live TAPD account has been used to verify workspace discovery, the
+story/bug list and detail endpoints, the workflow status mapping, or the timestamp
+conversion against real vendor responses; these behaviors are tested against fixtures
+derived from the public API documentation, not a live tenant. Until a live read-only probe
+confirms them, treat the integration as verified-offline but unverified-live, and treat
+status/label change events as unavailable (they are withheld from automation options for
+exactly this reason).
 
 Each cezar project has one credential connection and one selected tracker scope. Configuring
 project A does not configure project B. Replacement creates a new connection identity and
@@ -75,7 +96,8 @@ project where it was explicitly configured. Separate narrowly scoped tokens are 
 
 ### Existing environment-based connections
 
-`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` and `LINEAR_API_KEY` in the server
+`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `LINEAR_API_KEY`, `TAPD_COMPANY_ID`,
+`TAPD_API_USER`, `TAPD_API_PASSWORD` and `TAPD_TIME_ZONE` in the server
 environment or a repository `.env` are not read by this integration. These names are used only
 inside the managed per-project credential file. Existing saved scopes stay visible, but reads fail closed until you configure
 credentials and reconnect in that project's Settings. There is no silent migration or fallback
@@ -117,8 +139,18 @@ and the issue's state, creator and labels. No create/update/admin permission is 
 The [GraphQL API](https://linear.app/developers/graphql) describes key authentication and
 [rate limits](https://linear.app/developers/rate-limiting).
 
+For TAPD, create an Open API account (`api_user`/`api_password`) under your company and
+use HTTP Basic authentication against the fixed origin `https://api.tapd.cn`. The account
+password is the Open API account password, **not** the website login password; create and
+revoke it in TAPD's API configuration. The adapter performs only these reads:
+workspace discovery (`GET /workspaces/projects?company_id=…`), workspace identity
+(`GET /workspaces/get_workspace_info`), story and bug lists/details (`GET /stories`,
+`GET /bugs`), and workflow metadata (`GET /workflows/status_map`,
+`GET /workflows/last_steps`). It never writes to TAPD. The official documentation lives
+under [open.tapd.cn](https://open.tapd.cn/document/api-doc/API%E6%96%87%E6%A1%A3/API%E9%85%8D%E7%BD%AE%E6%8C%87%E5%BC%95.html).
+
 Rotate or renew an expired token using Replace credentials in project Settings, then reconnect the scope.
-Changing the Jira site or Linear organization requires explicitly reconnecting the project;
+Changing the Jira site, Linear organization or TAPD company requires explicitly reconnecting the project;
 saved IDs are never silently retargeted.
 
 ## Agent context
@@ -143,7 +175,11 @@ characters and detail descriptions at 60,000. If conversion drops unsupported co
 the description reaches its cap, the composer discloses the limitation and requires
 acknowledgment; you can add supplemental context. Final prompts over 100,000 characters
 must be edited before launch. Tracker credentials are not forwarded to agents by default:
-a source link does not grant the agent access to omitted context.
+a source link does not grant the agent access to omitted context. TAPD descriptions are
+HTML; the server converts them to a safe Markdown subset before display and never renders
+or executes the raw HTML. Images, embedded objects and other content the conversion cannot
+represent are dropped, and the composer discloses that loss like any other truncation —
+launching requires the same explicit acknowledgment.
 
 ## Recovery
 
@@ -169,7 +205,7 @@ for the extension points, invariants, implementation checklist and verification 
 
 ## Automatic list checks
 
-Opening a configured Jira/Linear list starts a shared server-side check of the first 50 matching
+Opening a configured Jira/Linear/TAPD list starts a shared server-side check of the first 50 matching
 issues every 60 seconds (from completion of the previous request). Hidden browser tabs, mobile detail views and
 closed lists hold no observation demand. Desktop detail keeps the adjacent list visible and observed. Multiple tabs with the same project, connection and
 filters share the check. Returning to a stale view checks once; it does not replay missed ticks.
@@ -190,8 +226,10 @@ reconciliation; it opens no browser WebSocket. No new configuration or credentia
 
 ## Issue browser layout
 
-Jira and Linear reuse GitHub's split-pane shell: compact issues on the left, full detail on the
-right. Mobile shows one pane at a time with a Back to the list link. Workflow and skills pickers
+Jira, Linear and TAPD reuse GitHub's split-pane shell: compact issues on the left, full detail on the
+right. TAPD adds a **Stories / Bugs** tab row above the list; switching tabs clears the current
+page selection but keeps each item type's drafts separate, so a story draft is never handed off
+as a bug. Mobile shows one pane at a time with a Back to the list link. Workflow and skills pickers
 are shared with GitHub. Workflow/engine/skills choices persist between rows; per-issue instruction
 drafts stay in memory until leaving the browser or changing project/association. Automatic list
 updates preserve the open issue. Explicit filters reset only the implicit first-row selection;
@@ -199,8 +237,8 @@ an issue selected through its URL remains open. Snapshot limitations still requi
 
 ## Event automations
 
-After connecting a project tracker, open **Automations → New automation → When Jira / Linear
-changes**. Select an advertised event and, for Jira status changes, one or more destination
+After connecting a project tracker, open **Automations → New automation → When Jira /
+Linear / TAPD changes**. Select an advertised event and, for Jira status changes, one or more destination
 statuses. The default check interval is 30 minutes. Use the same workflow, backend and instruction
 controls as other automations. Save paused, preview matches, then enable. Preview results appear
 in the execution log and do not launch tasks. Enabling starts from the current time, not the backlog.
@@ -212,15 +250,16 @@ in the connected project/team, including closed tasks; **Load labels from more t
 fetches another page of 50 tasks. This is not a complete vendor catalog and excludes
 inaccessible tasks. Previously saved selections remain visible and removable even when
 missing from loaded tasks or when loading fails. Changing project/source/connection isolates
-the suggestion cache. This works for Jira and Linear without label-history support.
+the suggestion cache. This works for Jira, Linear and TAPD without label-history support.
 API/JSON uses `trackerTrigger.requiredLabels`; CLI uses repeatable `--require-label bug`.
 The filter uses labels in the polled issue snapshot, not their historical state at creation.
 Adding a label is not a trigger and does not scan old skipped tasks; a recent creation can
 still be reconsidered during the existing two-minute overlap. Preview uses the same filter.
 
-Jira currently supports issue creation and status changes. Linear currently supports issue
-creation. Jira label changes and Linear status/label changes are not advertised: their complete
-history semantics have not been verified. The UI explains these limitations rather than treating
+Jira currently supports issue creation and status changes. Linear and TAPD currently support
+issue creation only. Jira label changes, Linear status/label changes and TAPD status/label
+changes are not advertised: their complete history semantics have not been verified against a
+live vendor account. The UI explains these limitations rather than treating
 a currently matching status as a transition.
 
 Changing the event or connection/scope of an enabled tracker automation establishes a new
@@ -237,6 +276,9 @@ Jira automation discovery reads the authenticated account’s timezone through `
 (once per scan, within the existing request limit); the token must allow this profile read. If the
 timezone cannot be read, the scan retries without advancing its checkpoint. Around daylight
 saving changes, discovery includes a wider window; exact event timestamps still control matches.
+TAPD event timestamps come from the vendor's offset-less `created`/`modified` strings,
+converted with the timezone saved in the project's TAPD credentials; the adapter never
+falls back to the host's local clock.
 
 Before working on an automation, the agent is instructed to fetch the full current issue through
 the vendor API and stop if that read fails or is incomplete. This is an agent instruction, not a

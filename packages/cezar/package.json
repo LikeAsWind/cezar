@@ -47,6 +47,7 @@
     "@hono/node-server": "^1.13.0",
     "dotenv": "^16.6.1",
     "hono": "^4.6.0",
+    "parse5": "^8.0.1",
     "proper-lockfile": "4.1.2",
     "smol-toml": "^1.7.0",
     "ws": "^8.21.1",

@@ -94,13 +94,17 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
   const [state, setState] = useState<'active' | 'all'>('active')
   const [stateExplicit, setStateExplicit] = useState(false)
   const [labels, setLabels] = useState<string[]>([])
-  const result = useTrackerItems(association, { state, labels, query }, listVisible)
-  const watch = useTrackerWatch({ association, state, labels, query }, result.queryKey, listVisible)
+  const selectedType = selectedId?.startsWith('bug:') ? 'bug' : selectedId?.startsWith('story:') ? 'story' : null
+  const [itemType, setItemType] = useState<'story' | 'bug'>(selectedType ?? 'story')
+  useEffect(() => { if (selectedType) setItemType(selectedType) }, [selectedType])
+  const browseType = association.kind === 'tapd' ? itemType : undefined
+  const result = useTrackerItems(association, { state, labels, query, itemType: browseType }, listVisible)
+  const watch = useTrackerWatch({ association, state, labels, query, itemType: browseType }, result.queryKey, listVisible)
   const pages = result.data?.pages ?? []
   const failure = pages.find((page) => !page.available)
   const items = pages.flatMap((page) => page.available ? page.items : [])
 
-  const filterKey = JSON.stringify([query, state, labels])
+  const filterKey = JSON.stringify([browseType, query, state, labels])
   const initialId = initialSelection?.filter === filterKey ? initialSelection.id : null
   useEffect(() => {
     if (initialId === null && items[0]) setInitialSelection({ filter: filterKey, id: items[0].id })
@@ -132,6 +136,9 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
         <h2 className="text-[13px] font-medium">{t('Issues ·')}{' '}{items.length}{result.hasNextPage ? '+' : ''}</h2>
         <select aria-label={t('Issue state')} className="min-w-0 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={state} onChange={(event) => { setState(event.target.value as 'active' | 'all'); setStateExplicit(true) }}><option value="active">{t('Active')}</option><option value="all">{t('All states')}</option></select>
       </div>
+      {association.kind === 'tapd' ? <div className="mt-2 flex gap-1" role="tablist" aria-label={t('TAPD item type')}>
+        {(['story', 'bug'] as const).map(type => <Button key={type} type="button" size="sm" variant={itemType === type ? 'primary' : 'outline'} role="tab" aria-selected={itemType === type} onClick={() => { setItemType(type); setLabels([]); setInitialSelection(null) }}>{t(type === 'story' ? 'Stories' : 'Bugs')}</Button>)}
+      </div> : null}
       <form className="mt-2.5 flex items-center gap-2 pb-3" onSubmit={(event) => {
         event.preventDefault()
         const next = queryDraft.trim()

@@ -181,6 +181,6 @@ npm run dev
 
 **MIT** © Patryk Lewczuk。完整内容见 [LICENSE](LICENSE)。
 
-## Jira 与 Linear
+## Jira、Linear 与 TAPD
 
-在设置中接入项目的 issue 追踪服务，即可浏览 issue、启动工作流并配置事件自动化。参见[设置、权限与恢复](docs/issue-trackers.md)。
+在设置中接入项目的 issue 追踪服务——Jira Cloud 项目、Linear 团队或 TAPD 项目——即可浏览 issue、启动工作流并配置事件自动化。参见[设置、权限与恢复](docs/issue-trackers.md)。

@@ -51,4 +51,18 @@ describe('automation-format', () => {
     expect(triggerLabel({ kind: 'github', events: ['issue.opened'], intervalSeconds: 300 })).toBe('on issue.opened · every 5 min')
     expect(triggerLabel({ kind: 'schedule', schedule: { type: 'weekdays', hour: 7, minute: 30 } })).toBe('weekdays at 07:30')
   })
+
+  it('names the tracker provider exhaustively, including TAPD', () => {
+    const trigger = (kind: 'jira' | 'linear' | 'tapd') => ({
+      kind: 'tracker' as const, intervalSeconds: 1800,
+      trackerTrigger: {
+        events: ['issue.opened' as const],
+        association: { kind, source: { id: 's', webUrl: 'https://example.test' }, externalId: '1', externalName: 'P' },
+      },
+    })
+    expect(triggerLabel(trigger('jira'))).toContain('Jira ·')
+    expect(triggerLabel(trigger('linear'))).toContain('Linear ·')
+    expect(triggerLabel(trigger('tapd'))).toContain('TAPD ·')
+    expect(triggerLabel(trigger('tapd'))).not.toContain('Tracker')
+  })
 })

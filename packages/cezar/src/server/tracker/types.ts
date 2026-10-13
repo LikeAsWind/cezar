@@ -14,7 +14,8 @@ export interface TrackerClient {
 }
 export interface TrackerDriver {
   readonly association: TrackerAssociation;
-  automationOptions?: (query?: { search?: string; cursor?: string }) => Promise<{ events: TrackerAutomationEvent[]; limitations: string[]; statuses: { id: string; name: string }[]; labels: { id: string; name: string }[] }>;
+  /** `itemType` echoes the requested TAPD resource type; absent for single-type providers. */
+  automationOptions?: (query?: { search?: string; cursor?: string; itemType?: 'story' | 'bug' }) => Promise<{ events: TrackerAutomationEvent[]; limitations: string[]; statuses: { id: string; name: string }[]; labels: { id: string; name: string }[]; itemType?: 'story' | 'bug' }>;
   pollEvents?: (input: EventPollInput) => Promise<PollPage<TrackerEventCandidate>>;
   listIssues(query: TrackerListQuery): Promise<TrackerItemsResult>;
   searchItems(query: TrackerSearchQuery): Promise<TrackerItemsResult>;

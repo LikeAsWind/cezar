@@ -872,7 +872,7 @@ export async function getGithub(
 
 // ---- read-only issue trackers --------------------------------------------------------------
 
-export async function getTrackerAutomationOptions(query: { search?: string; cursor?: string } = {}, opts?: ReadOptions): Promise<TrackerAutomationOptions> {
+export async function getTrackerAutomationOptions(query: { search?: string; cursor?: string; itemType?: 'story' | 'bug' } = {}, opts?: ReadOptions): Promise<TrackerAutomationOptions> {
   return unwrap(await cez.api.v1.p[':projectId'].tracker['automation-options'].$get(
     { param: { projectId: queryScope() }, query }, init(opts)), '/tracker/automation-options')
 }
@@ -981,6 +981,7 @@ export type TrackerBrowseParams = {
   refresh?: boolean
   state?: 'active' | 'all'
   labels?: readonly string[]
+  itemType?: 'story' | 'bug'
 }
 
 function trackerBrowseQuery(params: TrackerBrowseParams) {
@@ -991,6 +992,7 @@ function trackerBrowseQuery(params: TrackerBrowseParams) {
     refresh: params.refresh ? ('1' as const) : undefined,
     state: params.state,
     labels: params.labels?.length ? JSON.stringify(params.labels) : undefined,
+    itemType: params.itemType,
   }
 }
 

@@ -1,4 +1,5 @@
 import { t } from '@/lib/i18n'
+import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
 import {
   WEEKDAY_NAMES,
   hm,
@@ -110,7 +111,8 @@ export function triggerLabel(automation: Pick<AutomationDefinition, 'kind' | 'ev
   }
   if (automation.kind === 'tracker') {
     const trigger = automation.trackerTrigger
-    const provider = trigger?.association.kind === 'jira' ? 'Jira' : trigger?.association.kind === 'linear' ? 'Linear' : 'Tracker'
+    const kind = trigger?.association.kind
+    const provider = kind && kind in TRACKER_PROVIDERS ? TRACKER_PROVIDERS[kind].label : t('Tracker')
     return trigger ? t('{0} · {1}{2}{3} · every {4} min', { 0: provider, 1: trigger.events.join(', '), 2: trigger.targetStatusIds?.length ? ` → ${trigger.targetStatusIds.join(', ')}` : '', 3: trigger.changedLabelIds?.length ? ` · labels ${trigger.changedLabelIds.join(', ')}` : '', 4: Math.round((automation.intervalSeconds ?? 1800) / 60) }) : t('{0} · select an event to complete setup', { 0: provider })
   }
   const events = (automation.events ?? []).join(', ')

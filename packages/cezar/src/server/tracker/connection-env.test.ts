@@ -14,6 +14,19 @@ it('round trips Jira metadata and credentials', () => {
     origin: 'https://example.atlassian.net', email: 'user+tag@example.com', token: 'dummy:#=token' } };
   expect(decodeConnectionEnv(encodeConnectionEnv(record))).toEqual(record);
 });
+it('round trips TAPD metadata and literal credentials', () => {
+  const record = { id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd' as const,
+    companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic#=password', timeZone: 'Asia/Shanghai' } };
+  expect(decodeConnectionEnv(encodeConnectionEnv(record))).toEqual(record);
+});
+it.each([
+  { companyId: 'not-numeric', apiUser: 'test-api', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
+  { companyId: '10104801', apiUser: 'test:api', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
+  { companyId: '10104801', apiUser: 'test\napi', apiPassword: 'synthetic', timeZone: 'Asia/Shanghai' },
+  { companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic', timeZone: 'Not/AZone' },
+])('rejects invalid TAPD connection metadata: $companyId $apiUser $timeZone', credentials => {
+  expect(() => encodeConnectionEnv({ id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd', ...credentials } })).toThrow();
+});
 it('rejects unsupported and control characters without printing input in errors', () => {
   for (const key of ['dummy\nINJECTED=value', 'dummy\rvalue', 'dummy\0value', 'dummy\tvalue', 'dummy"\'`#']) {
     expect(() => encodeConnectionEnv({ id: randomUUID(), projectRoot: '/tmp/project', credentials: { kind: 'linear', key } })).toThrow();
@@ -27,6 +40,14 @@ it('rejects duplicate keys, invalid lines, unknown fields, two providers and uns
   expect(() => decodeConnectionEnv(text.replace("RECORD_VERSION='1'", "RECORD_VERSION='2'"))).toThrow();
 
 });
+it('rejects mixed TAPD keys and invalidates secret-only manual edits', () => {
+  const record = { id: randomUUID(), projectRoot: '/tmp/tapd-project', credentials: { kind: 'tapd' as const,
+    companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic-password', timeZone: 'Asia/Shanghai' } };
+  const text = encodeConnectionEnv(record);
+  expect(() => decodeConnectionEnv(text + 'LINEAR_API_KEY=synthetic\n')).toThrow();
+  expect(() => decodeConnectionEnv(text.replace('synthetic-password', 'rotated-password'))).toThrow('Connection needs saving again');
+  expect(() => decodeConnectionEnv(text.replace('Asia/Shanghai', 'Asia/Tokyo'))).toThrow('Connection needs saving again');
+});
 it('accepts comments and CRLF without changing the credential revision', () => {
   const record = { id: randomUUID(), projectRoot: '/tmp/project', credentials: { kind: 'linear' as const, key: 'dummy' } };
   expect(decodeConnectionEnv('# comment\n' + encodeConnectionEnv(record).replaceAll('\n', '\r\n'))).toEqual(record);
@@ -37,4 +58,11 @@ it('uses the documented credential-only digest independent of revision and canon
   const expected = createHash('sha256').update(JSON.stringify(['linear', 'dummy'])).digest('hex');
   expect(encodeConnectionEnv(record)).toContain(`CREDENTIAL_SHA256='${expected}'`);
   expect(encodeConnectionEnv({ ...record, id: randomUUID(), projectRoot: '/elsewhere' })).toContain(expected);
+});
+
+it('preserves the documented Jira credential digest byte order', () => {
+  const record = { id: randomUUID(), projectRoot: '/tmp/project', credentials: { kind: 'jira' as const,
+    origin: 'https://example.atlassian.net', email: 'user@example.com', token: 'dummy-token' } };
+  const expected = createHash('sha256').update(JSON.stringify(['jira', 'https://example.atlassian.net', 'user@example.com', 'dummy-token'])).digest('hex');
+  expect(encodeConnectionEnv(record)).toContain(`CREDENTIAL_SHA256='${expected}'`);
 });

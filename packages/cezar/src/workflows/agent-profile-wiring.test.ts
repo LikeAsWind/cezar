@@ -87,6 +87,23 @@ describe('RunManager agent-profile resolution', () => {
     expect(store.appendEvent(run.id, { type: 'note', message: `synthetic-private-value Basic ${basic}` }).message).toBe('[REDACTED] Basic [REDACTED]');
   });
 
+  it('binds TAPD credentials and redacts the API password from persisted events', async () => {
+    const association = { kind: 'tapd' as const, source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' };
+    manager = new RunManager(store, repoRoot, { resolveTrackerEnv: async (_root, expected) => {
+      expect(expected).toEqual(association);
+      return { TAPD_COMPANY_ID: '10104801', TAPD_API_USER: 'api-user', TAPD_API_PASSWORD: 'synthetic-tapd-password', TAPD_TIME_ZONE: 'Asia/Shanghai' };
+    } });
+    const run = newRun();
+    store.updateRun(run.id, { automationTracker: { automationId: 'a', automationRevision: 1, receiptId: 'r', provider: 'tapd', key: 'story:1010104801124922063', url: 'https://www.tapd.cn/10104802/prong/stories/view/1010104801124922063', association } });
+    const { env } = await seam().agentEnvForStep(run.id, 'claude');
+    expect(env.TAPD_API_PASSWORD).toBe('synthetic-tapd-password');
+    // The locator and display values are configuration, not secrets: only the password is scrubbed.
+    expect(store.appendEvent(run.id, { type: 'note', message: 'synthetic-tapd-password' }).message).toBe('[REDACTED]');
+    expect(store.appendEvent(run.id, { type: 'note', message: '10104801 api-user Asia/Shanghai' }).message).toBe('10104801 api-user Asia/Shanghai');
+    store.flush();
+    expect(JSON.stringify(store.readEvents(run.id))).not.toContain('synthetic-tapd-password');
+  });
+
   it('does not swallow binding failures on the step and continuation seam', async () => {
     manager = new RunManager(store, repoRoot, { resolveTrackerEnv: async () => { throw new Error('connection changed'); } });
     const run = newRun();

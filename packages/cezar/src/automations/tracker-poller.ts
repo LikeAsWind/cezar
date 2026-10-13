@@ -12,7 +12,7 @@ export class TrackerPoller {
     if (!definition.trackerTrigger) throw new Error('Choose an event to finish configuring this automation');
     if (!driver.pollEvents) throw new Error('This tracker does not support automation events');
     const trigger = definition.trackerTrigger;
-    const page = await driver.pollEvents({ ...input, ...(trigger.events.length === 1 ? { event: trigger.events[0] } : {}), limit: definition.filters.maxRecords, signal: input.signal ?? new AbortController().signal });
+    const page = await driver.pollEvents({ ...input, ...(trigger.events.length === 1 ? { event: trigger.events[0] } : {}), ...(trigger.itemType ? { itemType: trigger.itemType } : {}), limit: definition.filters.maxRecords, signal: input.signal ?? new AbortController().signal });
     return { ...page, truncated: !page.complete, candidates: page.candidates.filter(candidate =>
       trigger.events.includes(candidate.event)
       && (!trigger.requiredLabels?.length || trigger.requiredLabels.every(label => candidate.labels.includes(label)))

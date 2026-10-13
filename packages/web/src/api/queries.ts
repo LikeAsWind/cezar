@@ -165,10 +165,10 @@ export const queryKeys = {
     connection: () => ['tracker', queryScope(), 'connection'] as const,
     items: (
       association: TrackerAssociation,
-      params: { state: 'active' | 'all'; labels: readonly string[]; query?: string },
+      params: { state: 'active' | 'all'; labels: readonly string[]; query?: string; itemType?: 'story' | 'bug' },
     ) => [
       'tracker', queryScope(), 'items', association.kind, association.source.id,
-      association.source.webUrl, association.externalId, association.connectionId ?? null, params.state, [...params.labels], params.query ?? '',
+      association.source.webUrl, association.externalId, association.connectionId ?? null, params.itemType ?? null, params.state, [...params.labels], params.query ?? '',
     ] as const,
     detail: (association: TrackerAssociation, id: string) => [
       'tracker', queryScope(), 'detail', association.kind, association.source.id,
@@ -336,7 +336,7 @@ export class TrackerRefreshError extends Error {
 
 export function useTrackerItems(
   association: TrackerAssociation | null | undefined,
-  params: { state: 'active' | 'all'; labels: readonly string[]; query: string },
+  params: { state: 'active' | 'all'; labels: readonly string[]; query: string; itemType?: 'story' | 'bug' },
   enabled = true,
 ) {
   const query = params.query.trim()
@@ -350,8 +350,8 @@ export function useTrackerItems(
     // Infinity still allows explicit invalidation when the connection or scope changes.
     staleTime: Infinity,
     queryFn: ({ pageParam, signal }) => query
-      ? searchTrackerItems(query, { association: association ?? undefined, cursor: pageParam, limit: 50, state: params.state, labels: params.labels, refresh: true }, { signal })
-      : getTrackerItems({ association: association ?? undefined, cursor: pageParam, limit: 50, state: params.state, labels: params.labels, refresh: false }, { signal }),
+      ? searchTrackerItems(query, { association: association ?? undefined, cursor: pageParam, limit: 50, state: params.state, labels: params.labels, itemType: params.itemType, refresh: true }, { signal })
+      : getTrackerItems({ association: association ?? undefined, cursor: pageParam, limit: 50, state: params.state, labels: params.labels, itemType: params.itemType, refresh: false }, { signal }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.available && page.truncated ? page.nextCursor : undefined,
     enabled: association != null && enabled,
@@ -373,7 +373,7 @@ export function useTrackerItems(
           staleTime: 0,
           retry: false,
           queryFn: async ({ signal }) => {
-            const browse = { association: association ?? undefined, limit: 50, state: params.state, labels: params.labels, refresh: true }
+            const browse = { association: association ?? undefined, limit: 50, state: params.state, labels: params.labels, itemType: params.itemType, refresh: true }
             const page = query
               ? await searchTrackerItems(query, browse, { signal })
               : await getTrackerItems(browse, { signal })

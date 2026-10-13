@@ -130,6 +130,20 @@ it('releases observation when a responsive list pane becomes hidden', async () =
   expect(mocks.open).toHaveBeenCalledTimes(1)
 })
 
+it('treats TAPD story and bug watches as separate demand identities', async () => {
+  const client = createQueryClient()
+  mocks.open.mockResolvedValue({ id: 'watch', topic: 'tracker:watch' })
+  mocks.subscribe.mockReturnValue(() => {})
+  mocks.read.mockResolvedValue({ version: 0, checkedAt: null, checking: false, result: null })
+  const tapd = { association: { kind: 'tapd' as const, source: { id: 'company', webUrl: 'https://www.tapd.cn' }, externalId: 'workspace', externalName: 'Workspace' }, query: '', labels: [], state: 'active' as const }
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  const { rerender } = renderHook(({ itemType }: { itemType: 'story' | 'bug' }) => useTrackerWatch({ ...tapd, itemType }, ['tracker', 'default', 'items', itemType]), { wrapper, initialProps: { itemType: 'story' as 'story' | 'bug' } })
+  await waitFor(() => expect(mocks.open).toHaveBeenCalledWith('default', expect.objectContaining({ itemType: 'story' }), expect.any(AbortSignal)))
+  rerender({ itemType: 'bug' as const })
+  await waitFor(() => expect(mocks.open).toHaveBeenCalledWith('default', expect.objectContaining({ itemType: 'bug' }), expect.any(AbortSignal)))
+  expect(mocks.open).toHaveBeenCalledTimes(2)
+})
+
 it.each(['source_changed', 'credentials_missing', 'not_configured'] as const)('terminal %s reconciles connection and project navigation', async code => {
  const client=createQueryClient();
  const scope='default';

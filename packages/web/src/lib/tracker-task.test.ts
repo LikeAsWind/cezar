@@ -78,3 +78,9 @@ describe('tracker handoff', () => {
 it.each(['123', 'OPS-123'])('does not invent a GitHub reference for tracker ID %s', id => {
   expect(extractTaskRefs(trackerTaskPrompt({ ...item, id }))).toEqual({})
 })
+
+it('does not turn a long TAPD bug ID into a GitHub reference and preserves explicit GitHub text', () => {
+  const tapdPrompt = trackerTaskPrompt({ ...item, id: 'bug:1010104801124922063' }, { instruction: 'Also inspect GitHub issue #42.' })
+  expect(extractTaskRefs(tapdPrompt)).toEqual({ issueNumber: 42 })
+  expect(tapdPrompt.indexOf('bug:1010104801124922063')).toBeLessThan(tapdPrompt.indexOf('Also inspect GitHub issue #42.'))
+})

@@ -1,7 +1,7 @@
 # Adding an issue tracker
 
 Use this guide when asking an agent to add a compiled-in, read-only issue tracker.
-The Jira and Linear integration provides the reusable path; a new provider should
+The Jira, Linear and TAPD integrations provide the reusable path; a new provider should
 not need its own HTTP route family, React screen, persistence file, or task composer.
 For connecting an existing provider, see [issue-trackers.md](issue-trackers.md).
 
@@ -36,6 +36,7 @@ Reads begin only on user demand. Credentials stay on the server.
 | Complete provider behavior | `packages/cezar/src/server/tracker/types.ts` (`TrackerProvider`) |
 | Configuration and registration | `packages/cezar/src/server/tracker/connections.ts`, `index.ts` |
 | REST and GraphQL examples | `packages/cezar/src/server/tracker/jira.ts`, `linear.ts` |
+| Multi-type REST provider and gated events | `packages/cezar/src/server/tracker/tapd.ts`, `tapd-events.ts` |
 | Timeout, failures, limits, cache, cursors | `packages/cezar/src/server/tracker/transport.ts`, `cursor.ts` |
 | Local association | `packages/cezar/src/tracker-association.ts` |
 | Generic API | `trackerCandidatesRoutes` / `trackerRoutes` in `packages/cezar/src/server/server.ts` |
@@ -53,7 +54,11 @@ Reads begin only on user demand. Credentials stay on the server.
    arbitrary string to bypass validation. Data shapes belong in the contract with inferred
    types; contract and API client remain Node-free. Extend shapes only for a demonstrated
    need. Ticket detail IDs must fit one URL segment; reserved route names are rejected by
-   `trackerItemParamsSchema`. Item and source links must use HTTPS.
+   `trackerItemParamsSchema`. Item and source links must use HTTPS. A provider whose vendor
+   splits tickets into distinct resources (TAPD's stories vs bugs is the worked example)
+   carries that type dimension through the contract (`itemType`), the signed cursor scope,
+   the watch query key and every cache key — never through string parsing of a private ID
+   format in the UI. Older providers answer requests without the field unchanged.
 3. **Implement `TrackerProvider`.** Add `server/tracker/<provider>.ts` with discovery,
    association resolution, driver construction, cache invalidation, and driver operations
    `listIssues`, `searchItems`, `getItem`. Validate vendor JSON with Zod. Resolve canonical
@@ -187,7 +192,12 @@ stop new starts after pause or edit. Preview does not reserve receipts or advanc
 Only advertise verified events. Current Jira capabilities are creation and status changes;
 Jira label events are withheld pending a verified changelog encoding. Linear creation is supported;
 status and label events are withheld because early changes can be absent and activity can be
-grouped. A mapper passing synthetic tests does not establish provider history completeness.
+grouped. TAPD creation is supported; status and label events are withheld because the vendor's
+history encoding has not been verified against a live account — `tapd-events.ts` keeps the
+mapper and history scanner compiled and unit-tested, but `automationOptions` advertises only
+`issue.opened` until live evidence exists. A mapper passing synthetic tests does not establish
+provider history completeness. This gated-event pattern — implement and test, advertise only
+what is verified — is the default, not an exception.
 
 Add contract schemas first, then the existing options API, editor and CLI. Status and label filters
 use vendor IDs. Keep GitHub configuration and schedules working unchanged. Verify multiple real

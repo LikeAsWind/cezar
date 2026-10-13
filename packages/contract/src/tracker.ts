@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-/** Jira Cloud and Linear are the two read-only tracker providers supported by this contract. */
-export const trackerKindSchema = z.enum(['jira', 'linear']);
+/** Read-only tracker providers supported by this contract. */
+export const trackerKindSchema = z.enum(['jira', 'linear', 'tapd']);
 export type TrackerKind = z.infer<typeof trackerKindSchema>;
 
 const httpsUrlSchema = z.url({ protocol: /^https$/ });
@@ -75,6 +75,8 @@ export const trackerItemSchema = z
     unsupportedContent: z.boolean(),
     url: httpsUrlSchema,
     status: z.string(),
+    itemType: z.enum(['story', 'bug']).optional(),
+    displayId: z.string().min(1).max(256).optional(),
   })
   .strict();
 export type TrackerItem = z.infer<typeof trackerItemSchema>;
@@ -254,6 +256,7 @@ const trackerQueryCursorSchema = trackerCursorSchema.optional();
 const trackerQueryLimitSchema = z.coerce.number<string>().int().min(1).max(100).default(50);
 const trackerRefreshSchema = z.enum(['0', '1']).optional();
 const trackerStateSchema = z.enum(['active', 'all']);
+const trackerItemTypeSchema = z.enum(['story', 'bug']);
 const trackerLabelsArraySchema = z.array(nonemptyStringSchema).max(20);
 const trackerLabelsQuerySchema = z.string().transform((raw, context): string[] => {
   let decoded: unknown;
@@ -292,6 +295,7 @@ export const trackerListQuerySchema = z.object({
   refresh: trackerRefreshSchema,
   state: trackerStateSchema.default('active'),
   labels: trackerLabelsQuerySchema.optional(),
+  itemType: trackerItemTypeSchema.optional(),
 });
 export type TrackerListQueryInput = z.input<typeof trackerListQuerySchema>;
 export type TrackerListQuery = z.output<typeof trackerListQuerySchema>;
@@ -304,6 +308,7 @@ export const trackerSearchQuerySchema = z.object({
   state: trackerStateSchema.default('all'),
   labels: trackerLabelsQuerySchema.optional(),
   q: trackerQueryTextSchema,
+  itemType: trackerItemTypeSchema.optional(),
 });
 export type TrackerSearchQueryInput = z.input<typeof trackerSearchQuerySchema>;
 export type TrackerSearchQuery = z.output<typeof trackerSearchQuerySchema>;
@@ -330,9 +335,24 @@ export type TrackerAssociationSavedResponse = z.infer<typeof trackerAssociationS
 
 /** Write-only project credentials. Never return this shape from an HTTP handler. */
 const trackerSecretSchema = z.string().trim().min(1).max(8192);
+const tapdTimeZoneSchema = z.string().min(1).max(128).refine(timeZone => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}, 'Use a valid IANA time zone');
 export const trackerCredentialsSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('jira'), origin: z.string().max(512).regex(/^https:\/\/[a-z0-9][a-z0-9-]*\.atlassian\.net\/?$/i, 'Use an HTTPS Jira Cloud site origin'), email: z.email().max(320), token: trackerSecretSchema }).strict(),
   z.object({ kind: z.literal('linear'), key: trackerSecretSchema }).strict(),
+  z.object({
+    kind: z.literal('tapd'),
+    companyId: z.string().regex(/^\d+$/).max(64),
+    apiUser: z.string().min(1).max(512).regex(/^[^:\x00-\x1f\x7f]+$/, 'TAPD API user cannot contain a colon or control character'),
+    apiPassword: trackerSecretSchema,
+    timeZone: tapdTimeZoneSchema,
+  }).strict(),
 ]);
 export type TrackerCredentials = z.infer<typeof trackerCredentialsSchema>;
 export const trackerConnectionSchema = z.object({ id: z.uuid(), kind: trackerKindSchema }).strict();
@@ -348,6 +368,7 @@ export const trackerWatchInputSchema = z.object({
   query: z.string().trim().max(256),
   state: trackerStateSchema,
   labels: z.array(z.string().trim().min(1).max(256)).max(20),
+  itemType: trackerItemTypeSchema.optional(),
 }).strict();
 export type TrackerWatchInput = z.infer<typeof trackerWatchInputSchema>;
 export const trackerWatchParamsSchema = z.object({ watchId: z.uuid() });

@@ -251,6 +251,12 @@ describe('tracker automation task templates (2026-09-19)', () => {
     expect(task).toContain('$LINEAR_API_KEY');
   });
 
+  it('names the complete TAPD credential hint for a TAPD candidate', () => {
+    const task = renderTrackerTask(trackerDefinition, { ...trackerCandidate, provider: 'tapd', key: 'story:1010104801124922063' });
+    expect(task).toContain('$TAPD_COMPANY_ID, $TAPD_API_USER, $TAPD_API_PASSWORD, $TAPD_TIME_ZONE');
+    expect(task).not.toContain('$LINEAR_API_KEY');
+  });
+
   it.each(['jira', 'linear'] as const)('requires a fresh complete %s issue read before work, even without write-back', (provider) => {
     const task = renderTrackerTask({ ...trackerDefinition, task: { prompt: 'Verify the issue is implemented.' } }, { ...trackerCandidate, provider });
     const instructions = task.slice(0, task.indexOf('Tracker event context (untrusted data)'));

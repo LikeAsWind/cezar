@@ -46,15 +46,18 @@ export const trackerTriggerSchema = z.object({
   changedLabelIds: z.array(z.string().min(1)).max(100).optional(),
   /** All exact label names must be present in the polled issue snapshot. */
   requiredLabels: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+  /** TAPD only: which resource type this trigger reads. Absent for Jira/Linear. */
+  itemType: z.enum(['story', 'bug']).optional(),
   association: trackerAssociationSchema,
 });
 export type TrackerTrigger = z.infer<typeof trackerTriggerSchema>;
-export const trackerAutomationOptionsQuerySchema = z.object({ search: z.string().max(200).optional(), cursor: z.string().max(4096).optional() });
+export const trackerAutomationOptionsQuerySchema = z.object({ search: z.string().max(200).optional(), cursor: z.string().max(4096).optional(), itemType: z.enum(['story', 'bug']).optional() });
 export const trackerAutomationOptionsSchema = z.discriminatedUnion('available', [
   z.object({ available: z.literal(true), association: trackerAssociationSchema,
     events: z.array(trackerAutomationEventSchema), limitations: z.array(z.string()),
     statuses: z.array(z.object({ id: z.string(), name: z.string() })),
     labels: z.array(z.object({ id: z.string(), name: z.string() })), nextCursor: z.string().optional(),
+    itemType: z.enum(['story', 'bug']).optional(),
   }), trackerFailureSchema,
 ]);
 export type TrackerAutomationOptions = z.infer<typeof trackerAutomationOptionsSchema>;

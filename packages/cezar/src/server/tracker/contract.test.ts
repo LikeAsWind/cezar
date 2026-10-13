@@ -9,11 +9,14 @@ import {
   trackerItemResponseSchema,
   trackerItemResultSchema,
   trackerItemSchema,
+  trackerCredentialsSchema,
   trackerItemsResponseSchema,
   trackerItemsResultSchema,
   trackerListQuerySchema,
   trackerSearchQuerySchema,
   trackerSourceSchema,
+  trackerTriggerSchema,
+  trackerWatchInputSchema,
   type TrackerCandidatesQuery,
   type TrackerCandidatesQueryInput,
   type TrackerInvalidCursor,
@@ -40,6 +43,17 @@ const item = {
 };
 
 describe('tracker entity schemas', () => {
+  it('accepts TAPD credentials and rejects invalid Basic-auth identities', () => {
+    const valid = { kind: 'tapd', companyId: '10104801', apiUser: 'test-api', apiPassword: 'synthetic-password', timeZone: 'Asia/Shanghai' };
+    expect(trackerCredentialsSchema.safeParse(valid).success).toBe(true);
+    expect(trackerCredentialsSchema.safeParse({ ...valid, companyId: 'company-1' }).success).toBe(false);
+    expect(trackerCredentialsSchema.safeParse({ ...valid, apiUser: 'test:api' }).success).toBe(false);
+    expect(trackerCredentialsSchema.safeParse({ ...valid, timeZone: 'Not/AZone' }).success).toBe(false);
+  });
+
+  it('accepts optional TAPD item display metadata', () => {
+    expect(trackerItemSchema.safeParse({ ...item, id: 'bug:1010104801124922063', itemType: 'bug', displayId: '1010104801124922063' }).success).toBe(true);
+  });
   it('accepts HTTPS source URLs and rejects insecure source URLs', () => {
     expect(
       trackerSourceSchema.safeParse({ id: 'cloud-1', webUrl: 'https://example.atlassian.net' })
@@ -161,6 +175,23 @@ describe('tracker result and HTTP response branches', () => {
 });
 
 describe('tracker query and parameter schemas', () => {
+  it('keeps TAPD item type optional across list, search, and visible-list watch inputs', () => {
+    expect(trackerListQuerySchema.parse({ itemType: 'bug' })).toEqual({ limit: 50, state: 'active', itemType: 'bug' });
+    expect(trackerSearchQuerySchema.parse({ q: 'Unicode', itemType: 'story' })).toEqual({ q: 'Unicode', limit: 50, state: 'all', itemType: 'story' });
+    expect(trackerWatchInputSchema.safeParse({
+      association: { kind: 'tapd', source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: 'Example' },
+      query: '', state: 'active', labels: [], itemType: 'bug',
+    }).success).toBe(true);
+  });
+
+  it('keeps the trigger item type optional and restricted to the TAPD resource types', () => {
+    const association = { kind: 'jira' as const, source: { id: 'cloud', webUrl: 'https://example.atlassian.net' }, externalId: '10001', externalName: 'Cezar' };
+    // A saved definition written before TAPD has no itemType and must still parse.
+    const legacy = { events: ['issue.opened'], association };
+    expect(trackerTriggerSchema.parse(legacy)).toEqual(legacy);
+    expect(trackerTriggerSchema.parse({ ...legacy, itemType: 'bug' })).toEqual({ ...legacy, itemType: 'bug' });
+    expect(trackerTriggerSchema.safeParse({ ...legacy, itemType: 'epic' }).success).toBe(false);
+  });
   it('parses candidate defaults and rejects invalid numeric limits', () => {
     expect(trackerCandidatesQuerySchema.parse({ kind: 'jira' })).toEqual({
       kind: 'jira',

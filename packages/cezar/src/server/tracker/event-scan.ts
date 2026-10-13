@@ -4,6 +4,7 @@ import type {
   TrackerAssociation,
   TrackerAutomationEvent,
 } from '@open-mercato/cezar-contract';
+import { trackerKindSchema } from '@open-mercato/cezar-contract';
 import type { TrackerEventCandidate } from '../../automations/event-source.ts';
 import { TrackerRequestError } from './transport.ts';
 
@@ -14,6 +15,8 @@ export type EventPollInput = {
   signal: AbortSignal;
   event?: TrackerAutomationEvent;
   now?: string;
+  /** TAPD only: which resource type this source reads. Absent for Jira/Linear. */
+  itemType?: 'story' | 'bug';
   /** Absolute soft budget, including provider discovery; the transport keeps its hard deadline. */
   scanDeadlineAt?: number;
 };
@@ -31,7 +34,7 @@ const eventSchema = z.object({
   eventId: z.string(),
   timestamp: z.string(),
   tieBreaker: z.string(),
-  provider: z.enum(['jira', 'linear']),
+  provider: trackerKindSchema,
   event: z.enum([
     'issue.opened',
     'issue.status_changed',
@@ -113,7 +116,7 @@ export function createEventScanner(
   return {
     async poll(input: EventPollInput) {
       const fingerprint = createHash('sha256')
-        .update(JSON.stringify([association, input.event, input.baselineAt]))
+        .update(JSON.stringify([association, input.event, input.baselineAt, ...(input.itemType ? [input.itemType] : [])]))
         .digest('hex');
       const fresh = () => ({
         v: 1 as const,

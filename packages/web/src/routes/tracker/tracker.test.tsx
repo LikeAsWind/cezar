@@ -10,6 +10,64 @@ import { TrackerRoute, trackerDetailReadyForDrag } from './tracker'
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('Tracker route', () => {
+  it('separates TAPD story and bug requests and ignores a delayed story page after switching tabs', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
+    let finishStory!: (response: Response) => void
+    const story = new Promise<Response>(resolve => { finishStory = resolve })
+    const requests: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      requests.push(url)
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+      if (url.endsWith('/tracker/association')) return json({ association: {
+        kind: 'tapd', source: { id: 'company', webUrl: 'https://www.tapd.cn' }, externalId: 'workspace', externalName: 'TAPD Workspace',
+      } })
+      if (url.includes('itemType=bug')) return json({ available: true, items: [issue('bug:1010104801124922063', 'Bug row')], truncated: false })
+      if (url.includes('itemType=story')) return story
+      return new Promise<never>(() => {})
+    }))
+    render(
+      <MemoryRouter initialEntries={['/tracker']}>
+        <QueryClientProvider client={createQueryClient()}>
+          <Routes><Route path="/tracker" element={<TrackerRoute />} /></Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect((await screen.findByRole('tab', { name: 'Stories' })).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Bugs' }))
+    expect(await screen.findByText('Bug row')).toBeTruthy()
+    finishStory(jsonResponse({ available: true, items: [issue('story:1010104801124922000', 'Late story')], truncated: false }))
+    await Promise.resolve()
+    expect(screen.queryByText('Late story')).toBeNull()
+    expect(requests.some(url => url.includes('itemType=story'))).toBe(true)
+    expect(requests.some(url => url.includes('itemType=bug'))).toBe(true)
+  })
+
+  it('keeps the typed long TAPD ID intact when loading detail', async () => {
+    const id = 'bug:1010104801124922063'
+    const requests: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      requests.push(url)
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+      if (url.endsWith('/tracker/association')) return json({ association: {
+        kind: 'tapd', source: { id: 'company', webUrl: 'https://www.tapd.cn' }, externalId: 'workspace', externalName: 'TAPD Workspace',
+      } })
+      if (url.includes('/tracker/bug%3A1010104801124922063')) return json({ available: true, item: issue(id, 'Typed bug detail') })
+      return new Promise<never>(() => {})
+    }))
+    render(
+      <MemoryRouter initialEntries={['/tracker/bug%3A1010104801124922063']}>
+        <QueryClientProvider client={createQueryClient()}>
+          <Routes><Route path="/tracker/:id" element={<TrackerRoute />} /></Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Typed bug detail')).toBeTruthy()
+    expect(requests.some(url => url.includes('/tracker/bug%3A1010104801124922063'))).toBe(true)
+    expect((screen.getByRole('tab', { name: 'Bugs' }).getAttribute('aria-selected'))).toBe('true')
+  })
+
   it('uses vendor search and appends cursor pages without losing earlier issues', async () => {
     // This case exercises the mobile list; desktop detail also observes the detail cache.
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
@@ -161,4 +219,8 @@ function issue(id: string, title: string) {
     labels: ['bug'], body: 'description', bodyTruncated: false, unsupportedContent: false,
     url: `https://acme.atlassian.net/browse/${id}`, status: 'Open',
   }
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200 })
 }

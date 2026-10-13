@@ -5,6 +5,7 @@ import { trackerKindSchema, type TrackerKind } from '@open-mercato/cezar-api-cli
 export const TRACKER_PROVIDERS = {
   jira: { get label() { return t('Jira') }, scopeLabel: 'Jira projects' },
   linear: { get label() { return t('Linear') }, scopeLabel: 'Linear teams' },
+  tapd: { get label() { return t('TAPD') }, scopeLabel: 'TAPD workspaces' },
 } as const satisfies Record<TrackerKind, {
   label: string
   scopeLabel: string
