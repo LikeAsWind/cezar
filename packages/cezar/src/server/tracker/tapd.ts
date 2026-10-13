@@ -32,6 +32,12 @@ function scanPageRequestLimit(): number {
 }
 
 const numericId = z.string().regex(/^\d+$/).max(64);
+// List/detail responses only need these fields; TAPD's full row (custom_field_1..50
+// etc.) is large enough that a single `limit=200` stories page can exceed the shared
+// 2 MiB transport cap. Restrict to what the adapter maps so an ordinary list cannot
+// trip the limit, and the detailed description is still fetched for item detail.
+const storyFields = 'id,workspace_id,workitem_type_id,name,description,creator,created,modified,status,label,iteration_id';
+const bugFields = 'id,workspace_id,title,description,reporter,creator,created,modified,status,label,iteration_id';
 const workspaceSchema = z.object({
   id: numericId,
   name: z.string().min(1),
@@ -302,6 +308,7 @@ export function createTapdClient(
           while (items.length < query.limit && scannedPages < maximumScanPages && !budgetExhausted) {
             const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', {
               workspace_id: association.externalId, page: String(page), limit: String(vendorPageSize), order: 'modified desc',
+              fields: type === 'story' ? storyFields : bugFields,
               ...(wantedLabels[0] ? { label: wantedLabels[0] } : {}),
               ...(query.iterationId ? { iteration_id: query.iterationId } : {}),
             }, signal));
@@ -356,7 +363,7 @@ export function createTapdClient(
         const vendorId = match[2]!;
         return await runOperation(signal => cache.get(JSON.stringify(['tapd', currentSource.id, association.externalId, 'item', id]), async () => {
           await checkAssociation(association, signal);
-          const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', { workspace_id: association.externalId, id: vendorId }, signal));
+          const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', { workspace_id: association.externalId, id: vendorId, fields: type === 'story' ? storyFields : bugFields }, signal));
           const raw = rows.find(row => row.id === vendorId);
           if (!raw) throw new TrackerRequestError('not_found', 'The requested TAPD item was not found in this workspace.');
           const iterations = await loadIterations(signal);
@@ -397,6 +404,7 @@ export function createTapdClient(
             const page = parsePage(decodeCursor(scope, cursor));
             const rows = parseItems(itemType, await request(itemType === 'story' ? '/stories' : '/bugs', {
               workspace_id: association.externalId, page: String(page), limit: String(vendorPageSize), order: 'created desc',
+              fields: itemType === 'story' ? storyFields : bugFields,
             }, pageSignal));
             if (rows.some(raw => raw.workspace_id !== association.externalId)) throw sourceChanged();
             const issues = rows.map(raw => {
