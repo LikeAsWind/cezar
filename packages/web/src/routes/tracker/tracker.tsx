@@ -1,17 +1,17 @@
 import { t, useLocale, getLocale } from '@/lib/i18n'
-import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { AlertTriangleIcon, ArrowLeftIcon, CircleDotIcon, ExternalLinkIcon, RefreshCwIcon, SearchIcon, SettingsIcon, TicketIcon } from 'lucide-react'
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { useParams } from 'react-router'
 
-import type { TrackerAssociation, TrackerItem, TrackerItemResponse } from '@open-mercato/cezar-api-client'
+import type { TrackerAssociation, TrackerItem, TrackerItemResponse, TrackerIteration } from '@open-mercato/cezar-api-client'
 import { IssueBrowserLayout } from '@/components/issue-browser-layout'
 import { CenteredState } from '@/components/centered-state'
 import { useIsDesktop } from '@/lib/use-desktop'
 import { shortAge } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
-import { getTrackerItem } from '@/api/client'
+import { getTrackerItem, getTrackerIterations } from '@/api/client'
 import { useTrackerWatch } from '@/api/tracker-watch'
 import { useProjectScope } from '@/api/project-scope-context'
 import { queryKeys, TRACKER_STALE_TIME, TrackerRefreshError, useSkills, useTrackerConnection, useTrackerAssociation, useTrackerItem, useTrackerItems, useWorkflows } from '@/api/queries'
@@ -97,16 +97,39 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
   const selectedType = selectedId?.startsWith('bug:') ? 'bug' : selectedId?.startsWith('story:') ? 'story' : null
   const [itemType, setItemType] = useState<'story' | 'bug'>(selectedType ?? 'story')
   useEffect(() => { if (selectedType) setItemType(selectedType) }, [selectedType])
+  const [iterationId, setIterationId] = useState<string | undefined>(undefined)
   const browseType = association.kind === 'tapd' ? itemType : undefined
-  const result = useTrackerItems(association, { state, labels, query, itemType: browseType }, listVisible)
-  const watch = useTrackerWatch({ association, state, labels, query, itemType: browseType }, result.queryKey, listVisible)
+  const result = useTrackerItems(association, { state, labels, query, itemType: browseType, iterationId }, listVisible)
+  const watch = useTrackerWatch({ association, state, labels, query, itemType: browseType, iterationId }, result.queryKey, listVisible)
+  const iterations = useQuery({
+    queryKey: queryKeys.tracker.iterations(association),
+    queryFn: ({ signal }) => getTrackerIterations({ signal }),
+    staleTime: TRACKER_STALE_TIME,
+    enabled: association.kind === 'tapd',
+  })
+  const iterationOptions = iterations.data?.available ? iterations.data.iterations : []
   const pages = result.data?.pages ?? []
   const failure = pages.find((page) => !page.available)
   const items = pages.flatMap((page) => page.available ? page.items : [])
   const lastPage = pages[pages.length - 1]
   const scanIncomplete = !!(lastPage?.available && lastPage.scanIncomplete)
 
-  const filterKey = JSON.stringify([browseType, query, state, labels])
+  const filterKey = JSON.stringify([browseType, iterationId, query, state, labels])
+  const grouped = useMemo(() => {
+    if (association.kind !== 'tapd') return items
+    if (iterationId !== undefined) return items
+    const order = new Map(iterationOptions.map((it, index) => [it.id, index]))
+    return [...items].sort((a, b) => {
+      const ai = a.iteration?.id ?? '0'
+      const bi = b.iteration?.id ?? '0'
+      const ao = order.get(ai)
+      const bo = order.get(bi)
+      if (ao === undefined && bo === undefined) return (a.iteration?.name ?? '').localeCompare(b.iteration?.name ?? '')
+      if (ao === undefined) return 1
+      if (bo === undefined) return -1
+      return ao - bo
+    })
+  }, [items, iterationOptions, iterationId, association.kind])
   const initialId = initialSelection?.filter === filterKey ? initialSelection.id : null
   useEffect(() => {
     if (initialId === null && items[0]) setInitialSelection({ filter: filterKey, id: items[0].id })
@@ -138,8 +161,15 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
         <h2 className="text-[13px] font-medium">{t('Issues ·')}{' '}{items.length}{result.hasNextPage ? '+' : ''}</h2>
         <select aria-label={t('Issue state')} className="min-w-0 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={state} onChange={(event) => { setState(event.target.value as 'active' | 'all'); setStateExplicit(true) }}><option value="active">{t('Active')}</option><option value="all">{t('All states')}</option></select>
       </div>
-      {association.kind === 'tapd' ? <div className="mt-2 flex gap-1" role="tablist" aria-label={t('TAPD item type')}>
-        {(['story', 'bug'] as const).map(type => <Button key={type} type="button" size="sm" variant={itemType === type ? 'primary' : 'outline'} role="tab" aria-selected={itemType === type} onClick={() => { setItemType(type); setLabels([]); setInitialSelection(null) }}>{t(type === 'story' ? 'Stories' : 'Bugs')}</Button>)}
+      {association.kind === 'tapd' ? <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="flex gap-1" role="tablist" aria-label={t('TAPD item type')}>
+          {(['story', 'bug'] as const).map(type => <Button key={type} type="button" size="sm" variant={itemType === type ? 'primary' : 'outline'} role="tab" aria-selected={itemType === type} onClick={() => { setItemType(type); setLabels([]); setInitialSelection(null) }}>{t(type === 'story' ? 'Stories' : 'Bugs')}</Button>)}
+        </div>
+        <select aria-label={t('Iteration')} className="min-w-0 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={iterationId ?? ''} onChange={(event) => { setIterationId(event.target.value || undefined); setInitialSelection(null) }}>
+          <option value="">{t('All iterations')}</option>
+          <option value="0">{t('Unplanned')}</option>
+          {iterationOptions.map(iteration => <option key={iteration.id} value={iteration.id}>{iteration.name}{iteration.end ? ` · ${iteration.end}` : ''}</option>)}
+        </select>
       </div> : null}
       <form className="mt-2.5 flex items-center gap-2 pb-3" onSubmit={(event) => {
         event.preventDefault()
@@ -159,12 +189,34 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
     {result.isError ? <Failure reason={result.error.message} generation={result.errorUpdatedAt} retryAfterSeconds={result.error instanceof TrackerRefreshError && result.error.failure.code === 'rate_limited' ? result.error.failure.retryAfterSeconds : undefined} retry={() => void result.restart()} /> : null}
     {failure && !failure.available ? <Failure reason={failure.reason} generation={result.dataUpdatedAt} retryAfterSeconds={failure.code === 'rate_limited' ? failure.retryAfterSeconds : undefined} retry={() => void result.restart()} /> : null}
     {!result.isPending && !result.isError && !failure && items.length === 0 ? <PageState text={query.trim() ? t('No issues match this search.') : t('No issues in this view.')} /> : null}
-    <ul data-slot="tracker-rows" className="flex flex-col gap-0.5 px-2 py-2">{items.map(item => <TrackerRow scopePending={scopePending} key={item.id} association={association} item={item} active={detailId === item.id} />)}</ul>
+    <ul data-slot="tracker-rows" className="flex flex-col gap-0.5 px-2 py-2">{association.kind === 'tapd' && iterationId === undefined
+      ? <IterationGroups items={grouped} scopePending={scopePending} association={association} detailId={detailId} />
+      : items.map(item => <TrackerRow scopePending={scopePending} key={item.id} association={association} item={item} active={detailId === item.id} />)}</ul>
     {result.hasNextPage ? <div className="mx-4 mb-4 flex shrink-0 flex-col items-start gap-1.5">
       {scanIncomplete ? <p className="text-xs text-muted-foreground">{t('These filters only scanned part of the project so far; the list may be incomplete.')}</p> : null}
       <Button variant="outline" onClick={() => void result.fetchNextPage()} disabled={result.isFetchingNextPage}>{t(scanIncomplete ? 'Continue scanning' : 'Load more')}</Button>
     </div> : null}
   </>} detail={detailId ? <TrackerDetail scopePending={scopePending} key={`${trackerAssociationKey(association)}:${detailId}`} association={association} id={detailId} drafts={drafts} selection={selection} onSelectionChange={setSelection} /> : <CenteredState icon={<CircleDotIcon />} tone="neutral" heading="h2" title={t('Nothing selected')} subtitle={t('Choose an issue from the list.')} />} />
+}
+
+function IterationGroups({ items, scopePending, association, detailId }: { items: TrackerItem[]; scopePending: boolean; association: TrackerAssociation; detailId: string | null }) {
+  useLocale()
+  const groups = useMemo(() => {
+    const map = new Map<string, TrackerItem[]>()
+    for (const item of items) {
+      const key = item.iteration?.id ?? '0'
+      const list = map.get(key) ?? []
+      list.push(item)
+      map.set(key, list)
+    }
+    return [...map.entries()].map(([key, rows]) => ({ key, name: rows[0]?.iteration?.name ?? t('Unplanned'), rows }))
+  }, [items])
+  return <>{groups.map(group => (
+    <li key={group.key} className="mt-1">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold text-soft-foreground">{group.name}{group.rows[0]?.iteration?.start && group.rows[0]?.iteration?.end ? <span className="font-normal text-muted-foreground">{group.rows[0].iteration.start} ~ {group.rows[0].iteration.end}</span> : null}</div>
+      {group.rows.map(item => <TrackerRow scopePending={scopePending} key={item.id} association={association} item={item} active={detailId === item.id} />)}
+    </li>
+  ))}</>
 }
 
 function TrackerRow({ scopePending, association, item, active }: { scopePending: boolean; association: TrackerAssociation; item: TrackerItem; active: boolean }) {

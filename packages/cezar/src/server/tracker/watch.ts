@@ -135,7 +135,7 @@ export class TrackerWatches {
       try {
         const driver = await this.service.driver(entry.project.root, entry.project.dataDir);
         if ('available' in driver || !same(driver.association, entry.input.association)) { this.invalidate(entry); return; }
-        const query = { state: entry.input.state, labels: entry.input.labels, itemType: entry.input.itemType, limit: 50, refresh: '1' as const };
+        const query = { state: entry.input.state, labels: entry.input.labels, itemType: entry.input.itemType, iterationId: entry.input.iterationId, limit: 50, refresh: '1' as const };
         const result = entry.input.query ? await driver.searchItems({ ...query, q: entry.input.query }) : await driver.listIssues(query);
         if (entry.dead || entry.terminal) return;
         if (!await this.current(entry)) { this.invalidate(entry); return; }

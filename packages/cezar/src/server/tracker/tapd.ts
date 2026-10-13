@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type {
   TrackerAssociation, TrackerAssociationInput, TrackerAssociationResult, TrackerCandidatesQuery,
-  TrackerCandidatesResult, TrackerItem, TrackerItemResult, TrackerItemsResult, TrackerListQuery,
-  TrackerSearchQuery, TrackerSource,
+  TrackerCandidatesResult, TrackerItem, TrackerItemResult, TrackerItemsResult, TrackerIteration,
+  TrackerIterationsResult, TrackerListQuery, TrackerSearchQuery, TrackerSource,
 } from '@open-mercato/cezar-contract';
 import { descriptionBody } from './adf.ts';
 import { decodeCursor, encodeCursor } from './cursor.ts';
@@ -41,15 +41,21 @@ const workspaceRowSchema = z.union([workspaceSchema, z.object({ Workspace: works
 const storySchema = z.object({
   id: numericId, workspace_id: numericId, workitem_type_id: numericId, name: z.string(),
   description: z.string().nullish(), creator: z.string().nullish(), created: z.string(), modified: z.string(),
-  status: z.string(), label: z.string().nullish(),
+  status: z.string(), label: z.string().nullish(), iteration_id: z.string().nullish().optional(),
 }).passthrough();
 const bugSchema = z.object({
   id: numericId, workspace_id: numericId, title: z.string(), description: z.string().nullish(),
   reporter: z.string().nullish(), creator: z.string().nullish(), created: z.string(), modified: z.string(),
-  status: z.string(), label: z.string().nullish(),
+  status: z.string(), label: z.string().nullish(), iteration_id: z.string().nullish().optional(),
 }).passthrough();
 const storyRowSchema = z.object({ Story: storySchema }).passthrough();
 const bugRowSchema = z.object({ Bug: bugSchema }).passthrough();
+
+const iterationSchema = z.object({
+  id: numericId, name: z.string().min(1),
+  startdate: z.string().nullish().optional(), enddate: z.string().nullish().optional(),
+}).passthrough();
+const iterationRowSchema = z.object({ Iteration: iterationSchema }).passthrough();
 
 type ItemType = 'story' | 'bug';
 type Story = z.infer<typeof storySchema>;
@@ -129,7 +135,7 @@ function zonedTimestamp(value: string, timeZone: string): string {
   return invalidResponse();
 }
 
-function mapItem(raw: RawItem, type: ItemType, association: TrackerAssociation, timeZone: string, maximum: number, status = raw.status): TrackerItem {
+function mapItem(raw: RawItem, type: ItemType, association: TrackerAssociation, timeZone: string, maximum: number, status = raw.status, iterations?: ReadonlyMap<string, TrackerIteration>): TrackerItem {
   if (raw.workspace_id !== association.externalId) {
     throw new TrackerRequestError('not_found', 'The requested TAPD item was not found in this workspace.');
   }
@@ -141,10 +147,12 @@ function mapItem(raw: RawItem, type: ItemType, association: TrackerAssociation, 
   const url = type === 'story'
     ? `${webOrigin}/${encodeURIComponent(association.externalId)}/prong/stories/view/${encodeURIComponent(raw.id)}`
     : `${webOrigin}/${encodeURIComponent(association.externalId)}/bugtrace/bugs/view?bug_id=${encodeURIComponent(raw.id)}`;
+  const iterationId = raw.iteration_id && raw.iteration_id !== '0' ? raw.iteration_id : undefined;
   return {
     kind: 'issue', id, displayId: raw.id, itemType: type, title, author: author ?? 'Unknown',
     createdAt: zonedTimestamp(raw.created, timeZone), updatedAt: zonedTimestamp(raw.modified, timeZone),
     labels: labels(raw.label), ...body, url, status,
+    ...(iterationId ? { iteration: iterations?.get(iterationId) ?? { id: iterationId, name: iterationId } } : {}),
   };
 }
 
@@ -238,6 +246,13 @@ export function createTapdClient(
   };
 
   const driver = (association: TrackerAssociation): TrackerDriver => {
+    const loadIterations = async (signal: AbortSignal): Promise<ReadonlyMap<string, TrackerIteration>> => {
+      const parsed = z.array(iterationRowSchema).safeParse(await request('/iterations', { workspace_id: association.externalId, limit: '200', page: '1' }, signal));
+      if (!parsed.success) return invalidResponse();
+      const rows = parsed.data.map(row => row.Iteration);
+      return new Map(rows.map(row => [row.id, { id: row.id, name: row.name, ...(row.startdate ? { start: row.startdate } : {}), ...(row.enddate ? { end: row.enddate } : {}) }]));
+    };
+
     const workflow = async (type: ItemType, workitemTypeId: string | undefined, signal: AbortSignal) => {
       if (type === 'story' && workitemTypeId === undefined) return invalidResponse();
       const params = {
@@ -263,12 +278,15 @@ export function createTapdClient(
           await checkAssociation(association, signal);
           const cursorScope = {
             kind: 'tapd', source: currentSource, operation: 'items', externalId: association.externalId,
-            type, state: query.state, labels: query.labels ?? [], ...('q' in query ? { q: query.q } : {}), limit: query.limit,
+            type, state: query.state, labels: query.labels ?? [], iterationId: query.iterationId ?? '', ...('q' in query ? { q: query.q } : {}), limit: query.limit,
           };
           let { page, offset } = parsePosition(decodeCursor(cursorScope, query.cursor));
           const items: TrackerItem[] = [];
           const wantedLabels = query.labels ?? [];
           const search = 'q' in query ? query.q.toLocaleLowerCase() : undefined;
+          // The iteration view needs names on each row and, when a specific iteration is
+          // selected, an upstream filter so the scan is bounded to that iteration's items.
+          const iterations = await loadIterations(signal);
           const workflows = new Map<string, Awaited<ReturnType<typeof workflow>>>();
           let scannedPages = 0;
           let upstreamFinished = false;
@@ -277,6 +295,7 @@ export function createTapdClient(
             const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', {
               workspace_id: association.externalId, page: String(page), limit: String(vendorPageSize), order: 'modified desc',
               ...(wantedLabels[0] ? { label: wantedLabels[0] } : {}),
+              ...(query.iterationId ? { iteration_id: query.iterationId } : {}),
             }, signal));
             scannedPages++;
             budgetExhausted = scannedPages >= scanPageRequestLimit();
@@ -295,8 +314,9 @@ export function createTapdClient(
               const metadata = workflows.get(type === 'story' ? (raw as Story).workitem_type_id : 'bug');
               if (query.state === 'active' && metadata?.names[raw.status] === undefined) return invalidResponse();
               const active = query.state !== 'active' || (metadata !== undefined && !metadata.terminal.has(raw.status));
-              if (wantedLabels.every(label => rawLabels.includes(label)) && matchesSearch && active) {
-                items.push(mapItem(raw, type, association, config.timeZone, 8_000, metadata?.names[raw.status] ?? raw.status));
+              const matchesIteration = query.iterationId === undefined || (raw.iteration_id ?? '0') === query.iterationId;
+              if (wantedLabels.every(label => rawLabels.includes(label)) && matchesSearch && active && matchesIteration) {
+                items.push(mapItem(raw, type, association, config.timeZone, 8_000, metadata?.names[raw.status] ?? raw.status, iterations));
               }
             }
             if (offset < rows.length) break;
@@ -331,7 +351,8 @@ export function createTapdClient(
           const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', { workspace_id: association.externalId, id: vendorId }, signal));
           const raw = rows.find(row => row.id === vendorId);
           if (!raw) throw new TrackerRequestError('not_found', 'The requested TAPD item was not found in this workspace.');
-          return { available: true, item: mapItem(raw, type, association, config.timeZone, 60_000) };
+          const iterations = await loadIterations(signal);
+          return { available: true, item: mapItem(raw, type, association, config.timeZone, 60_000, undefined, iterations) };
         }, true) as Promise<TrackerItemResult>);
       } catch (error) { return lookupFailure(error); }
     };
@@ -397,6 +418,16 @@ export function createTapdClient(
       listIssues: readItems,
       searchItems: readItems,
       getItem,
+      listIterations: async (): Promise<TrackerIterationsResult> => {
+        try {
+          return await runOperation(async signal => {
+            await checkAssociation(association, signal);
+            const iterations = [...(await loadIterations(signal)).values()]
+              .sort((a, b) => (b.end ?? '').localeCompare(a.end ?? ''));
+            return { available: true, iterations };
+          });
+        } catch (error) { return collectionFailure(error); }
+      },
     };
   };
 

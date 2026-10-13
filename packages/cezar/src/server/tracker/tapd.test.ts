@@ -65,6 +65,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       expect(url.pathname).toBe('/stories');
       expect(url.searchParams.get('workspace_id')).toBe(workspaceId);
       expect(url.searchParams.get('limit')).toBe('200');
@@ -90,6 +91,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       expect(url.pathname).toBe('/stories');
       const page = url.searchParams.get('page') ?? '1';
       expect(pages).toContain(page);
@@ -114,6 +116,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       expect(url.pathname).toBe('/bugs');
       expect(url.searchParams.get('id')).toBe('1234567890123456789');
       return json({ status: 1, data: [bug('1234567890123456789', { workspace_id: '999' })] });
@@ -126,6 +129,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       if (url.pathname === '/stories') return json({ status: 1, data: [story('1'), story('2', { status: 'done' })] });
       if (url.pathname === '/workflows/status_map') {
         expect(url.searchParams.get('system')).toBe('story');
@@ -143,6 +147,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       if (url.pathname === '/stories') return json({ status: 1, data: [story('1')] });
       if (url.pathname === '/workflows/status_map') return json({ status: 1, data: {} });
       if (url.pathname === '/workflows/last_steps') return json({ status: 1, data: [] });
@@ -157,6 +162,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       reads++;
       return json({ status: 1, data: [story('123', { description: `<p>${'x'.repeat(60_010 + reads)}</p>` })] });
     });
@@ -206,6 +212,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       expect(url.pathname).toBe('/stories');
       expect(url.searchParams.get('order')).toBe('created desc');
       return json({ status: 1, data: [story('42'), story('7', { created: '2026-10-12 07:00:00' })], info: 'success' });
@@ -229,6 +236,7 @@ describe('createTapdClient', () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
       if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/iterations') return json({ status: 1, data: [] });
       expect(url.pathname).toBe('/stories');
       return json({ status: 1, data: [], info: 'success' });
     });

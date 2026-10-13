@@ -77,9 +77,20 @@ export const trackerItemSchema = z
     status: z.string(),
     itemType: z.enum(['story', 'bug']).optional(),
     displayId: z.string().min(1).max(256).optional(),
+    iteration: z
+      .object({ id: z.string(), name: z.string(), start: z.string().optional(), end: z.string().optional() })
+      .optional(),
   })
   .strict();
 export type TrackerItem = z.infer<typeof trackerItemSchema>;
+
+export const trackerIterationSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  start: z.string().optional(),
+  end: z.string().optional(),
+}).strict();
+export type TrackerIteration = z.infer<typeof trackerIterationSchema>;
 
 export const trackerFailureCodeSchema = z.enum([
   'not_configured',
@@ -208,6 +219,15 @@ export const trackerItemsResultSchema = z.discriminatedUnion('available', [
 ]);
 export type TrackerItemsResult = z.infer<typeof trackerItemsResultSchema>;
 
+/** Iteration catalog for one workspace; read-only metadata behind the TAPD iteration view. */
+export const trackerIterationsResultSchema = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(true), iterations: z.array(trackerIterationSchema) }).strict(),
+  trackerCollectionFailureSchema,
+]);
+export type TrackerIterationsResult = z.infer<typeof trackerIterationsResultSchema>;
+/** HTTP 200 response for the iteration catalog; the result shape is already failure-safe. */
+export type TrackerIterationsResponse = TrackerIterationsResult;
+
 /** Driver result: the detail route maps only `not_found` to HTTP 404. */
 export const trackerItemResultSchema = z.discriminatedUnion('available', [
   trackerItemSuccessSchema,
@@ -299,6 +319,7 @@ export const trackerListQuerySchema = z.object({
   state: trackerStateSchema.default('active'),
   labels: trackerLabelsQuerySchema.optional(),
   itemType: trackerItemTypeSchema.optional(),
+  iterationId: z.string().max(64).optional(),
 });
 export type TrackerListQueryInput = z.input<typeof trackerListQuerySchema>;
 export type TrackerListQuery = z.output<typeof trackerListQuerySchema>;
@@ -312,11 +333,12 @@ export const trackerSearchQuerySchema = z.object({
   labels: trackerLabelsQuerySchema.optional(),
   q: trackerQueryTextSchema,
   itemType: trackerItemTypeSchema.optional(),
+  iterationId: z.string().max(64).optional(),
 });
 export type TrackerSearchQueryInput = z.input<typeof trackerSearchQuerySchema>;
 export type TrackerSearchQuery = z.output<typeof trackerSearchQuerySchema>;
 
-const reservedTrackerItemIds = ['association', 'candidates', 'search', 'connection'];
+const reservedTrackerItemIds = ['association', 'candidates', 'search', 'connection', 'iterations'];
 
 /** One bounded vendor identifier path segment; static tracker routes are never detail IDs. */
 export const trackerItemParamsSchema = z.object({
@@ -370,6 +392,7 @@ export const trackerWatchInputSchema = z.object({
   state: trackerStateSchema,
   labels: z.array(z.string().trim().min(1).max(256)).max(20),
   itemType: trackerItemTypeSchema.optional(),
+  iterationId: z.string().max(64).optional(),
 }).strict();
 export type TrackerWatchInput = z.infer<typeof trackerWatchInputSchema>;
 export const trackerWatchParamsSchema = z.object({ watchId: z.uuid() });

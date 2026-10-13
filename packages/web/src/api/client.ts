@@ -137,6 +137,7 @@ import type {
   TrackerClearedResponse,
   TrackerItemResponse,
   TrackerItemsResponse,
+  TrackerIterationsResponse,
   TrackerKind, TrackerCredentials, TrackerConnectionResponse,
   SecretsList, SecretValueInput,
   E2eStatus, E2eSetupInput, E2eSetupResponse,
@@ -982,6 +983,7 @@ export type TrackerBrowseParams = {
   state?: 'active' | 'all'
   labels?: readonly string[]
   itemType?: 'story' | 'bug'
+  iterationId?: string
 }
 
 function trackerBrowseQuery(params: TrackerBrowseParams) {
@@ -993,6 +995,7 @@ function trackerBrowseQuery(params: TrackerBrowseParams) {
     state: params.state,
     labels: params.labels?.length ? JSON.stringify(params.labels) : undefined,
     itemType: params.itemType,
+    iterationId: params.iterationId,
   }
 }
 
@@ -1030,6 +1033,16 @@ export async function getTrackerItem(id: string, opts?: ReadOptions & { associat
       init(opts),
     ),
     `/tracker/${encodeURIComponent(id)}`,
+  )
+}
+
+export async function getTrackerIterations(opts?: ReadOptions): Promise<TrackerIterationsResponse> {
+  return unwrap(
+    await cez.api.v1.p[':projectId'].tracker.iterations.$get(
+      { param: { projectId: queryScope() } },
+      init(opts),
+    ),
+    '/tracker/iterations',
   )
 }
 

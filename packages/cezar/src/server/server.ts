@@ -6055,6 +6055,12 @@ export function createApp(deps: ServerDeps) {
       if (!result.available && result.code === 'invalid_cursor') return c.json({ error: result.reason }, 400);
       return c.json(result, 200);
     })
+    .get('/tracker/iterations', async (c) => {
+      const driver = await trackers.driver(c.get('project').root, c.get('project').dataDir);
+      if ('available' in driver) return c.json(driver, 200);
+      if (!driver.listIterations) return c.json({ available: false as const, code: 'unavailable' as const, reason: 'Iterations are not available for this tracker.' }, 200);
+      return c.json(await driver.listIterations(), 200);
+    })
     .get('/tracker/:id', paramZodValidator(trackerItemParamsSchema), queryZodValidator(trackerItemQuerySchema), async (c) => {
       const driver = await trackers.driver(c.get('project').root, c.get('project').dataDir);
       if ('available' in driver) return c.json(driver, 200);

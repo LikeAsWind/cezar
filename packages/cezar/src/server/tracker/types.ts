@@ -1,5 +1,5 @@
 import type { EventPollInput } from './event-scan.ts';
-import type { TrackerAutomationEvent } from '@open-mercato/cezar-contract';
+import type { TrackerAutomationEvent, TrackerIterationsResult } from '@open-mercato/cezar-contract';
 import type { TrackerEventCandidate, PollPage } from '../../automations/event-source.ts';
 import type {
   TrackerKind, TrackerAssociation, TrackerAssociationInput, TrackerAssociationResult,
@@ -20,6 +20,8 @@ export interface TrackerDriver {
   listIssues(query: TrackerListQuery): Promise<TrackerItemsResult>;
   searchItems(query: TrackerSearchQuery): Promise<TrackerItemsResult>;
   getItem(id: string): Promise<TrackerItemResult>;
+  /** TAPD-only: the workspace's iteration catalog for the iteration view. */
+  listIterations?: () => Promise<TrackerIterationsResult>;
 }
 
 /** Complete compiled-in provider seam. Construction must perform no network I/O. */
