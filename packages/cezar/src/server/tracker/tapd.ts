@@ -187,12 +187,13 @@ export function createTapdClient(
 
   const currentNick = async (signal: AbortSignal): Promise<string> => {
     if (nick) return nick;
-    // `request` already unwraps the envelope to `data`, so this sees `data.User`.
-    const parsed = z.object({ User: z.object({ nick: z.string().min(1) }).passthrough() }).passthrough().safeParse(
+    // `request` already unwraps the envelope to `data`, and the live `users/info`
+    // returns the user object directly (nick/id/name/current_company_id), not wrapped in `User`.
+    const parsed = z.object({ nick: z.string().min(1) }).passthrough().safeParse(
       await request('/users/info', {}, signal),
     );
     if (!parsed.success) return invalidResponse();
-    nick = parsed.data.User.nick;
+    nick = parsed.data.nick;
     return nick;
   };
 

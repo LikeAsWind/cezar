@@ -10,7 +10,7 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 function userInfo(): unknown {
-  return { status: 1, data: { User: { nick: 'me' } }, info: 'success' };
+  return { status: 1, data: { nick: 'me' }, info: 'success' };
 }
 function workspaceInfo(id: string = workspaceId, name: string = '示例项目', extra: Record<string, unknown> = {}): unknown {
   return { status: 1, data: { Workspace: { id, name, ...extra } }, info: 'success' };
