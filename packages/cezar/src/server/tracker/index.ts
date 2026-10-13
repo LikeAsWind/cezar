@@ -153,6 +153,12 @@ export function createTrackerService(env: NodeJS.ProcessEnv = process.env, fetch
           const result = await driver.getItem(id);
           return await current() ? result : changed();
         },
+        ...(driver.listIterations ? { listIterations: async () => {
+          await assertCurrent();
+          const result = await driver.listIterations!();
+          await assertCurrent();
+          return result;
+        } } : {}),
       };
     },
     clearCache: invalidate,
