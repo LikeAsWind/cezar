@@ -1,6 +1,6 @@
 import { t, useLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ExternalLinkIcon, LinkIcon, UnplugIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, ExternalLinkIcon, LinkIcon, UnplugIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import type { TrackerCandidate, TrackerKind } from '@open-mercato/cezar-api-client'
@@ -9,7 +9,49 @@ import { TRACKER_PROVIDERS, trackerProviders } from '@/lib/tracker-providers'
 import { clearTrackerAssociation, saveTrackerAssociation, saveTrackerConnection, removeTrackerConnection } from '@/api/client'
 import { queryKeys, useTrackerConnection, useTrackerAssociation, useTrackerCandidates, workspaceQueryKeys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
+
+const timeZones = Intl.supportedValuesOf('timeZone')
+
+/** Searchable single-select timezone dropdown, populated from the runtime's IANA zone list. */
+function TimezonePicker({ value, onChange }: { value: string; onChange: (zone: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const matched = search.trim()
+    ? timeZones.filter(zone => zone.toLowerCase().includes(search.trim().toLowerCase()))
+    : timeZones
+  return (
+    <Popover open={open} onOpenChange={next => { setOpen(next); if (!next) setSearch('') }}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={t('Timezone')} className="mt-1 flex w-full items-center justify-between gap-2 rounded border bg-background px-2 py-2 text-left text-sm">
+          <span className="truncate">{value || t('Choose a timezone')}</span>
+          <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-soft-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0">
+        <Command label={t('Timezone')} shouldFilter={false}>
+          <CommandInput placeholder={t('search timezones…')} value={search} onValueChange={setSearch} />
+          <CommandList className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]">
+            {matched.length === 0 ? <CommandEmpty>{t('Nothing matches.')}</CommandEmpty> : null}
+            <CommandGroup>
+              {matched.map(zone => {
+                const selected = zone === value
+                return (
+                  <CommandItem key={zone} value={zone} data-slot="timezone-option" onSelect={() => { onChange(zone); setOpen(false) }}>
+                    <span className="truncate font-mono text-xs">{zone}</span>
+                    {selected ? <CheckIcon aria-hidden="true" className="ml-auto size-3.5 shrink-0 text-primary" /> : null}
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 export function TrackerSection() {
   useLocale()
@@ -189,7 +231,7 @@ export function TrackerSection() {
           </> : null}
           {credentialKind === 'tapd' ? <>
             <p className="mt-2 text-xs text-muted-foreground">{t('Use a TAPD personal access token from the open platform, not your website password.')}</p>
-            <label className="mt-3 block text-sm">{t('Timezone')}<input aria-label={t('Timezone')} required value={timeZone} onChange={event => setTimeZone(event.target.value)} placeholder="Asia/Shanghai" className="mt-1 block w-full rounded border bg-background p-2" /></label>
+            <label className="mt-3 block text-sm">{t('Timezone')}<TimezonePicker value={timeZone} onChange={setTimeZone} /></label>
           </> : null}
           <label className="mt-3 block text-sm">{t(credentialKind === 'tapd' ? 'Access token' : 'API token')}<input aria-label={t(credentialKind === 'tapd' ? 'Access token' : 'API token')} type="password" autoComplete="new-password" required maxLength={8192} value={secret} onChange={event => setSecret(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
           <div className="mt-3 flex gap-2"><Button type="submit" disabled={credentialBusy}>{t('Save project credentials')}</Button><Button type="button" variant="outline" disabled={credentialBusy} onClick={resetSecrets}>{t('Cancel')}</Button></div>

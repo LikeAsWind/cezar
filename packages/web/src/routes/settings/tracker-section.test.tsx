@@ -1,13 +1,20 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setApiScope } from '@open-mercato/cezar-api-client'
 import { queryKeys } from '@/api/queries'
 import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { createQueryClient } from '@/api/query-client'
 import { TrackerSection } from './tracker-section'
+
+beforeEach(() => {
+  // cmdk sizes its list with a ResizeObserver and scrolls the selected item into view;
+  // jsdom has neither.
+  vi.stubGlobal('ResizeObserver', class { observe() {}; unobserve() {}; disconnect() {} })
+  Element.prototype.scrollIntoView = vi.fn()
+})
 
 afterEach(() => { cleanup(); setApiScope(null); vi.unstubAllGlobals() })
 
@@ -263,12 +270,13 @@ it('posts TAPD API credentials and clears the password after a failed save', asy
   await waitFor(() => expect((configure as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(configure)
   fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'tapd-private-token' } })
-  fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Shanghai' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Timezone' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Asia/Shanghai' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save project credentials' }))
 
   await waitFor(() => expect(writes).toEqual([{ kind: 'tapd', accessToken: 'tapd-private-token', timeZone: 'Asia/Shanghai' }]))
   await waitFor(() => expect((screen.getByLabelText('Access token') as HTMLInputElement).value).toBe(''))
-  expect((screen.getByLabelText('Timezone') as HTMLInputElement).value).toBe('Asia/Shanghai')
+  expect((screen.getByRole('button', { name: 'Timezone' }).textContent)).toContain('Asia/Shanghai')
   expect(JSON.stringify(client.getQueryCache().getAll().map(query => query.state.data))).not.toContain('tapd-private-token')
 })
 
