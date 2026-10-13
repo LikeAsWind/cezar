@@ -121,3 +121,37 @@ it('labels a TAPD association as TAPD rather than falling through to another pro
   expect(screen.queryByText(/Linear ·/)).toBeNull()
   client.clear()
 })
+
+it('lets a TAPD trigger choose between stories and bugs and echoes the type in options requests', async () => {
+  const tapd = { kind: 'tapd' as const, source: { id: 'tapd-company:10104801', webUrl: 'https://www.tapd.cn' }, externalId: '10104802', externalName: '示例项目' }
+  vi.mocked(getTrackerAutomationOptions).mockImplementation(async query => ({ ...data, association: tapd, events: ['issue.opened'], ...(query?.itemType ? { itemType: query.itemType } : {}) }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const onChange = vi.fn()
+  render(<QueryClientProvider client={client}><EditorTrackerFields trigger={undefined} intervalSeconds={1800} onChange={onChange} onValid={vi.fn()} /></QueryClientProvider>)
+  const stories = await screen.findByRole('button', { name: 'Stories', pressed: true })
+  expect(screen.getByRole('button', { name: 'Bugs', pressed: false })).not.toBeNull()
+  await waitFor(() => expect(vi.mocked(getTrackerAutomationOptions).mock.calls.some(([query]) => query?.itemType === 'story')).toBe(true))
+
+  fireEvent.click(stories)
+  expect(onChange).toHaveBeenLastCalledWith({ trackerTrigger: undefined, enabled: false })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Bugs' }))
+  expect(onChange).toHaveBeenLastCalledWith({ trackerTrigger: undefined, enabled: false })
+  await waitFor(() => expect(vi.mocked(getTrackerAutomationOptions).mock.calls.some(([query]) => query?.itemType === 'bug')).toBe(true))
+
+  fireEvent.click(await screen.findByRole('button', { name: 'issue.opened' }))
+  expect(onChange).toHaveBeenLastCalledWith({ trackerTrigger: { association: tapd, events: ['issue.opened'], itemType: 'bug' }, enabled: false })
+  client.clear()
+})
+
+it('never offers an item type choice for a Jira or Linear association', async () => {
+  vi.mocked(getTrackerAutomationOptions).mockResolvedValue({ ...data, events: ['issue.opened'] })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const onChange = vi.fn()
+  render(<QueryClientProvider client={client}><EditorTrackerFields trigger={undefined} intervalSeconds={1800} onChange={onChange} onValid={vi.fn()} /></QueryClientProvider>)
+  expect(await screen.findByRole('button', { name: 'issue.opened' })).not.toBeNull()
+  expect(screen.queryByRole('group', { name: 'Tracker item type' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'issue.opened' }))
+  expect(onChange).toHaveBeenLastCalledWith({ trackerTrigger: { association, events: ['issue.opened'] }, enabled: false })
+  client.clear()
+})

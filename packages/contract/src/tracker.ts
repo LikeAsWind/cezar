@@ -161,6 +161,9 @@ export const trackerItemsSuccessSchema = z
     items: z.array(trackerItemSchema),
     truncated: z.boolean(),
     nextCursor: trackerCursorSchema.optional(),
+    /** TAPD only: the page ended at the scan budget while upstream had more rows, so this is
+     *  a partial filtered scan resumable at `nextCursor` — not a complete result (spec 2026-10-13 §4). */
+    scanIncomplete: z.boolean().optional(),
   })
   .strict()
   .superRefine(enforcePagination);

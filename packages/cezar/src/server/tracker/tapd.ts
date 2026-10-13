@@ -15,7 +15,18 @@ import type { TrackerDriver, TrackerProvider } from './types.ts';
 const apiOrigin = 'https://api.tapd.cn';
 const webOrigin = 'https://www.tapd.cn';
 const vendorPageSize = 200;
-const maximumScanPages = 20;
+// A single filtered read may scan this many upstream pages before yielding a
+// continuation. Test-only override keeps the bound honest without 4,000 fixture rows.
+const maximumScanPages = Number(process.env.CEZ_TAPD_MAX_SCAN_PAGES) > 0 ? Number(process.env.CEZ_TAPD_MAX_SCAN_PAGES) : 20;
+// A read stops scanning early once it has made this many upstream requests; the
+// result is flagged scan-incomplete so the UI offers Continue scanning rather
+// than presenting a partial filtered page as ordinary pagination (spec §4/§5).
+const defaultScanPageRequestLimit = Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT) > 0 ? Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT) : 4;
+function scanPageRequestLimit(): number {
+  const override = Number(process.env.CEZ_TAPD_SCAN_PAGE_LIMIT);
+  return override > 0 ? override : defaultScanPageRequestLimit;
+}
+
 const numericId = z.string().regex(/^\d+$/).max(64);
 const workspaceSchema = z.object({
   id: numericId,
@@ -242,11 +253,14 @@ export function createTapdClient(
           const workflows = new Map<string, Awaited<ReturnType<typeof workflow>>>();
           let scannedPages = 0;
           let upstreamFinished = false;
-          while (items.length < query.limit && scannedPages < maximumScanPages) {
+          let budgetExhausted = false;
+          while (items.length < query.limit && scannedPages < maximumScanPages && !budgetExhausted) {
             const rows = parseItems(type, await request(type === 'story' ? '/stories' : '/bugs', {
               workspace_id: association.externalId, page: String(page), limit: String(vendorPageSize), order: 'modified desc',
               ...(wantedLabels[0] ? { label: wantedLabels[0] } : {}),
             }, signal));
+            scannedPages++;
+            budgetExhausted = scannedPages >= scanPageRequestLimit();
             if (query.state === 'active') {
               for (const raw of rows) {
                 const workitemTypeId = type === 'story' ? (raw as Story).workitem_type_id : undefined;
@@ -270,12 +284,18 @@ export function createTapdClient(
             if (rows.length < vendorPageSize) { upstreamFinished = true; break; }
             page++;
             offset = 0;
-            scannedPages++;
           }
           const truncated = !upstreamFinished;
+          // A page cut off by the soft scan budget while upstream still had rows is a
+          // partial filtered scan, not a complete result — the UI must offer Continue
+          // scanning instead of pretending pagination is ordinary (spec 2026-10-13 §4/§5).
+          // Reaching the end of the upstream collection clears the flag even if the
+          // budget was also hit: the scan is complete, not partial.
+          const scanIncomplete = !upstreamFinished && (budgetExhausted || (scannedPages >= maximumScanPages && items.length < query.limit));
           return {
             available: true, items, truncated,
             ...(truncated ? { nextCursor: encodeCursor(cursorScope, JSON.stringify({ page, offset })) } : {}),
+            ...(scanIncomplete ? { scanIncomplete: true } : {}),
           };
         }, query.refresh === '1') as Promise<TrackerItemsResult>);
       } catch (error) { return collectionFailure(error); }

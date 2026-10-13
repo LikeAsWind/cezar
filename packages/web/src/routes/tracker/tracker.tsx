@@ -103,6 +103,8 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
   const pages = result.data?.pages ?? []
   const failure = pages.find((page) => !page.available)
   const items = pages.flatMap((page) => page.available ? page.items : [])
+  const lastPage = pages[pages.length - 1]
+  const scanIncomplete = !!(lastPage?.available && lastPage.scanIncomplete)
 
   const filterKey = JSON.stringify([browseType, query, state, labels])
   const initialId = initialSelection?.filter === filterKey ? initialSelection.id : null
@@ -158,7 +160,10 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
     {failure && !failure.available ? <Failure reason={failure.reason} generation={result.dataUpdatedAt} retryAfterSeconds={failure.code === 'rate_limited' ? failure.retryAfterSeconds : undefined} retry={() => void result.restart()} /> : null}
     {!result.isPending && !result.isError && !failure && items.length === 0 ? <PageState text={query.trim() ? t('No issues match this search.') : t('No issues in this view.')} /> : null}
     <ul data-slot="tracker-rows" className="flex flex-col gap-0.5 px-2 py-2">{items.map(item => <TrackerRow scopePending={scopePending} key={item.id} association={association} item={item} active={detailId === item.id} />)}</ul>
-    {result.hasNextPage ? <Button className="mx-4 mb-4 shrink-0" variant="outline" onClick={() => void result.fetchNextPage()} disabled={result.isFetchingNextPage}>{t('Load more')}</Button> : null}
+    {result.hasNextPage ? <div className="mx-4 mb-4 flex shrink-0 flex-col items-start gap-1.5">
+      {scanIncomplete ? <p className="text-xs text-muted-foreground">{t('These filters only scanned part of the project so far; the list may be incomplete.')}</p> : null}
+      <Button variant="outline" onClick={() => void result.fetchNextPage()} disabled={result.isFetchingNextPage}>{t(scanIncomplete ? 'Continue scanning' : 'Load more')}</Button>
+    </div> : null}
   </>} detail={detailId ? <TrackerDetail scopePending={scopePending} key={`${trackerAssociationKey(association)}:${detailId}`} association={association} id={detailId} drafts={drafts} selection={selection} onSelectionChange={setSelection} /> : <CenteredState icon={<CircleDotIcon />} tone="neutral" heading="h2" title={t('Nothing selected')} subtitle={t('Choose an issue from the list.')} />} />
 }
 

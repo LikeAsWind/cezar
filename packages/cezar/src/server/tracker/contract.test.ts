@@ -143,6 +143,14 @@ describe('tracker result and HTTP response branches', () => {
     ).toBe(false);
   });
 
+  it('marks a budget-exhausted page as scan-incomplete only when truncated with a cursor', () => {
+    const page = { available: true as const, items: [item] };
+    expect(trackerItemsResultSchema.safeParse({ ...page, truncated: true, nextCursor: 'scan', scanIncomplete: true }).success).toBe(true);
+    expect(trackerItemsResultSchema.safeParse({ ...page, truncated: true, scanIncomplete: true }).success).toBe(false);
+    // Jira/Linear pages and completed TAPD scans simply omit the field.
+    expect(trackerItemsResultSchema.safeParse({ ...page, truncated: false }).success).toBe(true);
+  });
+
   it('excludes invalid cursors from HTTP 200 collection responses', () => {
     const invalidCursor: TrackerInvalidCursor = {
       available: false,

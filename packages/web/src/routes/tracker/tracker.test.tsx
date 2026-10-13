@@ -121,6 +121,33 @@ describe('Tracker route', () => {
     expect(await screen.findByText('Search result')).toBeTruthy()
   })
 
+  it('labels a scan-budgeted page as Continue scanning instead of Load more', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+      if (url.endsWith('/tracker/association')) return json({ association: {
+        kind: 'jira', source: { id: 'acme', webUrl: 'https://acme.atlassian.net' }, externalId: '100', externalName: 'OPS',
+      } })
+      if (url.includes('cursor=scan')) return json({ available: true, items: [issue('OPS-2', 'Scanned page')], truncated: false })
+      if (url.includes('/tracker')) return json({ available: true, items: [issue('OPS-1', 'Partial page')], truncated: true, nextCursor: 'scan', scanIncomplete: true })
+      return new Promise<never>(() => {})
+    }))
+    render(
+      <MemoryRouter initialEntries={['/tracker']}>
+        <QueryClientProvider client={createQueryClient()}>
+          <Routes><Route path="/tracker" element={<TrackerRoute />} /></Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Partial page')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+    expect(screen.getByText(/only scanned part of the project/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue scanning' }))
+    expect(await screen.findByText('Scanned page')).toBeTruthy()
+    expect(screen.queryByText(/only scanned part of the project/)).toBeNull()
+  })
+
   it('blocks the drag payload while a retained successful detail is refreshing', async () => {
     const client = createQueryClient()
     const key = ['tracker', 'project', 'detail', 'OPS-1'] as const

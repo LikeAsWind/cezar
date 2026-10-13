@@ -11,6 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TrackerLabelSuggestions } from './tracker-label-suggestions'
 import { POLL_MINUTES } from './editor-draft'
 
+/** A saved trigger belongs to the editor's type choice when it rides the loaded association. */
+function sameType(trigger: TrackerTrigger | undefined, association: TrackerTrigger['association']): trigger is TrackerTrigger {
+  return !!trigger && JSON.stringify(association) === JSON.stringify(trigger.association)
+}
+
 export function EditorTrackerFields({ trigger, intervalSeconds, onChange, onValid }: {
   trigger: TrackerTrigger | undefined
   intervalSeconds: number
@@ -20,28 +25,34 @@ export function EditorTrackerFields({ trigger, intervalSeconds, onChange, onVali
   useLocale()
 
   const [search, setSearch] = useState('')
+  const [itemType, setItemType] = useState<'story' | 'bug'>('story')
   const scope = queryScope()
   // Keep connection/capability metadata independent of the changing search results.
   const metadata = useInfiniteQuery({
-    queryKey: ['tracker', scope, 'automation-options', ''],
+    queryKey: ['tracker', scope, 'automation-options', '', itemType],
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ signal, pageParam }) => getTrackerAutomationOptions({ ...(pageParam ? { cursor: pageParam } : {}) }, { signal }),
+    queryFn: ({ signal, pageParam }) => getTrackerAutomationOptions({ itemType, ...(pageParam ? { cursor: pageParam } : {}) }, { signal }),
     getNextPageParam: (last) => last.available ? last.nextCursor : undefined,
     retry: false,
   })
   const options = useInfiniteQuery({
-    queryKey: ['tracker', scope, 'automation-options', search],
+    queryKey: ['tracker', scope, 'automation-options', search, itemType],
     enabled: !!search && metadata.data?.pages[0]?.available === true,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ signal, pageParam }) => getTrackerAutomationOptions({ ...(search ? { search } : {}), ...(pageParam ? { cursor: pageParam } : {}) }, { signal }),
+    queryFn: ({ signal, pageParam }) => getTrackerAutomationOptions({ ...(search ? { search } : {}), itemType, ...(pageParam ? { cursor: pageParam } : {}) }, { signal }),
     getNextPageParam: (last) => last.available ? last.nextCursor : undefined,
     retry: false,
   })
   const results = search ? options : metadata
   const first = metadata.data?.pages[0]
   const ready = first?.available ? first : undefined
-  const sameSource = !!ready && !!trigger && JSON.stringify(ready.association) === JSON.stringify(trigger.association)
+  const sameAssociation = !!ready && sameType(trigger, ready.association)
+  const isTapd = ready?.association.kind === 'tapd'
+  // TAPD reads one resource type per trigger; a saved trigger's own type wins over the draft default.
+  const effectiveType = isTapd ? (sameAssociation ? trigger.itemType ?? 'story' : itemType) : undefined
+  const sameSource = sameAssociation && (!isTapd || (trigger.itemType ?? 'story') === itemType)
   const valid = sameSource && !!trigger?.events.length && trigger.events.every(event => ready?.events.includes(event))
+    && (!isTapd || trigger.itemType !== undefined)
     && (trigger.requiredLabels?.length ?? 0) <= 100 && (trigger.requiredLabels ?? []).every(label => label.length > 0 && label.length <= 200)
     && (!trigger.events.includes('issue.status_changed') || !!trigger.targetStatusIds?.length)
     && (!(trigger.events.includes('issue.labeled') || trigger.events.includes('issue.unlabeled')) || !!trigger.changedLabelIds?.length)
@@ -66,11 +77,18 @@ export function EditorTrackerFields({ trigger, intervalSeconds, onChange, onVali
       <p>{TRACKER_PROVIDERS[ready.association.kind].label} · {ready.association.externalName}</p>
       {trigger && !sameSource ? <p role="alert">{t('The tracker connection changed. Select an event again before saving.')}</p> : null}
       {!trigger ? <p>{t('Select an event to complete this automation.')}</p> : null}
+      {isTapd ? <div role="group" aria-label={t('Tracker item type')} className="flex flex-wrap gap-1.5">
+        {(['story', 'bug'] as const).map(type => <Chip key={type} active={effectiveType === type} aria-pressed={effectiveType === type} onClick={() => {
+          setItemType(type)
+          // A type change is a source change: the saved selection cannot carry over.
+          if (!sameSource || (trigger.itemType ?? 'story') !== type) onChange({ trackerTrigger: undefined, enabled: false })
+        }}>{t(type === 'story' ? 'Stories' : 'Bugs')}</Chip>)}
+      </div> : null}
       <div role="group" aria-label={t('Tracker events')} className="flex flex-wrap gap-1.5">
         {ready.events.map(event => <Chip key={event} active={sameSource && trigger?.events.includes(event)} aria-pressed={sameSource && trigger?.events.includes(event)} onClick={() => {
           const current = sameSource ? trigger!.events : []
           const events = current.includes(event) ? current.filter(item => item !== event) : [...current, event]
-          const nextTrigger = { ...(sameSource ? trigger : {}), association: ready.association, events }
+          const nextTrigger: TrackerTrigger = { ...(sameSource ? trigger : {}), association: ready.association, events, ...(isTapd ? { itemType: effectiveType ?? 'story' } : {}) }
           if (event === 'issue.status_changed' && !events.includes(event)) delete nextTrigger.targetStatusIds
           onChange({ trackerTrigger: nextTrigger, ...(!sameSource ? { enabled: false } : {}) })
         }}>{event}</Chip>)}

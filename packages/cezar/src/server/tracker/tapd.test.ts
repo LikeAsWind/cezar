@@ -73,6 +73,34 @@ describe('createTapdClient', () => {
     expect(wrongType).toMatchObject({ available: false, code: 'invalid_cursor' });
   });
 
+  it('flags a page cut off by the scan budget as incomplete and resumes from its cursor', async () => {
+    process.env.CEZ_TAPD_SCAN_PAGE_LIMIT = '1';
+    try {
+    const first = [story('1', { label: 'backend|urgent' }), ...Array.from({ length: 199 }, (_, index) => story(String(100 + index), { label: 'backend' }))];
+    const pages = ['1', '2'];
+    const fetcher = vi.fn<typeof fetch>(async input => {
+      const url = new URL(String(input));
+      if (url.pathname === '/workspaces/get_workspace_info') return json({ status: 1, data: { Workspace: { id: workspaceId, name: '示例项目', company_id: companyId } } });
+      expect(url.pathname).toBe('/stories');
+      const page = url.searchParams.get('page') ?? '1';
+      expect(pages).toContain(page);
+      pages.splice(pages.indexOf(page), 1);
+      return json({ status: 1, data: page === '1' ? first : [story('2', { label: 'backend|urgent' })] });
+    });
+    const driver = client(fetcher).driver(association);
+    const result = await driver.listIssues({ limit: 2, state: 'all', labels: ['backend', 'urgent'] });
+    // The budget is one page per call: upstream had more rows, so the page is a partial scan.
+    expect(result).toMatchObject({ available: true, truncated: true, scanIncomplete: true });
+    expect(result.available && result.items.map(item => item.id)).toEqual(['story:1']);
+    if (!result.available || !result.nextCursor) throw new Error('expected cursor');
+    const resumed = await driver.listIssues({ limit: 2, state: 'all', labels: ['backend', 'urgent'], cursor: result.nextCursor });
+    expect(resumed.available && !resumed.truncated ? resumed.items.map(item => item.id) : null).toEqual(['story:2']);
+    // Upstream finished on the resume page: the completed page carries no scan-incomplete flag.
+    expect(resumed.available && 'scanIncomplete' in resumed).toBe(false);
+    expect(pages).toEqual([]);
+    } finally { delete process.env.CEZ_TAPD_SCAN_PAGE_LIMIT; }
+  });
+
   it('uses typed IDs and rejects a foreign-workspace detail response', async () => {
     const fetcher = vi.fn<typeof fetch>(async input => {
       const url = new URL(String(input));
