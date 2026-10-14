@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -40,7 +41,7 @@ describe('the config API', () => {
     mkdirSync(join(homeRoot, '.cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
     // The config routes never touch the manager — an empty stub is honest.
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {
@@ -312,7 +313,7 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-title-'));
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {
@@ -349,7 +350,7 @@ describe('branchNaming round-trip (spec 2026-10-11-branch-naming-instructions)',
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-branch-'));
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {
@@ -397,7 +398,7 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-gate-'));
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

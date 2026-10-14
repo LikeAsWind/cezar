@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 describe('the GitHub merge API', () => {
   let repoRoot: string;
@@ -33,7 +34,7 @@ describe('the GitHub merge API', () => {
     execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoRoot });
     execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/demo.git'], { cwd: repoRoot });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

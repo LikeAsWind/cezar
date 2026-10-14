@@ -23,6 +23,7 @@ import {
   type ChangesPayload,
 } from './git-changes.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -522,12 +523,8 @@ describe('session git API routes', () => {
     g(repoRoot, 'commit', '-m', 'root base');
     repoBaseSha = g(repoRoot, 'rev-parse', 'HEAD').trim();
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as unknown as RunManager, // these routes never touch it
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as unknown as RunManager }), // these routes never touch it
+      version: '0.0.0-test' });
     // The "worktree" fixture is a plain repo — the routes only need a git
     // dir the record points at, not a literal `git worktree add` product.
     worktree = join(repoRoot, 'wt');
@@ -907,12 +904,8 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     g(repoRoot, 'add', '-A');
     g(repoRoot, 'commit', '-m', 'base');
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as unknown as RunManager, // these routes never touch it
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as unknown as RunManager }), // these routes never touch it
+      version: '0.0.0-test' });
   });
 
   afterEach(() => {

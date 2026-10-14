@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager, StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 
@@ -37,13 +38,7 @@ describe('POST /api/v1/runs systemPrompt', () => {
         return store.createRun({ title: 't', workflow: '(planned)', task: input.task, steps: [] });
       },
     } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {
@@ -153,13 +148,7 @@ describe('POST /api/v1/runs generateFollowups — the CEZ_FOLLOWUPS ceiling (#47
         return store.createRun({ title: 't', workflow: '(planned)', task: input.task, steps: [] });
       },
     } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
     delete process.env.CEZ_FOLLOWUPS;
   });
 

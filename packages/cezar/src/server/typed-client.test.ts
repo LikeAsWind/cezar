@@ -9,6 +9,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import type { AppType } from './app-type.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * The typed client, end to end (spec 2026-07-23-independent-server-web-packages, Phase 1).
@@ -48,11 +49,8 @@ describe('createCezarClient<AppType>', () => {
     contexts = new ProjectContexts({ listProjects });
     await registerProject(repoRoot);
     app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
+      runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts }),
       version: '0.0.0-test',
-      contexts,
     });
     client = createCezarClient<AppType>({
       // Any absolute origin will do — the custom fetch below never leaves the process. The
@@ -70,8 +68,9 @@ describe('createCezarClient<AppType>', () => {
   afterEach(() => {
     contexts.disposeAll();
     store.flush();
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repoRoot, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* EPERM race */ }
+    }
     if (savedHome === undefined) delete process.env.CEZ_HOME;
     else process.env.CEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
@@ -95,14 +94,12 @@ describe('createCezarClient<AppType>', () => {
     30_000,
   );
 
-  it('reaches a project-scoped route under both the unscoped and scoped spellings', async () => {
-    const unscoped = await client.api.v1['agent-config'].$get();
-    expect(unscoped.status).toBe(200);
+  it('reaches a project-scoped route under the explicit project spelling', async () => {
+    const id = (await registerProject(repoRoot)).id;
     const scoped = await client.api.v1.p[':projectId']['agent-config'].$get({
-      param: { projectId: 'default' },
+      param: { projectId: id },
     });
     expect(scoped.status).toBe(200);
-    expect(await scoped.json()).toEqual(await unscoped.json());
   });
 
   it('infers a route parameter, so the scoped call cannot forget it', async () => {
@@ -136,10 +133,6 @@ describe('createCezarClient<AppType>', () => {
     // Phase 3 converted all 77 registrations, so the typed client is no longer a proof of
     // concept over three families — these are a project family and a workspace family that
     // were loose statements until then.
-    const runs = await client.api.v1.runs.$get();
-    expect(runs.status).toBe(200);
-    expectTypeOf(await runs.json()).not.toBeAny();
-
     const projects = await client.api.v1.projects.$get();
     expect(projects.status).toBe(200);
     const body = await projects.json();

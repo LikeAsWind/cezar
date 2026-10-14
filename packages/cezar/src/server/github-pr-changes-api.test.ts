@@ -7,6 +7,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { ForgePrDiffResult } from './github.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 describe('the GitHub PR changes API', () => {
   let repoRoot: string;
@@ -29,7 +30,7 @@ describe('the GitHub PR changes API', () => {
   });
 
   it('serves deterministic bounded structured changes through both route mounts', async () => {
-    const app = createApp({ repoRoot, store, manager: {} as RunManager, version: 'test' });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: 'test' });
     const legacy = await apiRequest(app, '/api/v1/github/prs/128/changes');
     const scoped = await apiRequest(app, '/api/v1/p/default/github/prs/128/changes');
     expect(legacy.status).toBe(200);
@@ -44,7 +45,7 @@ describe('the GitHub PR changes API', () => {
   });
 
   it('validates the number and exact refresh flag', async () => {
-    const app = createApp({ repoRoot, store, manager: {} as RunManager, version: 'test' });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: 'test' });
     expect((await apiRequest(app, '/api/v1/github/prs/0/changes')).status).toBe(400);
     expect((await apiRequest(app, '/api/v1/github/prs/abc/changes')).status).toBe(400);
     expect((await apiRequest(app, '/api/v1/github/prs/1/changes?refresh=true')).status).toBe(400);

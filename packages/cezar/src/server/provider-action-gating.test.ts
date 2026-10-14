@@ -10,6 +10,7 @@ import { RunManager, type StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 // `resolveClaudeBin` probes the real machine for an install that is off PATH, so the claude
 // executable these cases assert on would otherwise be whatever the DEVELOPER has. Pinned to the
@@ -103,14 +104,7 @@ describe('provider action gating', () => {
     sendMessage = vi.fn(() => true);
     continueRun = vi.fn(() => ({ ok: true }));
     const manager = { startRun, sendMessage, continueRun } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: 'test',
-      providerAuth: providerAuth(),
-      workspaceConfig: memoryWorkspaceConfig(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: 'test', providerAuth: providerAuth(), workspaceConfig: memoryWorkspaceConfig() });
   });
 
   afterEach(() => {
@@ -325,14 +319,7 @@ describe('the gate verifies before it refuses', () => {
         return { stdout: '└  1 credential', stderr: '', exitCode: 0 };
       },
     });
-    const app = createApp({
-      repoRoot,
-      store,
-      manager: { startRun, sendMessage: vi.fn(() => true), continueRun: vi.fn(() => ({ ok: true })) } as unknown as RunManager,
-      version: 'test',
-      providerAuth,
-      workspaceConfig: memoryWorkspaceConfig(options.disabled ?? []),
-    });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { startRun, sendMessage: vi.fn(() => true), continueRun: vi.fn(() => ({ ok: true })) } as unknown as RunManager }), version: 'test', providerAuth, workspaceConfig: memoryWorkspaceConfig(options.disabled ?? []) });
     return { app, providerAuth, state, advance: (ms: number) => { now += ms; } };
   };
 
@@ -448,14 +435,7 @@ describe('provider availability preserves existing execution', () => {
 
   it('dequeues a task created before disable and reaches its later provider step', async () => {
     const workspaceConfig = memoryWorkspaceConfig([]);
-    const app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: 'test',
-      providerAuth: providerAuth(),
-      workspaceConfig,
-    });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: 'test', providerAuth: providerAuth(), workspaceConfig });
     const workflow: WorkflowDef = {
       name: 'mixed-existing',
       source: 'built-in',

@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { onRunDeleted, onRunEvent } from './sse-subscriptions.ts';
 
 describe('shared SSE subscriptions (#1222)', () => {
@@ -19,7 +20,7 @@ describe('shared SSE subscriptions (#1222)', () => {
     root = mkdtempSync(join(tmpdir(), 'cez-sse-subscriptions-'));
     mkdirSync(join(root, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(root, '.ai/cezar'));
-    app = createApp({ repoRoot: root, store, manager: {} as RunManager, version: 'test' });
+    app = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test' });
   });
 
   afterEach(async () => {

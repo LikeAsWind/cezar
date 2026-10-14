@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -36,13 +37,8 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-pick-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      // The endpoint only asks the manager whether the winner is still active.
-      manager: { isActive: () => false, cancel: () => {} } as unknown as RunManager,
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false, cancel: () => {} } as unknown as RunManager }), // The endpoint only asks the manager whether the winner is still active.
+      version: '0.0.0-test' });
     worktree = join(repoRoot, 'wt');
     mkdirSync(worktree);
     initRepo(worktree);

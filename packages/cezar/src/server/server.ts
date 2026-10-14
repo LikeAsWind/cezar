@@ -12,8 +12,8 @@ import { TrackerWatches } from './tracker/watch.ts';
 import { readTrackerAssociation, writeTrackerAssociation, clearTrackerAssociation } from '../tracker-association.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { AutomationStore } from '../automations/store.ts';
 import { AutomationCoordinator } from '../automations/coordinator.ts';
+import type { AutomationStore } from '../automations/store.ts';
 import { GithubPoller } from '../automations/github-poller.ts';
 import { TrackerPoller } from '../automations/tracker-poller.ts';
 import { ProjectAutomationScheduler, ProjectTrackerAutomationScheduler, WorkspaceAutomationScheduler, type ProjectAutomationHandle } from '../automations/scheduler.ts';
@@ -218,12 +218,12 @@ import {
   shouldRegisterProject,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
-import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { createProjectInputSchema } from '@open-mercato/cezar-contract';
 import { createProject, listGithubOwners, type CommandRunner } from './create-project.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
+import type { SystemRuntime } from './system-runtime.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
 import { agentHomePaths, cezarHomeDir, expandTilde, isAbsolutePath } from '../paths.ts';
@@ -261,9 +261,12 @@ import {
 export interface ServerDeps {
   /** Register app-owned cleanup for the hosting server lifecycle. */
   onDispose?: (cleanup: () => void) => void;
-  repoRoot: string;
-  store: RunStore;
-  manager: RunManager;
+  /** The project-neutral system runtime (Tasks 1–2). Owns the ONE workspace
+   *  semaphore, the lazy project-context map, the workspace event bus, and the
+   *  provider auth services. Every per-project `{store, manager, …}` is built
+   *  here on explicit `/api/v1/p/:projectId/*` access — there is no boot
+   *  project, so nothing is seeded from a caller-built store/manager. */
+  runtime: SystemRuntime;
   version: string;
   /** Mutable holder for the async npm-registry update check (#368) —
    *  `latest` appears once the registry answers with a newer version. */
@@ -271,35 +274,6 @@ export interface ServerDeps {
   /** Host the HTTP server binds (default 127.0.0.1). A non-loopback host
    *  implies hosted mode — `capabilities.localHandoff:false`. */
   bindHost?: string;
-  /** Workspace-registry id of the boot project (multi-project spec) — plumbed
-   *  from `initWorkspace` in src/index.ts. Optional: legacy callers/tests get
-   *  a lazy registry lookup by `repoRoot`, falling back to the repo's slug. */
-  bootProjectId?: string;
-  /** Per-project context map (multi-project spec, step 2.2). Non-boot
-   *  `/api/p/:projectId/*` requests resolve their `{store, manager, …}` here,
-   *  built lazily on first touch. Optional so legacy callers change nothing —
-   *  the default is a registry-backed map; tests inject their own so they can
-   *  `disposeAll()` after. The BOOT project never lives in this map: its
-   *  context is seeded from `deps.{store,manager}` (which src/index.ts already
-   *  recovered/pruned at startup) and the resolver short-circuits to it. */
-  contexts?: ProjectContexts;
-  /** Boot project's shared automation store. `startServer` injects the
-   *  coordinator-owned instance so HTTP routes and the scheduler never cache
-   *  separate views of the same project files. */
-  automationStore?: AutomationStore;
-  /** Workspace-wide parallel-cap semaphore + cached resource config (spec
-   *  2026-07-20, step 2.5): the ONE instance boot created, refreshed, and gave
-   *  the boot manager — threaded into the default `ProjectContexts` so every
-   *  project's RunManager shares it. Step 2.7's `PUT /api/workspace/config`
-   *  calls `semaphore.refresh()` after a write. Optional so legacy
-   *  callers/tests change nothing. */
-  semaphore?: WorkspaceSemaphore;
-  /** Workspace-level SSE bus (spec, step 2.8): `project-added` /
-   *  `project-removed` / `checkout-progress` plus the host-wide unstamped
-   *  `provider-status` event reach `/api/workspace/events` through this.
-   *  Optional — createApp builds a private one; inject to emit from outside
-   *  the app (tests, future CLI hooks). */
-  workspaceEvents?: WorkspaceEventBus;
   /** How `POST /api/projects/checkout` (step 4.3) actually clones. Defaults to
    *  `gh repo clone` (or the `CEZ_DRY_RUN=1` fake) — injected by tests so the
    *  route's guards, cleanup and error surfacing are exercised for real
@@ -365,10 +339,10 @@ export interface ServerDeps {
 type ProjectApiEnv = { Variables: { project: ProjectContext } };
 
 /** `projectId` gate at the route boundary (spec "Project identity"): the slug
- *  shape or the reserved `default` alias — validated BEFORE touching any map
- *  or path. (`default` matches the slug regex too; the literal keeps the
- *  contract explicit.) */
-const projectIdSchema = z.union([z.literal('default'), z.string().regex(PROJECT_ID_RE)]);
+ *  shape ONLY. `default` is the reserved compatibility alias and is NOT accepted
+ *  by the normal project middleware — it is resolved (or refused) by the legacy
+ *  alias logic in `resolveProjectScope`. */
+const projectIdSchema = z.string().regex(PROJECT_ID_RE);
 
 const providerConnectSchema = z.object({
   provider: z.enum(PROVIDER_IDS),
@@ -568,7 +542,6 @@ const DISPATCH_OFF =
  *  `/api/health` payload (#431 — see the health route). Never 404s. */
 export interface ProjectsResponse {
   projects: ProjectListEntry[];
-  bootProject: string;
   projectsDir: string;
 }
 
@@ -1228,24 +1201,26 @@ async function probeWritableDir(dir: string, create: boolean): Promise<string | 
 // Annotating it `Hono` here would erase every route from the type and leave the typed client
 // with nothing to offer. See the `routed` assembly at the end of the function.
 export function createApp(deps: ServerDeps) {
-  const { version, update, bindHost, bootProjectId } = deps;
+  const { version, update, bindHost, runtime } = deps;
   // Boot singletons keep DELIBERATELY distinct names (`boot*`): every
   // project-scoped handler must resolve its `{store, manager, root, dataDir,
   // launchKey}` from `c.get('project')` — a bare `store`/`repoRoot` in a
   // handler body would silently pin it to the boot project, which the rename
   // turns into a compile error instead.
-  const bootRoot = deps.repoRoot;
-  const bootDataDir = join(bootRoot, '.ai/cezar');
+  // `cez serve` is project-neutral (Tasks 2–3): there is no boot root. Model
+  // discovery and provider auth are workspace-level here, rooted at the cezar
+  // home — per-project discovery happens through each project's own context.
+  const workspaceRoot = cezarHomeDir();
   const modelCatalog = deps.modelCatalog ?? new RunnerModelCatalog({
     adapters: {
-      claude: { discover: () => discoverClaudeModels({ cwd: bootRoot }) },
-      codex: { discover: () => discoverCodexModels({ cwd: bootRoot }) },
-      opencode: { discover: () => discoverOpencodeModels({ cwd: bootRoot }) },
-      junie: { discover: () => discoverJunieModels({ cwd: bootRoot }) },
+      claude: { discover: () => discoverClaudeModels({ cwd: workspaceRoot }) },
+      codex: { discover: () => discoverCodexModels({ cwd: workspaceRoot }) },
+      opencode: { discover: () => discoverOpencodeModels({ cwd: workspaceRoot }) },
+      junie: { discover: () => discoverJunieModels({ cwd: workspaceRoot }) },
       cursor: { discover: () => discoverCursorModels() },
     },
   });
-  const providerAuth = deps.providerAuth ?? new ProviderAuthService({ cwd: bootRoot });
+  const providerAuth = deps.providerAuth ?? runtime.providerAuth;
   const workspaceConfig = deps.workspaceConfig ?? {
     load: loadWorkspaceConfig,
     mergeWrite: mergeWriteWorkspaceConfig,
@@ -1313,80 +1288,32 @@ export function createApp(deps: ServerDeps) {
     });
   const starCount = deps.starCount ?? new StarCountReader();
 
-  // ---- workspace boot-project identity (multi-project spec) ----------------
-  // The boot flow (`initWorkspace` in src/index.ts) registers the boot repo
-  // and plumbs its registry id in via `deps.bootProjectId`. Legacy callers and
-  // tests construct the app without one — then it is derived lazily from the
-  // registry by realpath and cached on a hit. A boot repo that is not in the
-  // registry — a task worktree, `$HOME`, an unreadable workspace, or (since
-  // boot registration became seed-once) any folder started in while the user
-  // already has projects — falls back to its would-be slug, so `bootProject`
-  // always names the repo this server was started in. Strictly non-fatal,
-  // zero-config: every failure path degrades to the slug fallback, never an
-  // error.
-  //
-  // BOTH answers are sticky for the process. The registry hit caches for the
-  // obvious reason; the FALLBACK caches because it is a live URL the cockpit
-  // is showing, and it is derived from a file the user edits while the server
-  // runs — recomputing it per call let an unrelated `Add project` with the
-  // same basename take the slug and silently move the boot project to
-  // `<slug>-2` under an open tab. The registry lookup still runs first, so the
-  // day the boot folder IS registered (its own "Add project"), its real id
-  // takes over from the fallback rather than the two disagreeing; the reserved
-  // slug below is what keeps those two the same string.
-  //
-  // Sticky, but never at the cost of correctness: a pinned fallback that some
-  // OTHER root has since taken (an out-of-band `cezar projects add ~/other/beta`
-  // from a second process, where the reservation cannot reach) is dropped and
-  // re-allocated. That gives back the visible `<slug>-2` move instead of
-  // shadowing — the scope resolver binds `/p/<bootProject>/` to the boot
-  // context before it consults the registry, so keeping the stolen slug would
-  // quietly serve the boot folder under a sidebar row pointing somewhere else.
-  let bootProjectCache = bootProjectId;
-  let bootProjectFallback: string | undefined;
-  const resolveBootProject = async (projects?: readonly WorkspaceProject[]): Promise<string> => {
-    if (bootProjectCache) return bootProjectCache;
-    let registry = projects ?? [];
-    try {
-      registry = projects ?? (await loadWorkspaceConfig()).projects;
-      const real = await realpath(bootRoot).catch(() => bootRoot);
-      const match = registry.find((p) => p.root === real || p.root === bootRoot);
-      if (match) bootProjectCache = match.id;
-      else if (bootProjectFallback !== undefined
-        && registry.some((project) => project.id === bootProjectFallback)) {
-        bootProjectFallback = undefined;
-      }
-    } catch {
-      // unreadable workspace — fall through to the slug fallback below
-    }
-    if (bootProjectCache) return bootProjectCache;
-    bootProjectFallback ??= allocateProjectSlug(bootRoot, registry.map((project) => project.id));
-    return bootProjectFallback;
+  // ---- workspace project identity (Tasks 2–3) ------------------------------
+  // `cez serve` is project-neutral: there is NO boot project. Project routes
+  // answer only under `/api/v1/p/:projectId/*`, resolved through the runtime's
+  // lazy context map. The compatibility resolver below answers legacy
+  // `/p/default/*` and flat project requests.
+  const resolveLegacyProjectId = (projects: readonly WorkspaceProject[]): string | null => {
+    const usable = projects.filter((project) => project.status !== 'missing');
+    return usable.length === 1 ? (usable[0]?.id ?? null) : null;
   };
+
   // Health's workspace garnish: id+name ONLY — never `root` (#431, see the
   // health route). Reads only the registry file; no per-root status probes,
   // so health stays cheap enough for the bookmarklet's 800 ms port sweep.
-  const workspaceSummary = async (): Promise<{
-    projects: { id: string; name: string }[];
-    bootProject: string;
-  }> => {
+  const workspaceSummary = async (): Promise<{ projects: { id: string; name: string }[] }> => {
     try {
       const registry = (await loadWorkspaceConfig()).projects;
-      const bootProject = await resolveBootProject(registry);
-      const visible = capabilities().singleProject
-        ? registry.filter((project) => project.id === bootProject)
-        : registry;
       return {
         // Explicit picks, not a spread: the registry schema passes unknown
         // keys through, and `root` must never ride along onto health.
-        projects: visible.map((p) => ({
+        projects: registry.map((p) => ({
           id: p.id,
           name: p.name || basename(p.root),
         })),
-        bootProject,
       };
     } catch {
-      return { projects: [], bootProject: await resolveBootProject([]) };
+      return { projects: [] };
     }
   };
   // Hosted-mode gate (spec §"Deployment modes") — read per request so
@@ -1402,35 +1329,12 @@ export function createApp(deps: ServerDeps) {
   // SSE subscription (and torn down with the last), nothing to start here.
 
   // ---- project contexts (multi-project spec, step 2.2) ---------------------
-  // The boot project's context is SEEDED from the deps the caller already
-  // built (src/index.ts `serveCommand` did the recover/prune/launch-key work
-  // at startup — observable boot behavior unchanged); it never enters the
-  // lazy map, so its `.ai/cezar` state is never double-opened. `id` starts as
-  // the reserved alias when registration was suppressed — handlers never read
-  // it; API payloads name the boot project via `resolveBootProject` instead.
-  const bootContext: ProjectContext = {
-    id: bootProjectId ?? 'default',
-    root: bootRoot,
-    dataDir: bootDataDir,
-    store: deps.store,
-    manager: deps.manager,
-    automationStore: deps.automationStore ?? AutomationStore.open(bootDataDir),
-    launchKey: ensureLaunchKey(bootDataDir), // bookmarklet auto-start secret (spec 011)
-  };
-  // Non-boot projects build lazily on first scoped request; their managers
-  // count against the same workspace semaphore as the boot manager (step 2.5).
-  const contexts = deps.contexts ?? new ProjectContexts({
-    listProjects: async () => {
-      const selector = capabilities().singleProject
-        ? { projectId: await resolveBootProject() }
-        : undefined;
-      return listProjects(selector);
-    },
-    semaphore: deps.semaphore,
-  });
-  // Workspace-level SSE bus (step 2.8) — the registry mutators and the
-  // checkout flow (Phase 4) emit here; /api/workspace/events relays.
-  const workspaceEvents = deps.workspaceEvents ?? new WorkspaceEventBus();
+  // The runtime owns the ONE lazy project-context map and the ONE workspace
+  // semaphore (Task 1). Every project — there is no boot project — builds on
+  // explicit `/api/v1/p/:projectId/*` access, so its `.ai/cezar` state is never
+  // double-opened.
+  const contexts = runtime.contexts;
+  const workspaceEvents = runtime.workspaceEvents;
   const emitAutomationChange = (
     project: ProjectContext,
     automationId: string,
@@ -1444,12 +1348,8 @@ export function createApp(deps: ServerDeps) {
   });
   const automationsChanged = () => deps.automationsChanged?.();
 
-  const providerRuntimeAuth = deps.providerRuntimeAuth
-    ?? new ProviderRuntimeAuthObserver(providerAuth, (status) => {
-      workspaceEvents.emit('provider-status', status);
-    });
+  const providerRuntimeAuth = deps.providerRuntimeAuth ?? runtime.providerRuntimeAuth;
 
-  providerRuntimeAuth.watch(bootContext.store);
   for (const id of contexts.ids()) {
     const ctx = contexts.peek(id);
     if (ctx) providerRuntimeAuth.watch(ctx.store);
@@ -1573,32 +1473,26 @@ export function createApp(deps: ServerDeps) {
     return next();
   });
 
-  // The mirrored project-route table (spec "API Contracts → Project-scoped").
-  // Every route below registers ONCE on this sub-app; `createApp` mounts it
-  // twice — under `/api/v1/p/:projectId` (scoped) and under `/api/v1` (bound to
-  // the boot project) — so both spellings share one handler and can never
-  // drift. The resolver middleware binds `c.get('project')`:
-  // no `projectId` param (unscoped mount) → the boot context, byte-identical to
-  // the pre-workspace closures; `default` or the boot project's own id → the
-  // boot context too; anything else → the lazy context map, with
-  // `ProjectContextError` mapped to 404 (unknown) / 409 (missing root).
-  // Named rather than inlined because both mounts share it — one function, so
-  // the two spellings can never disagree about what `default` means.
+  // The project-route table (Tasks 2–3). Every route below registers ONCE on
+  // this sub-app; `createApp` mounts it under `/api/v1/p/:projectId` ONLY —
+  // there is no unscoped alias, so `/api/v1/runs` 404s. The resolver middleware
+  // binds `c.get('project')` from the runtime's lazy context map, mapping
+  // `ProjectContextError` to 404 (unknown) / 409 (missing root). `/p/default`
+  // is the compatibility-only alias: resolved to the ONE usable registered
+  // project, or 409s when ambiguous/empty.
   const resolveProjectScope = async (c: Context<ProjectApiEnv>, next: Next): Promise<Response | void> => {
     const raw = c.req.param('projectId');
-    if (raw === undefined) {
-      c.set('project', bootContext);
-      return next();
-    }
-    if (!projectIdSchema.safeParse(raw).success) {
+    if (typeof raw !== 'string' || !projectIdSchema.safeParse(raw).success) {
       return c.json({ error: `unknown project: ${raw}` }, 404);
     }
-    if (raw === 'default' || raw === (await resolveBootProject())) {
-      c.set('project', bootContext);
-      return next();
+    let id = raw;
+    if (raw === 'default') {
+      const legacy = resolveLegacyProjectId((await loadWorkspaceConfig()).projects);
+      if (legacy === null) return c.json({ error: 'select a project' }, 409);
+      id = legacy;
     }
     try {
-      c.set('project', await contexts.context(raw));
+      c.set('project', await contexts.context(id));
     } catch (err) {
       if (err instanceof ProjectContextError) {
         return err.reason === 'missing-root'
@@ -1705,15 +1599,13 @@ export function createApp(deps: ServerDeps) {
   // back as if the server had proven it. Inferring here means the route says what it actually
   // sends, which is what lets the DTO be derived instead of maintained.
   const healthSnapshot = async () => {
-    const [checks, repo, config, workspace] = await Promise.all([
+    const [checks, config, workspace] = await Promise.all([
       detectEnvironment(),
-      getRepoInfo(bootRoot),
-      loadConfig(bootRoot),
+      loadConfig(workspaceRoot),
       workspaceSummary(),
     ]);
-    // Additive fields only below — the pre-forge shape is the most
-    // externally-depended-on JSON in the app (BACKWARD_COMPATIBILITY.md §2).
-    const forge = resolveForge(repo);
+    // The deprecated repo fields (`repoRoot`/`repo`/`forge`/`bootProject`) are
+    // ABSENT in workspace mode: there is no boot project (Tasks 2–3).
     const caps = capabilities();
     return {
       version,
@@ -1722,31 +1614,15 @@ export function createApp(deps: ServerDeps) {
       // the key as always-present, which is a shape no client ever receives. The contract schema
       // says `.optional()`, and contract-parity.test.ts holds the two together.
       ...(update?.latest !== undefined ? { latestVersion: update.latest } : {}),
-      // Health is CORS-open and, in hosted mode, reachable off the loopback —
-      // so any site/host that reads it would learn the developer's absolute
-      // checkout path and username (#431). Local mode keeps the full path (the
-      // protected bookmarklet shape); hosted/remote mode trims it to a basename.
-      // NB this narrows the VALUE of a field named in BACKWARD_COMPATIBILITY.md
-      // §2: the field is always present and a string, but under CEZ_REMOTE it is
-      // no longer an absolute path. Deliberate — a hosted cockpit's paths are on
-      // a machine the reader does not have anyway. See §2's `repoRoot` note.
-      repoRoot: caps.localHandoff ? bootRoot : basename(bootRoot),
-      repo,
       checks,
       defaultRunner: config.defaultRunner,
-      // Non-blocking: cached availability or null-until-warm — health must never pay a `gh`
-      // shell-out (the bookmarklet aborts its port probe at 800 ms). See detectGithubCached.
-      forge: forge ? { kind: forge.kind, ...(forge.detectCached() ?? {}) } : null,
       capabilities: caps,
       // Workspace enumeration (multi-project spec) — additive, id+name ONLY.
       // NEVER `projects[].root` here: health is the one CORS-open route, and
-      // the repoRoot trim above exists precisely to keep absolute paths and
-      // usernames away from cross-origin readers (#431) — per-project roots
-      // would reintroduce that leak once per registered project. Absolute
-      // roots live on the same-origin GET /api/projects instead. An
+      // absolute paths must stay away from cross-origin readers (#431).
+      // Absolute roots live on the same-origin GET /api/projects instead. An
       // unreadable workspace degrades to `projects: []`.
       projects: workspace.projects,
-      bootProject: workspace.bootProject,
       ...(process.env.CEZ_INSTANCE_ID ? { instanceId: process.env.CEZ_INSTANCE_ID } : {}),
     };
   };
@@ -2087,7 +1963,7 @@ export function createApp(deps: ServerDeps) {
         // No `env` argument: `loginCommand` already rendered the account's config dir INTO the
         // command, because this string is also the copy-paste fallback the pane shows. Passing
         // it again here would set the variable twice.
-        opened = await openTerminal(bootRoot, command);
+        opened = await openTerminal(workspaceRoot, command);
       } catch {
         // Terminal handoff is best-effort; the exact command remains the safe fallback.
       }
@@ -2129,7 +2005,7 @@ export function createApp(deps: ServerDeps) {
     );
     return Promise.all(
       defs.map(async (def) => {
-        const path = def.resolve(bootRoot, home);
+        const path = def.resolve(workspaceRoot, home);
         return { id: def.id, label: basename(path), path, exists: (await statConfigPath(path)).exists };
       }),
     );
@@ -2488,7 +2364,12 @@ export function createApp(deps: ServerDeps) {
         // checkout. No project to resolve, and therefore no 404 path.
         let root: string | null = null;
         if (projectId !== null) {
-          const resolvedId = projectId === 'default' ? await resolveBootProject() : projectId;
+          // `default` is the legacy alias, resolved to the one usable project
+          // (409 when ambiguous). Everything else addresses a registered id.
+          const resolvedId = projectId === 'default'
+            ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+            : projectId;
+          if (resolvedId === null) return c.json({ error: 'select a project' }, 409);
           // Keyed by repo ROOT, so the selection survives the registry being rebuilt and needs no
           // cross-reference into config.json. An unknown project is a 404 rather than an orphan
           // entry nobody will ever read.
@@ -2601,53 +2482,13 @@ export function createApp(deps: ServerDeps) {
       let projectsDir = defaultWorkspaceConfig().projectsDir;
       try {
         projectsDir = (await loadWorkspaceConfig()).projectsDir;
-        const selector = capabilities().singleProject
-          ? { projectId: await resolveBootProject() }
-          : undefined;
-        projects = await listProjects(selector);
+        projects = await listProjects();
       } catch {
         // unreadable workspace — degrade to the empty registry + defaults
       }
-      const bootProject = await resolveBootProject(projects);
-      // The folder this server was started in, when the registry does not hold
-      // it — listed ONLY while the registry is empty, which is the same "seed
-      // once" rule `shouldAutoRegisterProject` applies to the registry write
-      // (#774 follow-up). With no projects the launch folder IS the cockpit's
-      // project, and a cockpit showing the one folder it can definitely serve
-      // beats an empty sidebar — that also covers the unreadable workspace,
-      // where nothing is registered as far as this process can tell.
-      //
-      // Once the user HAS projects, starting cezar somewhere else is opening
-      // the cockpit from a folder, not adding it: listing that folder put a row
-      // in the sidebar, the ⌘K palette and Settings that the user never asked
-      // for and has to clean up. The folder is still served — the boot context
-      // answers `/p/<bootProject>/…` and the unscoped alias, and the scope gate
-      // treats `bootProject` as known — so a legacy bookmark still resolves; it
-      // simply is not a project. Saving it stays the explicit gesture it is
-      // everywhere else: Settings → Add project, or `cezar projects add`.
-      //
-      // It is marked `unregistered` rather than merged in silently, so Settings
-      // offers to add it instead of offering Remove/Max parallel it cannot
-      // honour.
-      if (projects.length === 0) {
-        const root = await realpath(bootRoot).catch(() => bootRoot);
-        projects = [
-          {
-            id: bootProject,
-            root,
-            name: basename(root),
-            // Never registered, so it has no registry timestamps to report —
-            // empty rather than invented, and Settings renders "—" for them.
-            addedAt: '',
-            lastOpenedAt: '',
-            source: 'local',
-            unregistered: true,
-            ...(await probeProjectStatus(root)),
-          },
-          ...projects,
-        ];
-      }
-      const body: ProjectsResponse = { projects, bootProject, projectsDir };
+      // No boot project: the registry IS the list, and an empty registry is an
+      // empty list. The cockpit (Tasks 4+) resolves a bare launch from this.
+      const body: ProjectsResponse = { projects, projectsDir };
       return c.json(body);
     })
 
@@ -2668,10 +2509,12 @@ export function createApp(deps: ServerDeps) {
       if (!projectIdSchema.safeParse(raw).success) {
         return c.json({ error: `unknown project: ${raw}` }, 404);
       }
-      const bootId = await resolveBootProject();
-      // `default` is the boot alias everywhere else in the API; honour it here
-      // too rather than 404ing a spelling the cockpit is allowed to use.
-      const id = raw === 'default' ? bootId : raw;
+      // `default` is the legacy alias: resolve it to the one usable project,
+      // refusing with 409 when ambiguous.
+      const id = raw === 'default'
+        ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+        : raw;
+      if (id === null) return c.json({ error: 'select a project' }, 409);
 
       let entry: WorkspaceProject | undefined;
       try {
@@ -2681,21 +2524,6 @@ export function createApp(deps: ServerDeps) {
         // more useful than a 500 the user cannot act on
       }
       if (!entry) return c.json({ error: `unknown project: ${id}` }, 404);
-
-      // The boot project is refused, not removed: this server is serving that
-      // repo right now, and dropping its registry row would break the session's
-      // own sidebar while the process keeps running out of it. Offline removal
-      // is the honest gesture — `cezar projects remove` has no such refusal
-      // because it runs with no server. The pane disables the button and says
-      // the same thing.
-      if (id === bootId) {
-        return c.json(
-          {
-            error: `cezar is serving ${entry.name} right now — stop it and run \`cezar projects remove ${id}\` to drop the registry entry`,
-          },
-          409,
-        );
-      }
 
       const active = activeRunCount(id);
       if (active > 0) {
@@ -2751,8 +2579,11 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: `unknown project: ${raw}` }, 404);
       }
       const parsed = { data: c.req.valid('json') };
-      // `default` is the boot alias the cockpit is allowed to use everywhere else.
-      const id = raw === 'default' ? await resolveBootProject() : raw;
+      // `default` is the legacy alias, resolved to the one usable project.
+      const id = raw === 'default'
+        ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+        : raw;
+      if (id === null) return c.json({ error: 'select a project' }, 409);
       const { maxParallel, tags } = parsed.data;
 
       // Read-first (mirroring DELETE, server.ts:1252-1258): a well-formed but
@@ -2802,7 +2633,7 @@ export function createApp(deps: ServerDeps) {
       // The new ceiling takes effect WITHOUT a restart: refresh the shared
       // semaphore's snapshot and pump every manager — the same live-apply hook
       // `PUT /api/workspace/config` fires for a workspace-cap change.
-      await deps.semaphore?.refresh();
+      await runtime.semaphore.refresh();
       const body: UpdateProjectResponse = {
         project: { ...updated, ...(await probeProjectStatus(updated.root)) },
       };
@@ -2991,16 +2822,11 @@ export function createApp(deps: ServerDeps) {
     } catch {
       // unreadable workspace — treat as unknown; the write below will fail loudly
     }
-    // The boot project's id is reserved even when the registry does not hold
-    // it: an unregistered boot folder is still being served under that slug,
-    // so letting a same-basename folder take it would point a live URL at the
-    // wrong repo. Reserved against OTHER roots only — adding the boot folder
-    // itself is the one registration that should get exactly that slug.
-    const bootReal = await realpath(bootRoot).catch(() => bootRoot);
-    const reserved = real === bootReal ? [] : [await resolveBootProject()];
+    // No boot project to reserve a slug for (Tasks 2–3): the registry's own
+    // allocator dedupes against existing ids and the reserved set.
     let project: ProjectListEntry;
     try {
-      const entry = await registerProject(requested, source, reserved);
+      const entry = await registerProject(requested, source);
       project = { ...entry, ...(await probeProjectStatus(entry.root)) };
     } catch (err) {
       // e.g. a read-only home — nothing was persisted (atomic tmp+rename).
@@ -3065,9 +2891,11 @@ export function createApp(deps: ServerDeps) {
     { root: string } | { status: 404 | 409; error: string }
   > => {
     if (!projectIdSchema.safeParse(raw).success) return { status: 404, error: `unknown project: ${raw}` };
-    const bootId = await resolveBootProject();
-    if (raw === 'default' || raw === bootId) return { root: bootRoot };
-    const project = (await loadWorkspaceConfig()).projects.find((entry) => entry.id === raw);
+    const id = raw === 'default'
+      ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+      : raw;
+    if (id === null) return { status: 409, error: 'select a project' };
+    const project = (await loadWorkspaceConfig()).projects.find((entry) => entry.id === id);
     if (!project) return { status: 404, error: `unknown project: ${raw}` };
     if ((await probeProjectStatus(project.root)).status === 'missing') {
       return { status: 409, error: `project folder not found: ${raw}` };
@@ -3332,7 +3160,7 @@ export function createApp(deps: ServerDeps) {
       }
       // A resource change takes effect WITHOUT a restart: refresh the shared
       // semaphore's in-memory snapshot and pump every manager (step 2.5's hook).
-      if (resources !== undefined) await deps.semaphore?.refresh();
+      if (resources !== undefined) await runtime.semaphore.refresh();
       return c.json(workspaceConfigBody(written));
     })
 
@@ -5668,12 +5496,9 @@ export function createApp(deps: ServerDeps) {
           });
         };
 
-        // The boot context never lives in the lazy map — seed it under its
-        // registry id (`resolveBootProject`, NOT `bootContext.id`, which may be
-        // the reserved alias when registration was suppressed).
-        attach(await resolveBootProject(), bootContext);
-        // NB: snapshot + hook subscription happen in one sync block, so no
-        // context can slip between them.
+        // No boot project: every built context is in the lazy map. Snapshot +
+        // hook subscription happen in one sync block, so no context can slip
+        // between them.
         for (const id of contexts.ids()) {
           const ctx = contexts.peek(id);
           if (ctx) attach(ctx.id, ctx);
@@ -5780,7 +5605,7 @@ export function createApp(deps: ServerDeps) {
     trackerWatches.invalidateProject(project.root);
     clearProjectProbeCache();
     const payload: TrackerChangedEvent = {
-      project: project === bootContext ? await resolveBootProject() : project.id,
+      project: project.id,
     };
     workspaceEvents.emit('tracker-changed', payload);
   };
@@ -5793,7 +5618,8 @@ export function createApp(deps: ServerDeps) {
   // workspace scope has its own single-mount family below (`workspaceSecretsRoutes`), the same
   // three handlers over the `workspace` scope.
   const secretStore = deps.secrets ?? new SecretStore();
-  const unregisteredSecrets = { error: 'this project is not registered; project secrets need a project id' };
+  // The reserved boot alias no longer exists (Tasks 2–3); project secrets are
+  // always addressed by a real registered id, so there is nothing to refuse.
   const secretsList = async (scope: SecretScopeRef): Promise<SecretsList> => {
     const [listed, keyBackend] = await Promise.all([secretStore.list(scope), secretStore.keyBackend()]);
     return { secrets: listed.secrets, keyBackend };
@@ -5823,14 +5649,12 @@ export function createApp(deps: ServerDeps) {
     })
     .put('/secrets/:name', paramZodValidator(secretParamsSchema), jsonZodValidator(secretValueInputSchema), async (c) => {
       const project = c.get('project');
-      if (project.id === 'default') return c.json(unregisteredSecrets, 409);
       const failed = await putSecret({ kind: 'project', projectId: project.id, root: project.root }, c.req.valid('param').name, c.req.valid('json'));
       if (failed) return c.json({ error: failed.error }, failed.status);
       return c.body(null, 204);
     })
     .delete('/secrets/:name', paramZodValidator(secretParamsSchema), async (c) => {
       const project = c.get('project');
-      if (project.id === 'default') return c.json(unregisteredSecrets, 409);
       const failed = await deleteSecret({ kind: 'project', projectId: project.id, root: project.root }, c.req.valid('param').name);
       if (failed) return c.json({ error: failed.error }, failed.status);
       return c.body(null, 204);
@@ -5841,7 +5665,7 @@ export function createApp(deps: ServerDeps) {
   // stores the model key (when given) as a `checks` secret and starts the setup as an ordinary
   // task — an ad-hoc workflow, never a catalog entry — whose branch the user merges.
   const checkSecretNames = async (project: ProjectContext): Promise<string[]> => {
-    const scope = project.id === 'default' ? undefined : { projectId: project.id, root: project.root };
+    const scope = { projectId: project.id, root: project.root };
     try {
       return Object.keys((await secretStore.resolve(scope, 'checks')).values);
     } catch {
@@ -5865,7 +5689,6 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: 'e2e setup needs a git repository — it runs in its own worktree and finishes as a branch you merge' }, 409);
       }
       if (credential) {
-        if (project.id === 'default') return c.json(unregisteredSecrets, 409);
         const failed = await putSecret(
           { kind: 'project', projectId: project.id, root: project.root },
           credential.name,
@@ -6781,25 +6604,20 @@ export function createApp(deps: ServerDeps) {
    * ⌘K can find a task without knowing which project it lives in.
    *
    * Workspace-level and single-mount for the obvious reason: a project-scoped spelling of "all
-   * projects" is a contradiction. The per-project source is chosen the same way the automation
-   * coordinator's boot fan-out chooses it (`bootContext` for the boot project, `contexts.peek`
-   * for anything this process already owns, disk otherwise) — and never `contexts.context()`,
-   * which would build a context, prune worktrees and `recover()` running agents. Typing in a
-   * search box must not resume work; see `runs/run-index.ts`.
+   * projects" is a contradiction. The per-project source is `contexts.peek` for anything this
+   * process already owns, disk otherwise — and never `contexts.context()`, which would build a
+   * context, prune worktrees and `recover()` running agents. Typing in a search box must not
+   * resume work; see `runs/run-index.ts`.
    */
   const runsIndexRoutes = new Hono()
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
       try {
-        const selector = capabilities().singleProject
-          ? { projectId: await resolveBootProject() }
-          : undefined;
-        projects = await listProjects(selector);
+        projects = await listProjects();
       } catch {
         // unreadable workspace — an empty index, never a 500. The palette degrades to the
         // active project's own run list, which it holds either way.
       }
-      const bootId = await resolveBootProject(projects);
       const runs: RunIndexEntry[] = [];
       const truncated: string[] = [];
       // Statuses the server already holds, shipped WITH the rows that carry the references. The
@@ -6811,7 +6629,7 @@ export function createApp(deps: ServerDeps) {
       for (const project of projects) {
         // No folder, no runs to read. `not-git` still has an `.ai/cezar` worth indexing.
         if (project.status === 'missing') continue;
-        const owned = project.id === bootId ? bootContext : contexts.peek(project.id);
+        const owned = contexts.peek(project.id);
         // `listRuns()` already sorts newest-first; the disk reader returns file order, so both
         // paths get sorted below rather than trusting either.
         //
@@ -6850,32 +6668,19 @@ export function createApp(deps: ServerDeps) {
 
   const dashboard = new DashboardReader({
     projects: async () => {
-      const selector = capabilities().singleProject ? { projectId: await resolveBootProject() } : undefined;
-      const projects = await listProjects(selector);
-      const bootId = await resolveBootProject(projects);
-      const summaries = projects.map((project) => {
-        const owned = project.status === 'missing' ? undefined
-          : project.id === bootId ? bootContext : contexts.peek(project.id);
+      const projects = await listProjects();
+      return projects.map((project) => {
+        const owned = project.status === 'missing' ? undefined : contexts.peek(project.id);
         return { id: project.id, root: project.root, ...(owned ? { store: owned.store } : {}) };
       });
-      // Dashboard observability includes the folder this server actually serves even
-      // when the sidebar omits this unregistered launch folder (including task worktrees).
-      // Its existing context is authoritative; a dashboard read never registers it.
-      if (!summaries.some(project => project.id === bootId)) {
-        summaries.unshift({ id: bootId, root: bootRoot, store: bootContext.store });
-      }
-      return summaries;
     },
     telemetryProjects: async () => {
       // Registry-only: no per-project probing, disk summaries, recovery, or new sampler.
       const registry = (await loadWorkspaceConfig()).projects;
-      const bootId = await resolveBootProject(registry);
-      const boot = { id: bootId, root: bootRoot, store: bootContext.store };
-      if (capabilities().singleProject) return [boot];
-      return [boot, ...registry.filter(p => p.id !== bootId).flatMap(p => {
+      return registry.flatMap((p) => {
         const owned = contexts.peek(p.id);
         return owned ? [{ id: p.id, root: p.root, store: owned.store }] : [];
-      })];
+      });
     },
   });
 
@@ -6907,19 +6712,15 @@ export function createApp(deps: ServerDeps) {
     .route('/', workspaceEventsRoutes);
 
   // ---- mount ---------------------------------------------------------------
-  // Scoped first, then the unscoped alias bound to the boot project. The paths are disjoint (no
-  // route starts with `/p/`), so order between the two never decides a match — but the SPA
-  // catch-all below must still come last. `route()` re-registers the sub-app's routes under
-  // each prefix, handlers shared, internal order preserved.
-  //
-  // Workspace families mount LAST and that is load-bearing: mounting the project table also
-  // mounts its `use('*')` scope resolver over the whole prefix, and Hono runs matched middleware
-  // in registration order. `/health` in particular answers for the workspace, has no project to
-  // resolve, and is the CORS-open discovery route — it must not sit behind the resolver.
+  // Project routes mount ONLY under the scoped prefix (Tasks 2–3): there is no
+  // unscoped alias bound to a boot project, so `/api/v1/runs` 404s. Workspace
+  // families mount LAST and that is load-bearing: mounting the project table
+  // also mounts its `use('*')` scope resolver over the whole prefix, and Hono
+  // runs matched middleware in registration order. `/health` in particular
+  // answers for the workspace, has no project to resolve, and is the CORS-open
+  // discovery route — it must not sit behind the resolver.
   const routed = app
-
     .route(V1_SCOPED_PREFIX, v1)
-    .route(V1_PREFIX, v1)
     .route(V1_PREFIX, workspaceV1);
 
   // ---- SPA catch-all -------------------------------------------------------
@@ -6936,26 +6737,21 @@ export function createApp(deps: ServerDeps) {
 }
 
 export function startServer(deps: ServerDeps, port: number): ServerType {
-  const workspaceEvents = deps.workspaceEvents ?? new WorkspaceEventBus();
+  const workspaceEvents = deps.runtime.workspaceEvents;
   const skillsUpdate = deps.skillsUpdate ?? new SkillsUpdateService({ invalidateCatalog: refreshTeamSkills });
   // The subscription hub rides the same HTTP server (one port, zero config):
   // createApp registers the topics, the `upgrade` hook below owns the socket.
   const socketHub = deps.socketHub ?? createSocketHub();
-  const bootProjectId = deps.bootProjectId ?? 'default';
-  // `pinned`: the boot project is served whether or not the registry holds it,
-  // and since boot registration became seed-once it usually does NOT — then
-  // `bootProjectId` is the `'default'` alias, which `listProjects()` can never
-  // name, so the coordinator's own refresh sweep would evict the store opened
-  // one line below and the boot folder's automations would silently stop being
-  // scheduled while the cockpit kept showing them enabled. Registered or not,
-  // pinning is the same statement: this process is serving that project.
-  const automationCoordinator = new AutomationCoordinator({ listProjects, pinned: bootProjectId });
-  const bootAutomationStore = automationCoordinator.store(bootProjectId, deps.repoRoot)!;
-  const sharedContexts = deps.contexts ?? new ProjectContexts({
+  // No boot project (Tasks 2–3): the coordinator tracks registered projects
+  // only, and the ONE lazy context map + workspace semaphore live on the
+  // runtime (Task 1) — startServer must not build a second one.
+  const automationCoordinator = new AutomationCoordinator({ listProjects });
+  const sharedContexts = new ProjectContexts({
     listProjects,
-    semaphore: deps.semaphore,
+    semaphore: deps.runtime.semaphore,
     automationStore: (projectId, root) => automationCoordinator.store(projectId, root)!,
   });
+  const appRuntime: SystemRuntime = { ...deps.runtime, contexts: sharedContexts };
   // #801: GitHub automations are opt-in. Off, the flag must remove the BEHAVIOR and not merely
   // the UI — no scheduler, no GitHub polling, no launched runs — so every entry point into the
   // workspace scheduler below is gated on it. Read per call rather than captured, for the same
@@ -6965,10 +6761,8 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   const appCleanups: Array<() => void> = [];
   const app = createApp({
     ...deps,
+    runtime: appRuntime,
     onDispose: (cleanup) => { appCleanups.push(cleanup); deps.onDispose?.(cleanup); },
-    contexts: sharedContexts,
-    automationStore: bootAutomationStore,
-    workspaceEvents,
     skillsUpdate,
     socketHub,
     automationsChanged: () => rescheduleAutomations(),
@@ -7002,10 +6796,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       const project = automationProjects.get(projectId);
       if (!project) return undefined;
       const contextOf = async () => {
-        const bootId = deps.bootProjectId ?? 'default';
-        return projectId === bootId
-          ? { root: deps.repoRoot, manager: deps.manager, store: deps.store }
-          : await sharedContexts.context(projectId);
+        return sharedContexts.context(projectId);
       };
       const dispatchEnabled = resolveCapabilities(process.env, deps.bindHost).dispatch;
       return {
@@ -7063,8 +6854,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   server.once('listening', () => {
     void listProjects().then((projects) => {
-      const all = projects.some((project) => project.root === deps.repoRoot)
-        ? projects : [{ id: deps.bootProjectId ?? 'default', root: deps.repoRoot, status: 'ok' as const }, ...projects];
+      const all = projects;
       coordinator.start(all);
       // #801: with automations off there is nothing to warm — no remote to resolve, no receipts
       // to reconcile, and above all no scheduler to start. The skills-update coordinator above is
@@ -7073,9 +6863,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       void Promise.all(all.map(async (project) => {
         await registerAutomationProject(project.id, project.root);
         const automationStore = automationCoordinator.store(project.id, project.root);
-        const runStore = project.id === (deps.bootProjectId ?? 'default')
-          ? deps.store
-          : sharedContexts.peek(project.id)?.store;
+        const runStore = sharedContexts.peek(project.id)?.store;
         if (automationStore && runStore) reconcileAutomationReceipts(automationStore, runStore);
         if (automationStore) rebaselineIdleAutomations(automationStore, (automationId, revision) => workspaceEvents.emit('automation-change', { project: project.id, automationId, revision }));
       })).then(() => automationScheduler.start()).catch(() => undefined);

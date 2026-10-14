@@ -8,6 +8,7 @@ import type { RunManager, StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * Request-origin guard (#426). The server executes agents with shell access,
@@ -34,13 +35,7 @@ describe('request-origin guard (#426)', () => {
       startRun: (_workflow: WorkflowDef, input: StartRunInput) =>
         store.createRun({ title: 't', workflow: '(planned)', task: input.task, steps: [] }),
     } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {
@@ -307,13 +302,7 @@ describe('request-origin guard — hosted mode (#426)', () => {
       startRun: (_workflow: WorkflowDef, input: StartRunInput) =>
         store.createRun({ title: 't', workflow: '(planned)', task: input.task, steps: [] }),
     } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {

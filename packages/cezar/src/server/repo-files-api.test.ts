@@ -9,6 +9,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { listRepoPaths, repoIndexContains } from './git-changes.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -199,12 +200,8 @@ describe('repo file-browser routes', () => {
     writeFileSync(join(repoRoot, 'node_modules/evil.js'), 'require("fs")\n');
 
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as unknown as RunManager, // these routes never touch it
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as unknown as RunManager }), // these routes never touch it
+      version: '0.0.0-test' });
   });
 
   afterEach(() => {
@@ -345,12 +342,7 @@ describe('repo file-browser routes', () => {
     const plain = mkdtempSync(join(tmpdir(), 'cez-plain-'));
     try {
       const plainStore = RunStore.open(join(plain, '.ai/cezar'));
-      const plainApp = createApp({
-        repoRoot: plain,
-        store: plainStore,
-        manager: {} as unknown as RunManager,
-        version: '0.0.0-test',
-      });
+      const plainApp = createApp({ runtime: testRuntime({ repoRoot: plain, store: plainStore, manager: {} as unknown as RunManager }), version: '0.0.0-test' });
       const tree = await apiRequest(plainApp, '/api/v1/repo/tree');
       const changes = await apiRequest(plainApp, '/api/v1/repo/changes');
       expect(tree.status).toBe(409);
@@ -366,12 +358,7 @@ describe('repo file-browser routes', () => {
     const plain = mkdtempSync(join(tmpdir(), 'cez-plain2-'));
     try {
       const plainStore = RunStore.open(join(plain, '.ai/cezar'));
-      const plainApp = createApp({
-        repoRoot: plain,
-        store: plainStore,
-        manager: {} as unknown as RunManager,
-        version: '0.0.0-test',
-      });
+      const plainApp = createApp({ runtime: testRuntime({ repoRoot: plain, store: plainStore, manager: {} as unknown as RunManager }), version: '0.0.0-test' });
       const res = await apiRequest(plainApp, '/api/v1/repo/files?path=a.ts');
       expect(res.status).toBe(409);
       expect(await errorOf(res)).toBe('not a git repository');

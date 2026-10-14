@@ -9,6 +9,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, WorkspaceEventBus } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 describe('GitHub automation API', () => {
   let root: string;
@@ -43,7 +44,7 @@ describe('GitHub automation API', () => {
     task: { prompt: 'Review {{github.url}}' },
   };
   const app = (over: Partial<Parameters<typeof createApp>[0]> = {}) =>
-    createApp({ repoRoot: root, store, manager: {} as RunManager, version: 'test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', ...over });
   const json = (body: unknown, method = 'POST'): RequestInit => ({
     method,
     headers: { 'content-type': 'application/json' },
@@ -149,7 +150,7 @@ describe('GitHub automation API', () => {
       }),
     });
     const server = app({
-      automationStore,
+      runtime: testRuntime({ automationStore }),
       automationsChanged: () => {
         rescheduled = scheduler.reschedule();
       },
@@ -185,7 +186,7 @@ describe('GitHub automation API', () => {
       reason: 'test preview',
     });
     const response = await apiRequest(
-      app({ automationStore }),
+      app({ runtime: testRuntime({ automationStore }) }),
       '/api/v1/automation-log?result=preview',
     );
     expect(response.status).toBe(200);
@@ -200,7 +201,7 @@ describe('GitHub automation API', () => {
     bus.on((event, data) => {
       if (event === 'automation-change') changes.push(data);
     });
-    const server = app({ workspaceEvents: bus });
+    const server = app({ runtime: testRuntime({ workspaceEvents: bus }) });
     const created = ((await (await apiRequest(server, '/api/v1/automations', json(input))).json()) as any).automation;
     const response = await apiRequest(server, `/api/v1/automations/${created.id}`, { method: 'DELETE' });
     expect(response.status).toBe(204);
@@ -241,7 +242,7 @@ describe('automation API — kinds, run, templates (spec 2026-09-14)', () => {
     else process.env.CEZ_AUTOMATIONS = savedAutomations;
   });
 
-  const app = () => createApp({ repoRoot: root, store, manager, version: 'test' });
+  const app = () => createApp({ runtime: testRuntime({ repoRoot: root, store, manager }), version: 'test' });
   const json = (body: unknown, method = 'POST'): RequestInit => ({ method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const schedule = { name: 'Nightly deps', kind: 'schedule', schedule: { type: 'daily', hour: 4, minute: 0 }, task: { prompt: 'Bump deps on {{date}}', workflow: 'quick-task' } };
   const poll = { name: 'Review new issues', events: ['issue.opened'], intervalSeconds: 300, filters: { lookbackDays: 7, maxRecords: 25 }, task: { prompt: 'Review {{github.url}}' } };

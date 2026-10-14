@@ -55,6 +55,7 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract projects/workspace schemas match the routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
@@ -90,7 +91,7 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
   type UpdateProject200 = InferResponseType<(typeof client.api.v1.projects)[':projectId']['$patch'], 200>;
   type RemoveProject200 = InferResponseType<(typeof client.api.v1.projects)[':projectId']['$delete'], 200>;
   type FsBrowse200 = InferResponseType<typeof client.api.v1.fs.browse.$get, 200>;
-  type LaunchKey200 = InferResponseType<(typeof client.api.v1)['launch-key']['$get'], 200>;
+  type LaunchKey200 = InferResponseType<(typeof scoped)['launch-key']['$get'], 200>;
 
   // ---- workspace settings + the per-repo agent knobs ---------------------------------------
   type WorkspaceConfig200 = InferResponseType<typeof client.api.v1.workspace.config.$get, 200>;
@@ -99,12 +100,12 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
   type BrandingLogoUploadBody = InferRequestType<(typeof client.api.v1.workspace)['branding-logo']['$post']>['form'];
   type BrandingLogoDelete200 = InferResponseType<(typeof client.api.v1.workspace)['branding-logo']['$delete'], 200>;
   type HostUsage200 = InferResponseType<(typeof client.api.v1.workspace)['host-usage']['$get'], 200>;
-  type UiState200 = InferResponseType<(typeof client.api.v1)['ui-state']['$get'], 200>;
-  type SetUiState200 = InferResponseType<(typeof client.api.v1)['ui-state']['$put'], 200>;
+  type UiState200 = InferResponseType<(typeof scoped)['ui-state']['$get'], 200>;
+  type SetUiState200 = InferResponseType<(typeof scoped)['ui-state']['$put'], 200>;
   type WorkspaceUiState200 = InferResponseType<(typeof client.api.v1.workspace)['ui-state']['$get'], 200>;
   type SetWorkspaceUiState200 = InferResponseType<(typeof client.api.v1.workspace)['ui-state']['$put'], 200>;
-  type Config200 = InferResponseType<typeof client.api.v1.config.$get, 200>;
-  type SetConfig200 = InferResponseType<typeof client.api.v1.config.$put, 200>;
+  type Config200 = InferResponseType<typeof scoped.config.$get, 200>;
+  type SetConfig200 = InferResponseType<typeof scoped.config.$put, 200>;
 
   // ---- skills updates ---------------------------------------------------------------------
   type SkillsUpdate200 = InferResponseType<(typeof client.api.v1.workspace)['skills-update']['$get'], 200>;
@@ -138,8 +139,8 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
   >;
   type ProviderConnect200 = InferResponseType<typeof client.api.v1.providers.connect.$post, 200>;
   type Models200 = InferResponseType<typeof client.api.v1.models.$get, 200>;
-  type OpenTargets200 = InferResponseType<(typeof client.api.v1)['open-targets']['$get'], 200>;
-  type OpenProjectIn200 = InferResponseType<(typeof client.api.v1)['open-in']['$post'], 200>;
+  type OpenTargets200 = InferResponseType<(typeof scoped)['open-targets']['$get'], 200>;
+  type OpenProjectIn200 = InferResponseType<(typeof scoped)['open-in']['$post'], 200>;
 
   // ---- agent profiles / accounts (spec 2026-07-29-agent-profiles) --------------------------
   type AgentProfiles200 = InferResponseType<

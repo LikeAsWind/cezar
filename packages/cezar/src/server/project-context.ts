@@ -68,6 +68,15 @@ export interface ProjectContextDeps {
   /** Store factory seam for runtime tests; production opens the project's
    * persisted store with the normal keep-live recovery policy. */
   openStore?: typeof RunStore.open;
+  /** Manager factory seam for route tests that assert on the START INPUT the
+   *  route hands a manager (a capturing stub, never a real backend). When
+   *  supplied, the build skips worktree prune/recovery — the caller owns that
+   *  manager's lifecycle, exactly as the retired boot context did. */
+  managerFactory?: (
+    store: RunStore,
+    root: string,
+    opts: { semaphore: WorkspaceSemaphore; projectId: string },
+  ) => RunManager;
 }
 
 export type ProjectContextFailure = 'unknown-project' | 'missing-root';
@@ -223,13 +232,16 @@ export class ProjectContexts {
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);
     this.notifyStoreCreated(store);
-    const manager = new RunManager(store, project.root, { semaphore: this.semaphore, projectId: project.id, resolveTrackerEnv: resolveTrackerAgentEnv });
+    const manager = this.deps.managerFactory
+      ? this.deps.managerFactory(store, project.root, { semaphore: this.semaphore, projectId: project.id })
+      : new RunManager(store, project.root, { semaphore: this.semaphore, projectId: project.id, resolveTrackerEnv: resolveTrackerAgentEnv });
     try {
       const launchKey = ensureLaunchKey(dataDir);
       // Startup reconcile (spec 006) + count-based retention (#483) — the same
       // best-effort sweeps serveCommand runs for the boot project, gated on the
-      // root actually being a git repo.
-      if (await getRepoInfo(project.root)) {
+      // root actually being a git repo. A managerFactory caller owns that
+      // manager's lifecycle and skips recovery with it.
+      if (!this.deps.managerFactory && (await getRepoInfo(project.root))) {
         await pruneOrphans(project.root, new Set(store.listRuns().map((r) => r.id))).catch(
           () => [] as string[],
         );
@@ -238,7 +250,7 @@ export class ProjectContexts {
         );
         await reclaimWorktrees(project.root, store, keep).catch(() => [] as string[]);
       }
-      await manager.recover();
+      if (!this.deps.managerFactory) await manager.recover();
       // Which repository this project IS (#945), so the referenced tier stops adopting another
       // repo's PR/issue as a task's subject. Fire-and-forget on purpose — it costs a `gh` spawn
       // and building a context must not wait on the network. `project.root` is already realpath'd.

@@ -10,6 +10,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * Per-project `usage` SSE scoping (spec 2026-07-20-multi-project-workspace,
@@ -53,13 +54,7 @@ describe('usage SSE fan-out is scoped per project', () => {
     }).id;
     contexts = new ProjectContexts({ listProjects });
     await registerProject(repoRoot);
-    app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
-      version: '0.0.0-test',
-      contexts,
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts }), version: '0.0.0-test' });
   });
 
   afterEach(async () => {

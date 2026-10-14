@@ -1,3 +1,4 @@
+import { testRuntime } from './runtime.testkit.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,12 +22,8 @@ describe('read receipts (#unread-done-items)', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-read-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as unknown as RunManager, // the read routes never touch it
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as unknown as RunManager }), // the read routes never touch it
+      version: '0.0.0-test' });
   });
 
   afterEach(() => {

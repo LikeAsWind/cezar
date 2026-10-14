@@ -73,11 +73,11 @@ export const projectListEntrySchema = z.object({
 export type ProjectListEntry = z.infer<typeof projectListEntrySchema>;
 
 /** `GET /api/v1/projects` — the workspace registry. Workspace-level: never 404s, never scoped.
- *  An unreadable workspace degrades to `projects: []` plus the default `projectsDir`, so all
- *  three keys are always present. */
+ *  An unreadable workspace degrades to `projects: []` plus the default `projectsDir`, so both
+ *  keys are always present. There is no `bootProject`: `cez serve` is project-neutral, so a
+ *  consumer addresses a project by its own id from `projects[]`. */
 export const projectsResponseSchema = z.object({
   projects: z.array(projectListEntrySchema),
-  bootProject: z.string(),
   projectsDir: z.string(),
 });
 export type ProjectsResponse = z.infer<typeof projectsResponseSchema>;

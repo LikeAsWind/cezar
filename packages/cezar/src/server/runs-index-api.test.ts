@@ -9,6 +9,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { __seedRefStatusCacheForTests } from './forge/github.ts';
 
 /**
@@ -63,7 +64,7 @@ describe('workspace runs index API', () => {
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const getIndex = async (over: Partial<ServerDeps> = {}): Promise<RunsIndexResponse> => {
     const res = await apiRequest(makeApp(over), '/api/v1/workspace/runs-index');
@@ -104,7 +105,7 @@ describe('workspace runs index API', () => {
     seedColdProject(otherRoot, [storedRun({ id: 'cold-1', title: 'Cold task' })]);
     const contexts = new ProjectContexts({ listProjects });
 
-    const body = await getIndex({ contexts });
+    const body = await getIndex({ runtime: testRuntime({ contexts }) });
 
     expect(body.runs.map((run) => run.id)).toEqual(['cold-1']);
     // The row came from disk, and the project is still unopened: no store, no manager, no

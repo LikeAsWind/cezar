@@ -14,6 +14,7 @@ import { RunStore, type RunRecord } from '../runs/store.ts';
 import { draftsRoot } from '../runs/drafts.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -58,12 +59,7 @@ describe('/api/v1/runs/:id/drafts', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-drafts-api-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager }), version: '0.0.0-test' });
     run = store.createRun({ title: 'a task', workflow: 'quick-task', task: 'a task', steps: [] });
   });
 

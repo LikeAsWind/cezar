@@ -9,6 +9,7 @@ import { attachmentLibraryDir, type RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * #472 — the queued prompt stack over HTTP: the three-rung delivery ladder on
@@ -78,13 +79,7 @@ describe('queued prompt stack routes (#472)', () => {
       deferMessage: () => rung === 'starting',
     } as unknown as RunManager;
 
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {
@@ -126,13 +121,7 @@ describe('queued prompt stack routes (#472)', () => {
 
   it('does not probe or require provider credentials to amend a queued prompt', async () => {
     const status = vi.fn(() => Promise.reject(new Error('provider status must not be read')));
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: { status } as unknown as ProviderAuthService,
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: { status } as unknown as ProviderAuthService });
 
     const res = await post({ text: 'keep this queued Codex task moving' });
 

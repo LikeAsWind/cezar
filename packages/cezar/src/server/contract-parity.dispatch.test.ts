@@ -13,12 +13,13 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract/dispatch.ts matches the dispatch routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
   type Exact<Schema, Route> = Mutual<Schema, Route>;
   type Assert<T extends true> = T;
 
-  type Run = (typeof client.api.v1.runs)[':id'];
+  type Run = (typeof scoped.runs)[':id'];
   type Dispatch201 = InferResponseType<Run['dispatch']['$post'], 201>;
   type Report200 = InferResponseType<Run['report']['$post'], 200>;
   type DispatchBody = InferRequestType<Run['dispatch']['$post']>['json'];

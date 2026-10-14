@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * `POST /api/v1/runs/:id/continue` runner/model override (#401) — the follow-up composer lets the
@@ -53,7 +54,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
         return { ok: true };
       },
     } as unknown as RunManager;
-    app = createApp({ repoRoot, store, manager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

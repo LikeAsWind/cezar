@@ -40,13 +40,14 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract/runs.ts matches the runs routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
   type Exact<Schema, Route> = Mutual<Schema, Route>;
   type Assert<T extends true> = T;
 
-  type Runs = typeof client.api.v1.runs;
+  type Runs = typeof scoped.runs;
   type Run = Runs[':id'];
 
   type RunsList200 = InferResponseType<Runs['$get'], 200>;

@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { CEZAR_REPO_URL, StarCountReader } from './star-count.ts';
 
 /**
@@ -23,13 +24,7 @@ describe('the star-count API', () => {
   let store: RunStore;
 
   const appWith = (read: () => Promise<{ available: boolean; count?: number; url: string }>): Hono =>
-    createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      starCount: { read },
-    });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', starCount: { read } });
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-stars-api-'));
@@ -67,13 +62,7 @@ describe('the star-count API', () => {
       }) as unknown as typeof fetch,
       cachePath: join(repoRoot, 'unused.json'),
     });
-    const app = createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      starCount: reader,
-    });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', starCount: reader });
     const res = await apiRequest(app, '/api/v1/star-count');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ available: false, url: CEZAR_REPO_URL });

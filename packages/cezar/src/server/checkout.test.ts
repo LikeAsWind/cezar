@@ -34,6 +34,7 @@ import {
   type RegisterProjectResponse,
   type ServerDeps,
 } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * GUI clone (spec 2026-07-20-multi-project-workspace, step 4.3):
@@ -380,13 +381,7 @@ describe('POST /api/v1/projects/checkout', () => {
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      ...over,
-    });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const post = async (body: unknown, over: Partial<ServerDeps> = {}) => {
     const res = await apiRequest(makeApp(over), '/api/v1/projects/checkout', {
@@ -421,7 +416,7 @@ describe('POST /api/v1/projects/checkout', () => {
     const seen: { event: string; data: unknown }[] = [];
     bus.on((event, data) => seen.push({ event, data }));
 
-    const { status, body } = await post({ url: 'open-mercato/cezar', checkoutId: 'co-9' }, { workspaceEvents: bus });
+    const { status, body } = await post({ url: 'open-mercato/cezar', checkoutId: 'co-9' }, { runtime: testRuntime({ workspaceEvents: bus }) });
     expect(status).toBe(200);
     expect(body.project).toMatchObject({
       name: 'cezar',
@@ -482,7 +477,7 @@ describe('POST /api/v1/projects/checkout', () => {
     const seen: { event: string; data: unknown }[] = [];
     bus.on((event, data) => seen.push({ event, data }));
 
-    const { status, body } = await post({ url: 'open-mercato/nope' }, { cloneRunner, workspaceEvents: bus });
+    const { status, body } = await post({ url: 'open-mercato/nope' }, { cloneRunner, runtime: testRuntime({ workspaceEvents: bus }) });
     expect(status).toBe(500);
     // Verbatim: gh's own words are the only ones that can tell the user WHY.
     expect(body.error).toContain('Repository not found');

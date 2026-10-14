@@ -1,3 +1,4 @@
+import { testRuntime } from './runtime.testkit.ts';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -111,14 +112,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
   });
 
   const app = (options: { disabled?: ProviderId[]; disconnected?: ProviderId[] } = {}) =>
-    createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      providerAuth: providerAuth(options.disconnected),
-      workspaceConfig: workspaceConfig(options.disabled),
-    });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', providerAuth: providerAuth(options.disconnected), workspaceConfig: workspaceConfig(options.disabled) });
 
   /** A FINISHED run by default — `createRun` parks new records at `queued`, which the engine still
    *  owns, and only a run the engine has let go of resumes at all (see the status cases below). */

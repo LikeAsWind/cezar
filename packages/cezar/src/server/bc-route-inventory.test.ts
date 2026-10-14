@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * The `BACKWARD_COMPATIBILITY.md` §2 route inventory drift guard (#525 Phase 3).
@@ -110,9 +111,7 @@ describe('BACKWARD_COMPATIBILITY.md §2 route inventory', () => {
   // only asked what routes it has.
   const repoRoot = mkdtempSync(join(tmpdir(), 'cez-bc-inventory-'));
   const app = createApp({
-    repoRoot,
-    store: RunStore.open(join(repoRoot, '.ai/cezar')),
-    manager: {} as RunManager,
+    runtime: testRuntime({ repoRoot, store: RunStore.open(join(repoRoot, '.ai/cezar')), manager: {} as RunManager }),
     version: '0.0.0-test',
   });
 

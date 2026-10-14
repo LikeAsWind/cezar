@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * `GET/PUT /api/v1/agent-config` (spec #404). The contract under test: files are
@@ -26,12 +27,7 @@ describe('the agent-config API', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-agentcfg-'));
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
   afterEach(() => {
     store.flush();

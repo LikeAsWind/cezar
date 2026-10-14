@@ -35,6 +35,7 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract workflows/skills/agent-config schemas match the routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
@@ -42,31 +43,31 @@ describe('src/contract workflows/skills/agent-config schemas match the routes ex
   type Assert<T extends true> = T;
 
   // ---- workflows -------------------------------------------------------------------------
-  type Workflows200 = InferResponseType<typeof client.api.v1.workflows.$get, 200>;
-  type SaveWorkflow201 = InferResponseType<typeof client.api.v1.workflows.$post, 201>;
-  type DeleteWorkflow200 = InferResponseType<(typeof client.api.v1.workflows)[':name']['$delete'], 200>;
-  type ParseWorkflow200 = InferResponseType<typeof client.api.v1.workflows.parse.$post, 200>;
-  type Plan200 = InferResponseType<typeof client.api.v1.plan.$post, 200>;
-  type Nodes200 = InferResponseType<typeof client.api.v1.workflows.nodes.$get, 200>;
-  type Validate200 = InferResponseType<typeof client.api.v1.workflows.validate.$post, 200>;
-  type SaveGraph201 = InferResponseType<typeof client.api.v1.workflows.graph.$post, 201>;
+  type Workflows200 = InferResponseType<typeof scoped.workflows.$get, 200>;
+  type SaveWorkflow201 = InferResponseType<typeof scoped.workflows.$post, 201>;
+  type DeleteWorkflow200 = InferResponseType<(typeof scoped.workflows)[':name']['$delete'], 200>;
+  type ParseWorkflow200 = InferResponseType<typeof scoped.workflows.parse.$post, 200>;
+  type Plan200 = InferResponseType<typeof scoped.plan.$post, 200>;
+  type Nodes200 = InferResponseType<typeof scoped.workflows.nodes.$get, 200>;
+  type Validate200 = InferResponseType<typeof scoped.workflows.validate.$post, 200>;
+  type SaveGraph201 = InferResponseType<typeof scoped.workflows.graph.$post, 201>;
 
   // ---- parallel variants -----------------------------------------------------------------
-  type Group200 = InferResponseType<(typeof client.api.v1.groups)[':groupId']['$get'], 200>;
-  type Pick200 = InferResponseType<(typeof client.api.v1.groups)[':groupId']['pick']['$post'], 200>;
+  type Group200 = InferResponseType<(typeof scoped.groups)[':groupId']['$get'], 200>;
+  type Pick200 = InferResponseType<(typeof scoped.groups)[':groupId']['pick']['$post'], 200>;
 
   // ---- skills / todos --------------------------------------------------------------------
-  type Skills200 = InferResponseType<typeof client.api.v1.skills.$get, 200>;
-  type SkillsRefresh200 = InferResponseType<typeof client.api.v1.skills.refresh.$post, 200>;
-  type Importable200 = InferResponseType<typeof client.api.v1.skills.importable.$get, 200>;
-  type Todos200 = InferResponseType<typeof client.api.v1.todos.$get, 200>;
-  type RemoveTodo200 = InferResponseType<(typeof client.api.v1.todos)[':id']['$delete'], 200>;
-  type StartTodo201 = InferResponseType<(typeof client.api.v1.todos)[':id']['start']['$post'], 201>;
+  type Skills200 = InferResponseType<typeof scoped.skills.$get, 200>;
+  type SkillsRefresh200 = InferResponseType<typeof scoped.skills.refresh.$post, 200>;
+  type Importable200 = InferResponseType<typeof scoped.skills.importable.$get, 200>;
+  type Todos200 = InferResponseType<typeof scoped.todos.$get, 200>;
+  type RemoveTodo200 = InferResponseType<(typeof scoped.todos)[':id']['$delete'], 200>;
+  type StartTodo201 = InferResponseType<(typeof scoped.todos)[':id']['start']['$post'], 201>;
 
   // ---- agent config ----------------------------------------------------------------------
-  type AgentConfig200 = InferResponseType<(typeof client.api.v1)['agent-config']['$get'], 200>;
-  type AgentConfigFile200 = InferResponseType<(typeof client.api.v1)['agent-config'][':id']['$get'], 200>;
-  type AgentConfigPut200 = InferResponseType<(typeof client.api.v1)['agent-config'][':id']['$put'], 200>;
+  type AgentConfig200 = InferResponseType<(typeof scoped)['agent-config']['$get'], 200>;
+  type AgentConfigFile200 = InferResponseType<(typeof scoped)['agent-config'][':id']['$get'], 200>;
+  type AgentConfigPut200 = InferResponseType<(typeof scoped)['agent-config'][':id']['$put'], 200>;
 
   type _Checks = [
     Assert<Exact<z.infer<typeof workflowsResponseSchema>, Workflows200>>,

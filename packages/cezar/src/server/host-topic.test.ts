@@ -7,6 +7,7 @@ import { HOST_SAMPLE_INTERVAL_MS, hostUsageSampler } from '../core/host-usage.ts
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import type { SocketHub, TopicOptions, TopicPublisher } from './ws.ts';
 
 /**
@@ -55,13 +56,7 @@ describe('host topic + sampler (live-server path)', () => {
 
   const build = () => {
     const { hub, topics } = stubHub();
-    const app = createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      socketHub: hub,
-    });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', socketHub: hub });
     const topic = topics.get('host');
     if (!topic) throw new Error('no host topic registered');
     return { app, topic };
@@ -73,20 +68,13 @@ describe('host topic + sampler (live-server path)', () => {
    */
   const buildWithSample = (sample: HostUsage) => {
     const { hub, topics } = stubHub();
-    const app = createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      socketHub: hub,
-      hostSampler: {
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', socketHub: hub, hostSampler: {
         currentHostUsage: () => sample,
         sampleHostUsage: () => sample,
         onHostUsage: () => () => undefined,
         keepWarm: () => undefined,
         dispose: () => undefined,
-      },
-    });
+      } });
     const topic = topics.get('host');
     if (!topic) throw new Error('no host topic registered');
     return { app, topic };
@@ -102,13 +90,7 @@ describe('host topic + sampler (live-server path)', () => {
 
   it('registers the host topic trusted-only, beside health', () => {
     const { hub, topics } = stubHub();
-    createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      socketHub: hub,
-    });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', socketHub: hub });
     expect([...topics.keys()].sort()).toEqual(['health', 'host']);
     // Not a discovery payload: the loopback-origin fallback admits foreign local pages at the
     // handshake, so only an explicitly `loopbackReadable` topic may be read by one.

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -53,7 +54,7 @@ describe('inbox gate (#471)', () => {
   });
 
   const app = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   describe('off (the default)', () => {
     it('GET /api/v1/todos serves an empty inbox instead of 404ing', async () => {

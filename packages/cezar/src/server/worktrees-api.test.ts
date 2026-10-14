@@ -9,6 +9,7 @@ import { createWorktree } from '../git-worktree.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 const run = promisify(execFile);
@@ -39,7 +40,7 @@ describe('the worktrees API', () => {
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * `POST /api/v1/runs/:id/open-in` with `target: 'default'` (#365): the diff pane's "open in OS
@@ -51,7 +52,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
 
   const post = (body: unknown, over: Partial<ServerDeps> = {}) =>
     apiRequest(
-      createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over }),
+      createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over }),
       `/api/v1/runs/${runId}/open-in`,
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     );
@@ -162,7 +163,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
   });
 
   it('404s for an unknown run before any gate', async () => {
-    const app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
     const res = await apiRequest(app, '/api/v1/runs/nope/open-in', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

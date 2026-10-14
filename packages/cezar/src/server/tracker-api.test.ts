@@ -10,6 +10,7 @@ import { registerProject } from '../workspace/projects.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, WorkspaceEventBus } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 describe('tracker API boundaries and isolation', () => {
@@ -24,9 +25,7 @@ describe('tracker API boundaries and isolation', () => {
     store = RunStore.open(join(root, '.ai/cezar'));
   });
   afterEach(() => { store.flush(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); rmSync(root, { recursive: true, force: true }); });
-  const app = (workspaceEvents?: WorkspaceEventBus) => createApp({
-    repoRoot: root, store, manager: {} as RunManager, version: 'test', workspaceEvents,
-  });
+  const app = (workspaceEvents?: WorkspaceEventBus) => createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, workspaceEvents }), version: 'test' });
   const put = (body: unknown): RequestInit => ({
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
@@ -178,7 +177,7 @@ it('keeps credential HTTP responses write-only and aliases connection routes to 
   const fetcher = vi.fn(() => { throw new Error('No vendor access during credential storage'); });
   vi.stubGlobal('fetch', fetcher);
   try {
-    const instance = createApp({ repoRoot: root, store, manager: {} as RunManager, version: 'test' });
+    const instance = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test' });
     const secret = 'test-private-token-never-in-response';
     const write = (body: unknown) => apiRequest(instance, '/api/v1/p/default/tracker/connection', {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),

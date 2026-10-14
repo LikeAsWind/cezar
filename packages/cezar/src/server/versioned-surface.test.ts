@@ -8,6 +8,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * The versioned surface is the ONLY surface (spec 2026-07-23-independent-server-web-packages).
@@ -46,11 +47,8 @@ describe('the versioned API surface', () => {
     contexts = new ProjectContexts({ listProjects });
     bootId = (await registerProject(repoRoot)).id;
     app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
+      runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts }),
       version: '0.0.0-test',
-      contexts,
     });
   });
 

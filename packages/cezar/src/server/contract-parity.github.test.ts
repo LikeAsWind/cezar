@@ -41,6 +41,7 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract github + repo schemas match the routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
@@ -48,34 +49,34 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
   type Assert<T extends true> = T;
 
   // ---- github ---------------------------------------------------------------------------
-  type Github200 = InferResponseType<typeof client.api.v1.github.$get, 200>;
+  type Github200 = InferResponseType<typeof scoped.github.$get, 200>;
   type GithubComments200 = InferResponseType<
-    (typeof client.api.v1.github.comments)[':kind'][':number']['$get'],
+    (typeof scoped.github.comments)[':kind'][':number']['$get'],
     200
   >;
-  type GithubChecks200 = InferResponseType<typeof client.api.v1.github.checks.$get, 200>;
-  type GithubSearch200 = InferResponseType<typeof client.api.v1.github.search.$get, 200>;
-  type GithubRefStatus200 = InferResponseType<(typeof client.api.v1.github)['ref-status']['$get'], 200>;
+  type GithubChecks200 = InferResponseType<typeof scoped.github.checks.$get, 200>;
+  type GithubSearch200 = InferResponseType<typeof scoped.github.search.$get, 200>;
+  type GithubRefStatus200 = InferResponseType<(typeof scoped.github)['ref-status']['$get'], 200>;
   type GithubMergeState200 = InferResponseType<
-    (typeof client.api.v1.github.prs)[':number']['merge-state']['$get'],
+    (typeof scoped.github.prs)[':number']['merge-state']['$get'],
     200
   >;
   type GithubMerge200 = InferResponseType<
-    (typeof client.api.v1.github.prs)[':number']['merge']['$post'],
+    (typeof scoped.github.prs)[':number']['merge']['$post'],
     200
   >;
   type GithubPrChanges200 = InferResponseType<
-    (typeof client.api.v1.github.prs)[':number']['changes']['$get'],
+    (typeof scoped.github.prs)[':number']['changes']['$get'],
     200
   >;
 
   // ---- repo / git -----------------------------------------------------------------------
-  type Repo200 = InferResponseType<typeof client.api.v1.repo.$get, 200>;
-  type RepoBranch200 = InferResponseType<typeof client.api.v1.repo.branch.$post, 200>;
-  type RepoChanges200 = InferResponseType<typeof client.api.v1.repo.changes.$get, 200>;
-  type RunChanges200 = InferResponseType<(typeof client.api.v1.runs)[':id']['changes']['$get'], 200>;
+  type Repo200 = InferResponseType<typeof scoped.repo.$get, 200>;
+  type RepoBranch200 = InferResponseType<typeof scoped.repo.branch.$post, 200>;
+  type RepoChanges200 = InferResponseType<typeof scoped.repo.changes.$get, 200>;
+  type RunChanges200 = InferResponseType<(typeof scoped.runs)[':id']['changes']['$get'], 200>;
   type RunCommit200 = InferResponseType<
-    (typeof client.api.v1.runs)[':id']['commit'][':sha']['$get'],
+    (typeof scoped.runs)[':id']['commit'][':sha']['$get'],
     200
   >;
   /**
@@ -85,7 +86,7 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
    * this route is still compared mutually.
    */
   type RepoCommit200 = Exclude<
-    InferResponseType<(typeof client.api.v1.repo.commit)[':sha']['$get'], 200>,
+    InferResponseType<(typeof scoped.repo.commit)[':sha']['$get'], 200>,
     string
   >;
   /**
@@ -94,20 +95,20 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
    * excluded by name; the JSON surface stays mutually checked.
    */
   type RunFiles200 = Exclude<
-    InferResponseType<(typeof client.api.v1.runs)[':id']['files']['$get'], 200>,
+    InferResponseType<(typeof scoped.runs)[':id']['files']['$get'], 200>,
     ArrayBuffer
   >;
 
   // The repository file browser (#1279). `/repo/tree` is plain JSON; `/repo/files` carries the
   // same `?raw=1` bytes branch as `/runs/:id/files` and is excluded on the same terms.
-  type RepoTree200 = InferResponseType<typeof client.api.v1.repo.tree.$get, 200>;
+  type RepoTree200 = InferResponseType<typeof scoped.repo.tree.$get, 200>;
   type RepoFiles200 = Exclude<
-    InferResponseType<typeof client.api.v1.repo.files.$get, 200>,
+    InferResponseType<typeof scoped.repo.files.$get, 200>,
     ArrayBuffer
   >;
 
-  type Worktrees200 = InferResponseType<typeof client.api.v1.worktrees.$get, 200>;
-  type ReclaimWorktrees200 = InferResponseType<typeof client.api.v1.worktrees.reclaim.$post, 200>;
+  type Worktrees200 = InferResponseType<typeof scoped.worktrees.$get, 200>;
+  type ReclaimWorktrees200 = InferResponseType<typeof scoped.worktrees.reclaim.$post, 200>;
 
   type _Checks = [
     Assert<Exact<z.infer<typeof githubDataSchema>, Github200>>,

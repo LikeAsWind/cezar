@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * DNS-rebinding guard: in local mode (loopback bind, no `CEZ_REMOTE`) every
@@ -45,7 +46,7 @@ describe('host-header guard (DNS rebinding)', () => {
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const request = (host: string | null, path = '/api/v1/health', over: Partial<ServerDeps> = {}) =>
     makeApp(over).request(path, host === null ? {} : { headers: { host } });

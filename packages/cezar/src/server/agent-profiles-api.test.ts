@@ -11,6 +11,7 @@ import { clearProjectProbeCache, registerProject } from '../workspace/projects.t
 import { apiRequest } from './loopback-request.testkit.ts';
 import { ProviderAuthService } from '../core/provider-auth.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 // `resolveClaudeBin` probes the real machine for an install that is off PATH, so the claude
 // executable these cases assert on would otherwise be whatever the DEVELOPER has. Pinned to the
@@ -72,7 +73,7 @@ describe('agent profiles API', () => {
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const list = async (): Promise<AgentProfilesResponse> => {
     const res = await apiRequest(makeApp(), '/api/v1/workspace/agent-profiles');

@@ -15,6 +15,7 @@ import { RunManager } from '../workflows/run.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 // `resolveClaudeBin` probes the real machine for an install that is off PATH, so the claude
 // executable these cases assert on would otherwise be whatever the DEVELOPER has. Pinned to the
@@ -154,18 +155,7 @@ describe('workspace provider API', () => {
     workspaceEvents?: WorkspaceEventBus;
     workspaceConfig?: ReturnType<typeof memoryWorkspaceConfig>;
     contexts?: ProjectContexts;
-  } = {}) => createApp({
-    repoRoot: root,
-    store,
-    manager: {} as RunManager,
-    version: 'test',
-    providerAuth: options.providerAuth ?? service(),
-    openTerminal: options.openTerminal,
-    bindHost: options.bindHost,
-    workspaceEvents: options.workspaceEvents,
-    workspaceConfig: options.workspaceConfig,
-    contexts: options.contexts,
-  });
+  } = {}) => createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, workspaceEvents: options.workspaceEvents, contexts: options.contexts }), version: 'test', providerAuth: options.providerAuth ?? service(), openTerminal: options.openTerminal, bindHost: options.bindHost, workspaceConfig: options.workspaceConfig });
 
   const connect = (server: ReturnType<typeof app>, provider: unknown) => apiRequest(
     server,

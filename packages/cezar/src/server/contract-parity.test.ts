@@ -31,6 +31,7 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract schemas match the routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
@@ -38,8 +39,8 @@ describe('src/contract schemas match the routes exactly', () => {
   type Assert<T extends true> = T;
 
   type Health200 = InferResponseType<typeof client.api.v1.health.$get, 200>;
-  type History200 = InferResponseType<(typeof client.api.v1.runs)[':id']['history']['$get'], 200>;
-  type HistoryContext200 = InferResponseType<(typeof client.api.v1.runs)[':id']['history-context']['$get'], 200>;
+  type History200 = InferResponseType<(typeof scoped.runs)[':id']['history']['$get'], 200>;
+  type HistoryContext200 = InferResponseType<(typeof scoped.runs)[':id']['history-context']['$get'], 200>;
 
   type _Checks = [
     Assert<Exact<z.infer<typeof healthResponseSchema>, Health200>>,

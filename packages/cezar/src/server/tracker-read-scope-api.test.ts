@@ -6,6 +6,7 @@ import { trackerFailureSchema, trackerReadScope, type TrackerAssociation } from 
 import { RunStore } from '../runs/store.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 const mocks = vi.hoisted(() => ({ driver: vi.fn() }));
 vi.mock('./tracker/index.ts', async importOriginal => {
@@ -23,7 +24,7 @@ beforeEach(() => {
   store = RunStore.open(join(root, '.ai/cezar'));
   read.mockReset().mockResolvedValue({ available: false, code: 'unavailable', reason: 'Vendor reached' });
   mocks.driver.mockReset().mockResolvedValue({ association, listIssues: read, searchItems: read, getItem: read });
-  app = createApp({ repoRoot: root, store, manager: {} as never, version: 'test' });
+  app = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as never }), version: 'test' });
 });
 afterEach(() => { store.flush(); rmSync(root, { recursive: true, force: true }); });
 

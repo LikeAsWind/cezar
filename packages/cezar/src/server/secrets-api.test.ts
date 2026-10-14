@@ -8,6 +8,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { SecretStore } from '../workspace/secrets.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 describe('secrets API (spec 2026-10-10-project-secrets-vault-options)', () => {
@@ -32,7 +33,7 @@ describe('secrets API (spec 2026-10-10-project-secrets-vault-options)', () => {
     const project = await registerProject(root);
     return {
       id: project.id,
-      instance: createApp({ repoRoot: root, store, manager: {} as RunManager, version: 'test', bootProjectId: project.id, secrets }),
+      instance: createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', secrets }),
     };
   };
   const put = (body: unknown): RequestInit => ({
@@ -100,7 +101,7 @@ describe('secrets API (spec 2026-10-10-project-secrets-vault-options)', () => {
   });
 
   it('refuses project writes for an unregistered boot project, and still serves the workspace', async () => {
-    const instance = createApp({ repoRoot: root, store, manager: {} as RunManager, version: 'test', secrets });
+    const instance = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', secrets });
     expect((await apiRequest(instance, '/api/v1/secrets/KEY', put({ value: 'value' }))).status).toBe(409);
     expect((await apiRequest(instance, '/api/v1/secrets/KEY', { method: 'DELETE' })).status).toBe(409);
     expect((await apiRequest(instance, '/api/v1/workspace/secrets/KEY', put({ value: 'value' }))).status).toBe(204);

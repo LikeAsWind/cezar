@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 describe('workspace model catalog API', () => {
   let root: string;
@@ -26,20 +27,14 @@ describe('workspace model catalog API', () => {
 
   /** The route contract is what is under test; each adapter's wire handling lives in its own test. */
   const app = (discover: Discover, opencodeDiscover: Discover = discover) =>
-    createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
-      version: 'test',
-      modelCatalog: new RunnerModelCatalog({
+    createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', modelCatalog: new RunnerModelCatalog({
         adapters: {
           claude: { discover },
           codex: { discover },
           opencode: { discover: opencodeDiscover },
           junie: { discover },
         },
-      }),
-    });
+      }) });
 
   it.each([
     ['codex', 'gpt-future'],
@@ -66,18 +61,12 @@ describe('workspace model catalog API', () => {
 
   it('caches each runner separately', async () => {
     const seen: string[] = [];
-    const server = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
-      version: 'test',
-      modelCatalog: new RunnerModelCatalog({
+    const server = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', modelCatalog: new RunnerModelCatalog({
         adapters: {
           claude: { discover: async () => (seen.push('claude'), [{ id: 'sonnet', label: 'Sonnet', description: '' }]) },
           codex: { discover: async () => (seen.push('codex'), [{ id: 'gpt-future', label: 'GPT', description: '' }]) },
         },
-      }),
-    });
+      }) });
     const claude = await (await apiRequest(server, '/api/v1/models?runner=claude')).json();
     const codex = await (await apiRequest(server, '/api/v1/models?runner=codex')).json();
     expect(claude).toMatchObject({ runner: 'claude', models: [{ id: 'sonnet' }] });
@@ -132,19 +121,13 @@ describe('workspace model catalog API', () => {
   });
 
   it('returns a Cursor catalog when that adapter is registered', async () => {
-    const server = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
-      version: 'test',
-      modelCatalog: new RunnerModelCatalog({
+    const server = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }), version: 'test', modelCatalog: new RunnerModelCatalog({
         adapters: {
           cursor: {
             discover: async () => [{ id: 'composer-2.5', label: 'Composer 2.5', description: '' }],
           },
         },
-      }),
-    });
+      }) });
     const response = await apiRequest(server, '/api/v1/models?runner=cursor');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({

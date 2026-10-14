@@ -14,6 +14,7 @@ import type { WorkflowDef } from '../workflows/types.ts';
 import { E2E_SETUP_WORKFLOW_NAME, E2E_WORKFLOW_FILE } from '../e2e-setup.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 vi.mock('../core/claude-bin.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../core/claude-bin.ts')>()),
@@ -69,17 +70,13 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
 
   const app = async () => {
     const project = await registerProject(root);
-    const instance = createApp({
-      repoRoot: root, store, manager, version: 'test', bootProjectId: project.id, secrets,
-      providerAuth: new ProviderAuthService({
+    const instance = createApp({ runtime: testRuntime({ repoRoot: root, store, manager }), version: 'test', secrets, providerAuth: new ProviderAuthService({
         platform: 'linux',
         runCommand: async () => ({ stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 }),
-      }),
-      workspaceConfig: {
+      }), workspaceConfig: {
         load: async () => ({ ...defaultWorkspaceConfig(), disabledProviders: [] }),
         mergeWrite: async () => defaultWorkspaceConfig(),
-      },
-    });
+      } });
     return { id: project.id, instance };
   };
   const post = (body: unknown): RequestInit => ({

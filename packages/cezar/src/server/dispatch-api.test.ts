@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 
@@ -40,7 +41,7 @@ describe('the dispatch routes', () => {
         return reportOk;
       },
     } as unknown as RunManager;
-    app = createApp({ repoRoot, store, manager, version: '0.0.0-test', providerAuth: connectedProviderAuth() });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {
@@ -85,7 +86,7 @@ describe('the dispatch routes', () => {
 
   it('answers 409 on both routes while CEZ_DISPATCH=0, before touching the manager', async () => {
     process.env.CEZ_DISPATCH = '0';
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', providerAuth: connectedProviderAuth() });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
     for (const path of ['/api/v1/runs/p/dispatch', '/api/v1/runs/p/report']) {
       const res = await apiRequest(app, path, json({ objective: 'x', status: 'done', result: 'r' }));
       expect(res.status).toBe(409);

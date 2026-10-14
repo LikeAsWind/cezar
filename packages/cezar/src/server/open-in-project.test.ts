@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * `POST /api/v1/open-in` — Settings → "Project folder" → Open with.
@@ -51,7 +52,7 @@ describe('POST /api/v1/open-in — the project folder in a local app', () => {
 
   const post = (body: unknown, over: Partial<ServerDeps> = {}) =>
     apiRequest(
-      createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over }),
+      createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over }),
       '/api/v1/open-in',
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     );

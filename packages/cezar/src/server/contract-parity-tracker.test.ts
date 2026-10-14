@@ -11,8 +11,8 @@ import type {
 import type { AppType } from './app-type.ts';
 
 const client = hc<AppType>('http://127.0.0.1');
-const tracker = client.api.v1.tracker;
 const scoped = client.api.v1.p[':projectId'].tracker;
+const tracker = scoped;
 type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Assert<T extends true> = T;
 type Checks = [
@@ -31,7 +31,7 @@ type Checks = [
   Assert<Mutual<TrackerSearchQueryInput, InferRequestType<typeof tracker.search.$get>['query']>>,
   Assert<Mutual<TrackerListQueryInput, InferRequestType<typeof scoped.$get>['query']>>,
   Assert<Mutual<TrackerSearchQueryInput, InferRequestType<typeof scoped.search.$get>['query']>>,
-  Assert<Mutual<TrackerItemParams, InferRequestType<typeof tracker[':id']['$get']>['param']>>,
+  Assert<Mutual<TrackerItemParams & { projectId: string }, InferRequestType<typeof tracker[':id']['$get']>['param']>>,
   Assert<Mutual<TrackerItemParams & { projectId: string }, InferRequestType<typeof scoped[':id']['$get']>['param']>>,
   Assert<Mutual<TrackerErrorResponse, InferResponseType<typeof tracker.$get, 400>>>,
   Assert<Mutual<TrackerErrorResponse, InferResponseType<typeof tracker.search.$get, 400>>>,

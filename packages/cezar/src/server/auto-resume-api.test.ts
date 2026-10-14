@@ -1,3 +1,4 @@
+import { testRuntime } from './runtime.testkit.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,10 +28,7 @@ describe('per-task auto-resume cancellation', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-auto-resume-api-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
     cancelled = [];
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {
         cancelAutoResume: (id: string) => {
           cancelled.push(id);
           const run = store.getRun(id);
@@ -38,9 +36,7 @@ describe('per-task auto-resume cancellation', () => {
           store.updateRun(id, { autoResumeAt: undefined, autoResumeAttempts: undefined });
           return true;
         },
-      } as unknown as RunManager,
-      version: '0.0.0-test',
-    });
+      } as unknown as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

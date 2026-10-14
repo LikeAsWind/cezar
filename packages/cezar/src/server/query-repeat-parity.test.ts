@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RunStore } from '../runs/store.ts'
 import type { RunManager } from '../workflows/run.ts'
-import { createApp } from './server.ts'
+import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts'
 import { connectedProviderAuth } from './provider-auth.testkit.ts'
 
@@ -30,11 +31,7 @@ describe('a repeated query key stays 200 (c.req.query took the first value)', ()
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-rq-'))
     mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true })
-    app = createApp({
-      repoRoot, store: RunStore.open(join(repoRoot, '.ai/cezar')),
-      manager: {} as RunManager, version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    })
+    app = createApp({ runtime: testRuntime({ repoRoot, store: RunStore.open(join(repoRoot, '.ai/cezar')), manager: {} as RunManager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() })
   })
   afterEach(() => rmSync(repoRoot, { recursive: true, force: true }))
 

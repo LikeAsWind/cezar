@@ -9,6 +9,7 @@ import { SelfUpdateService } from '../self-update/service.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * `/api/v1/workspace/self-update` (self-update PoC). The load-bearing security property: a
@@ -68,7 +69,7 @@ describe('the self-update API', () => {
       env: { ...process.env, CEZ_HOME: home },
       registry: new RegistryCache('@open-mercato/cezar', stubFetch),
     });
-    app = createApp({ repoRoot, store, manager: {} as RunManager, version: RUNNING, selfUpdate });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: RUNNING, selfUpdate });
   });
   afterEach(() => {
     store.flush();

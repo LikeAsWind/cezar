@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -28,7 +29,7 @@ describe('POST /runs/:id/pr on a pull-request head run', () => {
   });
 
   const app = () =>
-    createApp({ repoRoot: root, store, manager: { isActive: () => false } as unknown as RunManager, version: 'test' });
+    createApp({ runtime: testRuntime({ repoRoot: root, store, manager: { isActive: () => false } as unknown as RunManager }), version: 'test' });
 
   it('refuses with a 409 naming the pull request', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });

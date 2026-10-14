@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import * as projects from '../workspace/projects.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
@@ -68,7 +69,7 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
   });
 
   const app = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const json = (body: unknown, method = 'POST'): RequestInit => ({
     method,
@@ -210,7 +211,7 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
         }
       });
       const server = startServer(
-        { repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, version: '0.0.0-test' },
+        { runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager }), version: '0.0.0-test' },
         0,
       );
       try {
@@ -278,7 +279,7 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
         await originalStart.call(this);
       });
       const server = startServer(
-        { repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, version: '0.0.0-test' },
+        { runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager }), version: '0.0.0-test' },
         0,
       );
       try {

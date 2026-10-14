@@ -7,6 +7,7 @@ import { AutomationStore } from '../automations/store.ts';
 import { RunStore } from '../runs/store.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 const mocks = vi.hoisted(() => ({ driver: vi.fn(), launch: vi.fn() }));
 vi.mock('./tracker/index.ts', async importOriginal => {
   const original = await importOriginal<typeof import('./tracker/index.ts')>();
@@ -29,7 +30,7 @@ beforeEach(() => {
   mocks.launch.mockReset().mockResolvedValue({ runId: 'run' });
   options.mockReset().mockResolvedValue({ events: ['issue.opened', 'issue.status_changed'], statuses: [{ id: 'todo', name: 'To Do' }], labels: [], limitations: [] });
   mocks.driver.mockReset().mockResolvedValue({ association, automationOptions: options, pollEvents: async () => ({ candidates: [], checkpoint: 'opaque', complete: true }) });
-  app = createApp({ repoRoot: root, store, automationStore: automations, manager: {} as never, version: 'test' });
+  app = createApp({ runtime: testRuntime({ repoRoot: root, store, automationStore: automations, manager: {} as never }), version: 'test' });
 });
 afterEach(() => { store.flush(); rmSync(root, { recursive: true, force: true }); });
 it('creates paused, round trips status IDs, edits, enables and previews without a receipt', async () => {

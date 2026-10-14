@@ -17,6 +17,7 @@ import * as processUsage from '../core/process-usage.ts';
 import { RunManager } from '../workflows/run.ts';
 import { listProjects, registerProject } from '../workspace/projects.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 const dirs: string[] = [];
@@ -48,8 +49,8 @@ describe('dashboard workspace routes', () => {
     cleanups.push(() => contexts.disposeAll());
     const context = vi.spyOn(contexts, 'context');
     const recover = vi.spyOn(RunManager.prototype, 'recover');
-    const app = createApp({ repoRoot: root, store, manager: {} as RunManager,
-      version: 'test', contexts, onDispose: (cleanup) => cleanups.push(cleanup) });
+    const app = createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, contexts }),
+      version: 'test', onDispose: (cleanup) => cleanups.push(cleanup) });
     const get = () => apiRequest(app, `/api/v1/workspace/dashboard/automations?projectId=${project.id}`);
     const empty = await get();
     expect(empty.status).toBe(200);
@@ -144,9 +145,7 @@ describe('dashboard workspace routes', () => {
       costUsd: 12,
     });
     const app = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
+      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
@@ -185,9 +184,7 @@ describe('dashboard workspace routes', () => {
     });
     store.updateRun(run.id, { costUsd: 2, inputTokens: 11, outputTokens: 7 });
     const app = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
+      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
@@ -276,11 +273,8 @@ describe('dashboard workspace routes', () => {
       const contexts = new ProjectContexts({ listProjects });
       cleanups.push(() => contexts.disposeAll());
       const app = createApp({
-        repoRoot: root,
-        store,
-        manager: {} as RunManager,
+        runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, contexts }),
         version: 'test',
-        contexts,
         onDispose: (cleanup) => cleanups.push(cleanup),
       });
       const get = (path: string) => apiRequest(app, `/api/v1/workspace/dashboard${path}`);
@@ -293,7 +287,7 @@ describe('dashboard workspace routes', () => {
       const projectsWire = projectsResponseSchema.parse(
         await (await apiRequest(app, '/api/v1/projects')).json(),
       );
-      expect(projectsWire.bootProject).toBe(bootId);
+      expect(projectsWire.projects.some((p: { id: string }) => p.id === bootId)).toBe(true);
       const automations = await get(`/automations?projectId=${bootId}`);
       expect(automations.status).toBe(200);
       expect(dashboardAutomationsSchema.parse(await automations.json()).automations).toEqual([]);
@@ -372,12 +366,8 @@ describe('dashboard workspace routes', () => {
     const contexts = new ProjectContexts({ listProjects });
     cleanups.push(() => contexts.disposeAll());
     const app = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
+      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, contexts }),
       version: 'test',
-      bootProjectId: boot.id,
-      contexts,
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
     const all = dashboardSnapshotSchema.parse(
@@ -414,9 +404,7 @@ describe('dashboard workspace routes', () => {
     const run = store.createRun({ title: 'Question', task: 't', workflow: 'build', steps: [] });
     store.updateRun(run.id, { status: 'waiting' });
     const app = createApp({
-      repoRoot: root,
-      store,
-      manager: {} as RunManager,
+      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });

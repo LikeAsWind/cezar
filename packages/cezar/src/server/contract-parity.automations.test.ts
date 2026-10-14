@@ -45,6 +45,7 @@ import type { AppType } from './app-type.ts';
  */
 describe('src/contract automation schemas match the routes exactly', () => {
   const client = hc<AppType>('http://127.0.0.1');
+const scoped = client.api.v1.p[':projectId'];
 
   /** `true` only when the two types are assignable BOTH ways. */
   type Mutual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : 'route-is-wider') : 'schema-is-wider';
@@ -52,25 +53,25 @@ describe('src/contract automation schemas match the routes exactly', () => {
   type Assert<T extends true> = T;
 
   // ---- the project-scoped family ----------------------------------------------------------
-  type Automations200 = InferResponseType<typeof client.api.v1.automations.$get, 200>;
-  type CreateAutomation201 = InferResponseType<typeof client.api.v1.automations.$post, 201>;
-  type Automation200 = InferResponseType<(typeof client.api.v1.automations)[':id']['$get'], 200>;
-  type UpdateAutomation200 = InferResponseType<(typeof client.api.v1.automations)[':id']['$put'], 200>;
+  type Automations200 = InferResponseType<typeof scoped.automations.$get, 200>;
+  type CreateAutomation201 = InferResponseType<typeof scoped.automations.$post, 201>;
+  type Automation200 = InferResponseType<(typeof scoped.automations)[':id']['$get'], 200>;
+  type UpdateAutomation200 = InferResponseType<(typeof scoped.automations)[':id']['$put'], 200>;
   type EnableAutomation200 = InferResponseType<
-    (typeof client.api.v1.automations)[':id']['enable']['$post'],
+    (typeof scoped.automations)[':id']['enable']['$post'],
     200
   >;
   type PauseAutomation200 = InferResponseType<
-    (typeof client.api.v1.automations)[':id']['pause']['$post'],
+    (typeof scoped.automations)[':id']['pause']['$post'],
     200
   >;
   type CheckAutomation202 = InferResponseType<
-    (typeof client.api.v1.automations)[':id']['check']['$post'],
+    (typeof scoped.automations)[':id']['check']['$post'],
     202
   >;
-  type AutomationLog200 = InferResponseType<(typeof client.api.v1)['automation-log']['$get'], 200>;
+  type AutomationLog200 = InferResponseType<(typeof scoped)['automation-log']['$get'], 200>;
   type RetryReceipt202 = InferResponseType<
-    (typeof client.api.v1)['automation-log'][':receiptId']['retry']['$post'],
+    (typeof scoped)['automation-log'][':receiptId']['retry']['$post'],
     202
   >;
 

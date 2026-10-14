@@ -84,17 +84,20 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 export const healthResponseSchema = z.object({
   version: z.string(),
   latestVersion: z.string().optional(),
-  repoRoot: z.string(),
-  repo: repoInfoSchema.nullable(),
+  // Deprecated compatibility fields, absent in workspace mode. `repoRoot`/`repo`/`forge` described
+  // the single repo this server booted in; a project-neutral `cez serve` has no such repo, so the
+  // workspace-mode answer omits them (BACKWARD_COMPATIBILITY.md §2).
+  repoRoot: z.string().optional(),
+  repo: repoInfoSchema.nullable().optional(),
+  forge: forgeInfoSchema.nullable().optional(),
   checks: z.array(backendCheckSchema),
   defaultRunner: runnerSchema,
-  forge: forgeInfoSchema.nullable(),
   capabilities: capabilitiesSchema,
-  // Always sent: `workspaceSummary()` returns both unconditionally, and an unreadable workspace
-  // degrades to `projects: []` rather than to an absent key. The hand-written DTO declared them
-  // optional, which was wider than the server has ever been.
+  // Always sent: the registry enumeration degrades to `projects: []` rather than to an absent key.
   projects: z.array(z.object({ id: z.string(), name: z.string() })),
-  bootProject: z.string(),
+  // Deprecated: the folder THIS server was started in. Absent in workspace mode — there is no
+  // boot project; the authoritative project id is the one in a `/api/v1/p/:projectId/*` path.
+  bootProject: z.string().optional(),
   /** Random identity of the installed service, when server-install supplied one. */
   instanceId: z.string().optional(),
 });

@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /** The graph-workflow routes (spec 2026-09-30-workflow-node-editor, phase 1b). */
 describe('the workflow graph API', () => {
@@ -23,7 +24,7 @@ describe('the workflow graph API', () => {
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  const app = () => createApp({ repoRoot, store, manager: {} as RunManager, version: 'test' });
+  const app = () => createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: 'test' });
   const post = (path: string, body: unknown) =>
     apiRequest(app(), path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 

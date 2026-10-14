@@ -10,6 +10,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * The workspace settings API (multi-project spec, step 2.7):
@@ -47,13 +48,7 @@ describe('the workspace settings API (step 2.7)', () => {
     // config), so the PUT → refresh() → cached-limits chain is observed end to
     // end. The routes never touch the manager — an empty stub is honest.
     semaphore = new WorkspaceSemaphore();
-    app = createApp({
-      repoRoot,
-      store,
-      manager: {} as RunManager,
-      version: '0.0.0-test',
-      semaphore,
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager, semaphore }), version: '0.0.0-test' });
   });
 
   afterEach(() => {

@@ -9,6 +9,7 @@ import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 describe('workspace skills update API', () => {
   const savedHome = process.env.CEZ_HOME;
@@ -34,8 +35,7 @@ describe('workspace skills update API', () => {
       ];
     });
     service = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => null });
-    app = createApp({ repoRoot, bootProjectId: 'repo', store, manager: {} as RunManager,
-      version: 'test', skillsUpdate: service });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: 'test', skillsUpdate: service });
   });
 
   afterEach(() => {

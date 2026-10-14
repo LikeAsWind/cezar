@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 import type { RunManager, StartRunInput } from '../workflows/run.ts';
@@ -35,7 +36,7 @@ describe('POST /runs and the dispatch intent', () => {
         return store.createRun({ title: 't', workflow: 'quick-task', task: input.task, steps: [] });
       },
     } as unknown as RunManager;
-    app = createApp({ repoRoot, store, manager, version: '0.0.0-test', providerAuth: connectedProviderAuth() });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import type { SocketHub, TopicPublisher } from './ws.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
@@ -84,9 +85,7 @@ describe('health topic + cache (live-server path)', () => {
   const build = () => {
     const { hub, topics, registrations } = stubHub();
     const deps: ServerDeps = {
-      repoRoot,
-      store,
-      manager: {} as RunManager,
+      runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }),
       version: '0.0.0-test',
       socketHub: hub,
     };
@@ -284,7 +283,7 @@ describe('health topic + cache (live-server path)', () => {
 
   it('a hub-less app is unchanged: no cache, every request computes fresh', async () => {
     setRunner('claude');
-    const app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
     currentApp = app;
     expect(await runner()).toBe('claude');
     setRunner('codex');

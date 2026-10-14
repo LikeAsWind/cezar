@@ -12,6 +12,7 @@ import { clearProjectProbeCache } from '../workspace/projects.ts';
 import { createProject, listGithubOwners, type CommandRunner } from './create-project.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp, type RegisterProjectResponse, type ServerDeps } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * New project (spec 2026-09-29-create-new-project): `POST /api/v1/projects/create`
@@ -267,7 +268,7 @@ describe('POST /api/v1/projects/create', () => {
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
 
   const post = async (body: unknown, over: Partial<ServerDeps> = {}) => {
     const res = await apiRequest(makeApp(over), '/api/v1/projects/create', {
@@ -282,7 +283,7 @@ describe('POST /api/v1/projects/create', () => {
     const bus = new WorkspaceEventBus();
     const seen: string[] = [];
     bus.on((event) => seen.push(event));
-    const { status, body } = await post({ name: 'brand-new', checkoutId: 'c9' }, { workspaceEvents: bus });
+    const { status, body } = await post({ name: 'brand-new', checkoutId: 'c9' }, { runtime: testRuntime({ workspaceEvents: bus }) });
     expect(status).toBe(200);
     expect(body.project).toMatchObject({ name: 'brand-new', source: 'local', status: 'ok' });
     expect(body.project?.root).toBe(join(checkoutRoot, 'brand-new'));

@@ -12,6 +12,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 // Junie has no read-only auth-status command, so `ProviderAuthService` probes it through a real
 // ACP session instead of `runCommand`. Left unmocked, the boot warm-up in this suite spawned a
@@ -62,17 +63,9 @@ describe('GET /api/v1/workspace/events', () => {
     contexts = new ProjectContexts({ listProjects });
     bus = new WorkspaceEventBus();
     bootId = (await registerProject(repoRoot)).id;
-    app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
-      version: '0.0.0-test',
-      contexts,
-      workspaceEvents: bus,
-      providerAuth: new ProviderAuthService({
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts, workspaceEvents: bus }), version: '0.0.0-test', providerAuth: new ProviderAuthService({
         createAuthFailureId: () => 'auth-incident-1',
-      }),
-    });
+      }) });
   });
 
   afterEach(async () => {

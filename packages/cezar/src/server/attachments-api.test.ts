@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import { attachmentLibraryDir, type PastedContent, type RunManager, type StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 
@@ -54,13 +55,7 @@ describe('attachment routes (#950)', () => {
       deferMessage: () => false,
       continueRun: () => ({ ok: false, error: 'cannot continue' }),
     } as unknown as RunManager;
-    app = createApp({
-      repoRoot,
-      store,
-      manager,
-      version: '0.0.0-test',
-      providerAuth: connectedProviderAuth(),
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
   });
 
   afterEach(() => {

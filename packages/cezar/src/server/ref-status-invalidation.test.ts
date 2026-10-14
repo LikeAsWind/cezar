@@ -9,6 +9,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { forgetRefStatus } from './github.ts';
 import { createApp } from './server.ts';
+import { testRuntime } from './runtime.testkit.ts';
 
 /**
  * The two places cezar changes a pull request itself — and therefore the two places it must stop
@@ -52,12 +53,7 @@ describe('a reference cezar changes itself is forgotten, not waited out', () => 
     execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoRoot });
     execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/demo.git'], { cwd: repoRoot });
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    app = createApp({
-      repoRoot,
-      store,
-      manager: { isActive: () => false } as unknown as RunManager,
-      version: '0.0.0-test',
-    });
+    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager }), version: '0.0.0-test' });
   });
 
   afterEach(() => {
