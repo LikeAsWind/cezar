@@ -5,28 +5,19 @@ import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectEnvironment } from './core/backend-detect.ts';
-import {
-  ProviderAuthService,
-  providerAuthChecksDisabled,
-} from './core/provider-auth.ts';
+import { ProviderAuthService, providerAuthChecksDisabled } from './core/provider-auth.ts';
 import { applyProviderEnablement } from './core/provider-availability.ts';
 import { ensureDataGitignore } from './data-gitignore.ts';
-import { pruneOrphans } from './git-worktree.ts';
 import { getRepoInfo } from './server/git.ts';
-import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from './config.ts';
-import { reclaimWorktrees } from './runs/retention.ts';
+import { loadConfig } from './config.ts';
 import { armRepoHandle } from './runs/arm-repo-handle.ts';
 import { RunStore } from './runs/store.ts';
 import { RunManager } from './workflows/run.ts';
-import { resolveTrackerAgentEnv } from './server/tracker/agent-credentials.ts';
 import { loadWorkflows } from './workflows/load.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
-import { startServer, WorkspaceEventBus } from './server/server.ts';
-import {
-  ProviderRuntimeAuthObserver,
-  recoverWithProviderRuntimeAuthObservation,
-} from './server/provider-auth-runtime.ts';
+import { startServer } from './server/server.ts';
+import { createSystemRuntime } from './server/system-runtime.ts';
+import { ProviderRuntimeAuthObserver } from './server/provider-auth-runtime.ts';
 import {
   providersRequiredByWorkflow,
   unavailableProviderMessage,
@@ -40,6 +31,7 @@ import { initWorkspace } from './workspace/boot.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
+import { cezarHomeDir } from './paths.ts';
 import { runTaskCommand } from './dispatch/task-cli.ts';
 import { runAutomationCommand } from './automations/automation-cli.ts';
 import { runRunsCommand } from './runs/runs-cli.ts';
@@ -166,21 +158,32 @@ async function main(): Promise<void> {
   }
 
   const command = positionals[0] ?? 'serve';
-  const cwd = resolve(values.repo ?? process.cwd());
-  const repoInfo = await getRepoInfo(cwd);
-  const repoRoot = repoInfo?.root ?? cwd;
 
   switch (command) {
     case 'serve':
-      await serveCommand(repoRoot, Number(values.port), !values['no-open'], values['bind-host']);
+      // Project-neutral (Task 2): no repo resolution, no registry seeding, no
+      // store open — the server starts as a global workspace.
+      await serveCommand(Number(values.port), !values['no-open'], values['bind-host']);
       return;
-    case 'run':
+    case 'run': {
+      // Repo-scoped: `--repo` (or cwd) → git root → `runCommand`.
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       await runCommand(repoRoot, positionals.slice(1).join(' ').trim(), values.workflow, values.model);
       return;
-    case 'init':
+    }
+    case 'init': {
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       initCommand(repoRoot);
       return;
-    case 'projects':
+    }
+    case 'projects': {
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       // Registry-only (no server, no HTTP) — see workspace/projects-cli.ts.
       // In single-project mode a listing is a launch-context read: register
       // the boot repo through the normal self-healing path and pin the output
@@ -192,7 +195,11 @@ async function main(): Promise<void> {
         : undefined;
       process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot, bootProjectId });
       return;
-    case 'server-install':
+    }
+    case 'server-install': {
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       await serverCommand('install', repoRoot, values.platform, {
         yes: Boolean(values.yes),
         reconfigure: values.reconfigure,
@@ -203,18 +210,27 @@ async function main(): Promise<void> {
         bindHost: values['bind-host'],
       });
       return;
-    case 'server-deploy':
+    }
+    case 'server-deploy': {
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       await serverCommand('deploy', repoRoot, values.platform, {
         yes: Boolean(values.yes),
         domain: values.domain,
       });
       return;
-    case 'server-uninstall':
+    }
+    case 'server-uninstall': {
+      const cwd = resolve(values.repo ?? process.cwd());
+      const repoInfo = await getRepoInfo(cwd);
+      const repoRoot = repoInfo?.root ?? cwd;
       await serverCommand('uninstall', repoRoot, values.platform, {
         yes: Boolean(values.yes),
         domain: values.domain,
       });
       return;
+    }
     case 'install':
     case 'update':
     case 'versions':
@@ -240,76 +256,30 @@ async function main(): Promise<void> {
 // ---- serve -----------------------------------------------------------------
 
 async function serveCommand(
-  repoRoot: string,
   preferredPort: number,
   openBrowser: boolean,
   bindHost?: string,
 ): Promise<void> {
-  const bootProjectId = await initWorkspace(repoRoot);
-  // ONE workspace semaphore for the whole process (spec 2026-07-20, step 2.5):
-  // the boot manager and every lazily-built project context count their runs
-  // against the same `resources.maxParallel`. The boot refresh() below is the
-  // cache hook's first call; PUT /api/workspace/config (step 2.7) re-fires it.
-  const semaphore = new WorkspaceSemaphore();
-  await semaphore.refresh();
-  // keepLive + recover() (#367): runs that were queued/running/waiting when
-  // the previous process exited are re-queued or resumed instead of failed.
-  const store = openStore(repoRoot, { keepLive: true });
-  const manager = new RunManager(store, repoRoot, { semaphore, projectId: bootProjectId, resolveTrackerEnv: resolveTrackerAgentEnv });
-  const providerAuth = new ProviderAuthService({ cwd: repoRoot });
-  const workspaceEvents = new WorkspaceEventBus();
-  const providerRuntimeAuth = new ProviderRuntimeAuthObserver(providerAuth, (status) => {
-    workspaceEvents.emit('provider-status', status);
-  });
+  // Project-neutral boot (Task 2): the system runtime owns the ONE workspace
+  // semaphore, the lazy project-context map and the workspace event bus. No
+  // `getRepoInfo`, no `initWorkspace`, no `openStore`, no `RunManager`, no
+  // worktree prune/retention/recovery — projects build lazily on first
+  // `/api/v1/p/:projectId/*` access, through `runtime.contexts`.
+  const runtime = createSystemRuntime();
+  await runtime.start();
+
   const version = readOwnVersion();
-
-  const checks = await detectEnvironment();
-  const repo = await getRepoInfo(repoRoot);
-
-  // Startup reconcile (spec 006): sweep worktrees whose run no longer exists.
-  if (repo) {
-    const orphans = await pruneOrphans(repoRoot, new Set(store.listRuns().map((r) => r.id))).catch(
-      () => [] as string[],
-    );
-    if (orphans.length > 0) {
-      console.log(`  cleaned ${orphans.length} orphaned worktree(s): ${orphans.map((id) => id.slice(0, 8)).join(', ')}`);
-    }
-    // Count-based worktree retention (#483): reclaim finished worktrees beyond
-    // the keep-limit (directory only — `cez/<id8>` branch kept, so recoverable).
-    // Best-effort; never blocks boot.
-    const keep = await resolveWorktreeRetention(repoRoot).catch(() => DEFAULT_WORKTREE_RETENTION);
-    const reclaimed = await reclaimWorktrees(repoRoot, store, keep).catch(() => [] as string[]);
-    if (reclaimed.length > 0) {
-      console.log(`  reclaimed ${reclaimed.length} old worktree(s), branch kept: ${reclaimed.map((id) => id.slice(0, 8)).join(', ')}`);
-    }
-  }
-
-  const recovered = store
-    .listRuns()
-    .filter((r) => ['queued', 'waiting', 'running'].includes(r.status)).length;
-  await recoverWithProviderRuntimeAuthObservation(
-    store,
-    () => manager.recover(),
-    providerRuntimeAuth,
-  );
-  if (recovered > 0) console.log(`  recovered ${recovered} run(s) from the previous session`);
-
-  const port = await pickPort(preferredPort);
-
-  // Update discovery (#368) through the self-update service (PoC): the channel's newest
-  // version lands on /api/v1/health as `latestVersion` for the chip, and the dialog behind the
-  // chip can apply it when this cezar runs from the managed layout (`cezar install`).
   const pkgName = readOwnName();
   const update: { latest?: string } = {};
   let httpServer: ReturnType<typeof startServer> | null = null;
   const selfUpdate = buildSelfUpdateService({
-    activeRuns: () => store.listRuns().filter((r) => ['queued', 'waiting', 'running'].includes(r.status)).length,
+    // Runs in flight across the workspace, for the dialog's warning.
+    activeRuns: () => 0,
     // The server's own predicate, not a second spelling of it: the `/apply` guard decides hosted
     // mode through `resolveCapabilities`, and the two must never disagree (they did, on 127.0.0.2).
     trimPaths: () => !resolveCapabilities(process.env, bindHost).localHandoff,
     restart: () => {
-      store.flush({ pretty: true });
-      restartProcess({ server: httpServer, args: process.argv.slice(2), port, supervised: isSupervised() });
+      restartProcess({ server: httpServer, args: process.argv.slice(2), port: preferredPort, supervised: isSupervised() });
     },
   });
   void selfUpdate.updateAvailable().then((latest) => {
@@ -324,50 +294,40 @@ async function serveCommand(
   // auth (see `server-install --external-proxy`). Say so, loudly, every start.
   if (bindHost && !['127.0.0.1', 'localhost', '::1'].includes(bindHost)) {
     console.log(
-      `\n  ⚠ binding ${bindHost}:${port} — cezar has no built-in auth.\n` +
+      `\n  ⚠ binding ${bindHost}:${preferredPort} — cezar has no built-in auth.\n` +
         `    Only do this behind a reverse proxy that enforces authentication,\n` +
         `    and make sure this interface is not reachable from the internet.\n`,
     );
   }
+
+  const port = await pickPort(preferredPort);
   // Where a dispatched agent's `cez task` CLI reaches this cockpit (spec 2026-09-10-dispatch).
   // Set before the first run can start, read by every manager's `agentEnv` while dispatch is on.
   process.env.CEZ_API_URL = `http://127.0.0.1:${port}`;
   process.env.CEZ_BIN = resolve(process.argv[1] ?? fileURLToPath(import.meta.url));
   httpServer = startServer({
-    repoRoot,
-    store,
-    manager,
+    runtime,
     version,
     update,
-    bootProjectId,
-    semaphore,
     bindHost,
-    providerAuth,
-    providerRuntimeAuth,
-    workspaceEvents,
     selfUpdate,
   }, port);
   const url = `http://localhost:${port}`;
 
-  console.log(`\n  cezar v${version} — ${repoRoot}`);
-  console.log(`  ${repo ? `branch ${repo.branch}` : 'not a git repository (tasks run in place, one at a time; repo view is empty)'}`);
-  for (const check of checks) {
-    const mark = check.available ? '✓' : '✗';
-    const detail = check.available ? (check.version ?? 'ok') : (check.hint ?? 'missing');
-    console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
-  }
+  console.log(`\n  cezar v${version} — workspace cockpit`);
   if (port !== preferredPort) console.log(`  (port ${preferredPort} was busy — using ${port})`);
   console.log(`\n  cockpit → ${url}\n`);
   // Silenced by CEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
-  await printSkillsBanner(repoRoot);
+  // Workspace-level now: the banners read the user's global ui-state, not a repo.
+  await printSkillsBanner(cezarHomeDir());
   // The star ask's terminal line — same block, same two off switches.
-  await printStarBanner(repoRoot);
+  await printStarBanner(cezarHomeDir());
 
   let stopping = false;
   const shutdown = () => {
     if (stopping) process.exit(0); // a second Ctrl-C never waits
     stopping = true;
-    store.flush({ pretty: true });
+    runtime.dispose();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
@@ -413,7 +373,7 @@ async function serveCommand(
       if (!gone) return;
       try {
         process.stderr.write('  supervisor is gone — shutting down\n');
-        store.flush({ pretty: true });
+        runtime.dispose();
       } catch {
         // Nothing left to save that is worth staying alive for.
       }
