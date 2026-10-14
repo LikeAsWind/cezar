@@ -13,7 +13,6 @@ import { RunNotifications } from './components/run-notifications'
 import { StarPromo } from './components/star-promo'
 import { ThemeProvider } from './components/theme-provider'
 import { Toaster } from './components/ui/toaster'
-import { Telemetry } from './lib/telemetry'
 import { AppRoutes } from './routes'
 import { LocaleProvider } from './components/locale-provider'
 
@@ -58,9 +57,6 @@ export function App() {
               <AppearanceProvider>
                 <BrowserRouter>
                   <LastLocationController />
-                  {/* Page views + error hooks; the server forwards them only after the user opted in
-                      (docs/telemetry.md). Renders nothing. */}
-                  <Telemetry />
                   {/* At the root for the same reason the event stream is: the sidebar, the task table
                       and an open run header all paint PR/issue chips, often the SAME ones, and each
                       asking for itself was several round trips and a staggered wave of colour. They

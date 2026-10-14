@@ -12,7 +12,6 @@ import {
 
 import { useHealth, useProjects } from './api/queries'
 import { ProjectScopeProvider } from './api/project-scope-context'
-import { lazyRoute } from './lib/telemetry'
 import { bareRootLanding, locationToRestore, readStoredLastLocation } from './lib/last-location'
 import { Navigate as ScopedNavigate, stripProjectPrefix } from './lib/project-router'
 import { AutomationsLoading } from './routes/automations/automations-loading'
@@ -37,7 +36,7 @@ import { TasksOverviewRoute } from './routes/tasks-overview'
 import { GlobalTasksRoute } from './routes/global-tasks'
 
 // Dashboard charts, drag controls and exports are paid for only on this route.
-const DashboardRoute = lazyRoute('dashboard', () =>
+const DashboardRoute = lazy(() =>
   import('./routes/dashboard').then((m) => ({ default: m.DashboardRoute })),
 )
 
@@ -45,25 +44,25 @@ const DashboardRoute = lazyRoute('dashboard', () =>
  *  ~140 KB gz) — as a static import it would sit in the main bundle every visitor pays for
  *  before any route renders. The Suspense fallback is the same loading state the route itself
  *  shows while fetching, so the split is invisible to the user. */
-const TaskThreadRoute = lazyRoute('task-thread', () =>
+const TaskThreadRoute = lazy(() =>
   import('./routes/task-thread/task-thread').then((m) => ({ default: m.TaskThreadRoute })),
 )
 
 /** Lazy for the same reason: the compare view renders Progress excerpts through Streamdown and
  *  full diffs through the Shiki singleton — thread-chunk weight the home screen must not pay. */
-const CompareVariantsRoute = lazyRoute('compare', () =>
+const CompareVariantsRoute = lazy(() =>
   import('./routes/compare-variants').then((m) => ({ default: m.CompareVariantsRoute })),
 )
 
 /** Lazy because both tabs render the shared run header, which lives in the thread chunk
  *  (markdown stack and all) — a static import here would pull that into the main bundle. */
-const TaskChangesRoute = lazyRoute('task-changes', () =>
+const TaskChangesRoute = lazy(() =>
   import('./routes/task-git/task-changes').then((m) => ({ default: m.TaskChangesRoute })),
 )
-const TaskFilesRoute = lazyRoute('task-files', () =>
+const TaskFilesRoute = lazy(() =>
   import('./routes/task-git/task-files').then((m) => ({ default: m.TaskFilesRoute })),
 )
-const TaskCommitsRoute = lazyRoute('task-commits', () =>
+const TaskCommitsRoute = lazy(() =>
   import('./routes/task-git/task-commits').then((m) => ({ default: m.TaskCommitsRoute })),
 )
 const TaskNotesRoute = lazy(() =>
@@ -72,40 +71,40 @@ const TaskNotesRoute = lazy(() =>
 
 /** Lazy because the repo view renders through the `<Diff>` facade and the Shiki singleton —
  *  the same heavy chunk the task git tabs ride; the home screen must not pay for it. */
-const RepoGitRoute = lazyRoute('repo-git', () =>
+const RepoGitRoute = lazy(() =>
   import('./routes/repo-git/repo-git').then((m) => ({ default: m.RepoGitRoute })),
 )
 
 /** Lazy because the GitHub detail pane renders issue/PR bodies through the same markdown
  *  stack the thread carries — thread-chunk weight the home screen must not pay. */
-const GithubRoute = lazyRoute('github', () =>
+const GithubRoute = lazy(() =>
   import('./routes/github/github').then((m) => ({ default: m.GithubRoute })),
 )
-const TrackerRoute = lazyRoute('tracker', () =>
+const TrackerRoute = lazy(() =>
   import('./routes/tracker/tracker').then((m) => ({ default: m.TrackerRoute })),
 )
 
 /** The live workflow graph of a task (same spec, phase 3) — the editor's chunk, loaded lazily. */
-const TaskGraphRoute = lazyRoute('task-graph', () =>
+const TaskGraphRoute = lazy(() =>
   import('./routes/workflow-graph/task-graph').then((m) => ({ default: m.TaskGraphRoute })),
 )
 
 /** The workflow node editor (spec 2026-09-30-workflow-node-editor) — the Workflows surface. Lazy
  *  so React Flow stays out of the main bundle. */
-const WorkflowGraphRoute = lazyRoute('workflow-graph', () =>
+const WorkflowGraphRoute = lazy(() =>
   import('./routes/workflow-graph/workflow-graph').then((m) => ({ default: m.WorkflowGraphRoute })),
 )
 
 /** Lazy because the skill detail renders the skill body through the same markdown stack the
  *  thread carries — thread-chunk weight the home screen must not pay (it used to ride the main
  *  bundle as a static Settings section). */
-const SkillsRoute = lazyRoute('skills', () => import('./routes/skills').then((m) => ({ default: m.SkillsRoute })))
+const SkillsRoute = lazy(() => import('./routes/skills').then((m) => ({ default: m.SkillsRoute })))
 
 /** Lazy because the surface carries the editor (templates, schedule/GitHub fields, a next-five-
  *  runs preview), the week/day calendars, and the log — ~3k lines nothing outside this route
  *  imports, and now that automations are on by default, every visitor would otherwise pay for
  *  it before ever opening `/automations`. */
-const AutomationsRoute = lazyRoute('automations', () =>
+const AutomationsRoute = lazy(() =>
   import('./routes/automations/automations-route').then((m) => ({ default: m.AutomationsRoute })),
 )
 

@@ -103,8 +103,6 @@ import type {
   RunRecord,
   RunsIndexResponse,
   StarCountPayload,
-  SetTelemetryConsentInput,
-  TelemetryConsentPayload,
   WorktreeEntry,
   SaveWorkflowInput,
   SaveWorkflowResponse,
@@ -158,8 +156,6 @@ import type { Ok, OkJson } from '@open-mercato/cezar-api-client'
 import type { ClientResponse } from 'hono/client'
 import type { ResponseFormat } from 'hono/types'
 import type { AppType } from '@open-mercato/cezar/app-type'
-import { SID_HEADER, sid } from '@/lib/sid'
-import { noteFailedRequest } from '@/lib/failed-request'
 
 /**
  * The cockpit's client for its own HTTP API.
@@ -399,16 +395,10 @@ async function unwrapValidated<R extends ClientResponse<unknown, number, Respons
  */
 async function fetchOrThrow(url: string, init?: RequestInit): Promise<Response> {
   try {
-    // The device id rides every request, so whatever this device does server-side (start a
-    // task, hit an error) is attributed to it — see lib/sid.ts.
-    const headers = new Headers(init?.headers)
-    headers.set(SID_HEADER, sid())
-    const res = await fetch(url, { ...init, headers, credentials: 'include' })
-    if (!res.ok) noteFailedRequest(url, init?.method, res.status)
+    const res = await fetch(url, { ...init, headers: new Headers(init?.headers), credentials: 'include' })
     return res
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause
-    noteFailedRequest(url, init?.method, 0)
     throw new ApiError(0, `cannot reach the cezar server (${url})`, { cause })
   }
 }
@@ -455,14 +445,6 @@ export async function getStarCount(opts?: ReadOptions): Promise<StarCountPayload
 
 /** The opt-in telemetry answer (`~/.cezar/config.json`), behind the consent bar and
  *  Settings → Privacy. */
-export async function getTelemetryConsent(opts?: ReadOptions): Promise<TelemetryConsentPayload> {
-  return unwrap(await cez.api.v1.telemetry.consent.$get({}, init(opts)), '/telemetry/consent')
-}
-
-export async function putTelemetryConsent(input: SetTelemetryConsentInput): Promise<TelemetryConsentPayload> {
-  return unwrap(await cez.api.v1.telemetry.consent.$put({ json: input }), '/telemetry/consent')
-}
-
 /** Host-local catalog for one discovery runner (`claude`, `codex`, `opencode`, `cursor` — #794, #784).
  *  Workspace-level: one CLI/account serves every project. */
 export async function getRunnerModels(

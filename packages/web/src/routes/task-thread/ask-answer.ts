@@ -10,7 +10,6 @@ import {
   useExistingProviderAvailability,
 } from './active-provider'
 import { isRunActive, lastSessionId, runActionFlags } from './run-actions'
-import { trackMessageSent } from '@/lib/telemetry'
 
 /**
  * Which seam an AskUser answer travels on.
@@ -145,10 +144,7 @@ export function useAskAnswer(run: ApiRun, projectId?: string): AskAnswerDelivery
     }
     // No runner override: the server keeps the run's own backend and model, so answering a
     // question cannot silently switch engines when another provider happens to be connected.
-    return resume.mutateAsync({ text }).then((result) => {
-      trackMessageSent('ask_answer')
-      return result
-    })
+    return resume.mutateAsync({ text }).then((result) => result)
   }
 
   const send = async (text: string): Promise<string | undefined> => {
@@ -166,7 +162,6 @@ export function useAskAnswer(run: ApiRun, projectId?: string): AskAnswerDelivery
       }
       try {
         await sendMessage.mutateAsync({ text })
-        trackMessageSent('ask_answer')
       } catch (sendError) {
         // The cached record said "live" but the session had already closed — resume instead
         // of dropping the answer the user just gave. The old session can still be settling

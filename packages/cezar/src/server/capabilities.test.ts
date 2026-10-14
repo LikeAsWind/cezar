@@ -283,7 +283,7 @@ describe('resolveCapabilities — usage presentation', () => {
     },
   );
 
-  it('does not change telemetry visibility when another deployment capability is enabled', () => {
+  it('does not change token-metric visibility when another deployment capability is enabled', () => {
     expect(resolveCapabilities({ CEZ_REMOTE: '1', CEZ_FOLLOWUPS: '1' })).toMatchObject({
       tokenMetrics: true,
       tokenUsageMetrics: true,

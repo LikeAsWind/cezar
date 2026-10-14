@@ -27,7 +27,6 @@ import { useContinuationProvider } from './continuation-provider'
 import { MESSAGE_TEXT_MAX, messageWithReview, type DiffComments } from './diff-comments'
 import { useDraft } from './thread-draft'
 import { useFinishRun } from './use-finish-run'
-import { trackMessageSent } from '@/lib/telemetry'
 
 /**
  * The review gate (spec 009, §"Task thread" review bullet) on the new surface — cezar's core
@@ -99,7 +98,6 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
           throw new Error(t('Too long with the diff comments attached — shorten the notes or remove some comments.'))
         }
         const result = await continueRun(run.id, { text: message, runner: continuation.runnerOverride })
-        trackMessageSent('review')
         return result
       }
       return draft.submit(() => (diffComments ? diffComments.submit(deliver) : deliver([])))

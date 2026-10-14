@@ -140,9 +140,8 @@ export const dryRunCommandRunner: CommandRunner = async (cmd, args, opts) => {
 };
 
 /**
- * Where creation stopped — `project_create_failed`'s telemetry label, so a closed set (the route
- * adds `register` for a project that was created but could not be registered). Never the error
- * text: that can carry paths and repository names.
+ * Where creation stopped — a closed set so the cockpit can say which step failed.
+ * Never the error text: that can carry paths and repository names.
  */
 export type CreateProjectFailureStage =
   | 'invalid_input'
