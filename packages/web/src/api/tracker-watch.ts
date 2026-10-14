@@ -79,9 +79,16 @@ export function useTrackerWatch(input: TrackerWatchInput, queryKey: QueryKey, en
       const active = () => !disposed && !abort.signal.aborted
       stop = () => { abort.abort(); offTopic(); clearTimeout(retry) }
       const accept = (snapshot: TrackerWatchSnapshot) => active() && receive(snapshot)
+      // A transport hiccup during the first check reads as an error before the retry
+      // lands a few seconds later — the cockpit already shows "synced … ago" once it
+      // does. Keep the banner quiet through that transient so a brief failure on page
+      // open does not flash "Automatic checking is temporarily unavailable" and
+      // "list may be outdated" at a list that just loaded fine.
+      let firstFailure = false
       const fail = () => {
         if (!active()) return
-        update('Automatic checking is temporarily unavailable. Retrying…')
+        firstFailure = latest == null
+        update(firstFailure ? null : 'Automatic checking is temporarily unavailable. Retrying…')
         offTopic(); clearTimeout(retry)
         retry = setTimeout(() => { if (active()) activate() }, 5_000)
       }
