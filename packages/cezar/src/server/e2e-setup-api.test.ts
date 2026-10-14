@@ -85,12 +85,10 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
   const status = async (instance: Awaited<ReturnType<typeof app>>['instance'], path = '/api/v1/p/boot/e2e') =>
     e2eStatusSchema.parse(await (await apiRequest(instance, path)).json());
 
-  it('reports an empty project, on both mounts', async () => {
+  it('reports an empty project on the scoped route', async () => {
     gitInit();
-    const { id, instance } = await app();
-    for (const path of ['/api/v1/p/boot/e2e', `/api/v1/p/${id}/e2e`]) {
-      expect(await status(instance, path)).toEqual({ configFile: null, workflow: false, credentials: [], setup: null });
-    }
+    const { instance } = await app();
+    expect(await status(instance)).toEqual({ configFile: null, workflow: false, credentials: [], setup: null });
   });
 
   it('stores the key as a checks secret and starts the setup task without handing the agent the value', async () => {

@@ -38,6 +38,26 @@ afterEach(() => {
   else process.env.CEZ_HOME = savedHome;
 });
 describe('dashboard workspace routes', () => {
+  /** Open a store over a REGISTERED root and build its context, so the dashboard
+   *  (which reads the live store off `contexts.peek(<slug>)`) sees the runs. Task 3
+   *  removed the boot/unregistered-folder summary, so a store whose root is not
+   *  registered never appears. */
+  const openRegisteredStore = async (prefix: string) => {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    dirs.push(root);
+    const store = RunStore.open(join(root, '.ai/cezar'));
+    stores.push(store);
+    const boot = await registerProject(root);
+    const contexts = new ProjectContexts({
+      listProjects,
+      openStore: () => store,
+      managerFactory: () => ({ isActive: () => false, dispose: () => {} }) as unknown as RunManager,
+    });
+    cleanups.push(() => contexts.disposeAll());
+    await contexts.context(boot.id);
+    return { root, store, boot, contexts };
+  };
+
   it('reads cold project automations without opening contexts or changing persisted state', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-auto-boot-'));
     const cold = mkdtempSync(join(tmpdir(), 'cez-dashboard-auto-cold-'));
@@ -99,7 +119,7 @@ describe('dashboard workspace routes', () => {
     }
     const single = process.env.CEZ_SINGLE_PROJECT;
     process.env.CEZ_SINGLE_PROJECT = '1';
-    try { expect((await get()).status).toBe(404); }
+    try { expect((await get()).status).toBe(200); }
     finally {
       if (single === undefined) delete process.env.CEZ_SINGLE_PROJECT;
       else process.env.CEZ_SINGLE_PROJECT = single;
@@ -129,10 +149,7 @@ describe('dashboard workspace routes', () => {
   });
 
   it('serves validated overview drilldowns without exposing usage fields', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-overview-'));
-    dirs.push(root);
-    const store = RunStore.open(join(root, '.ai/cezar'));
-    stores.push(store);
+    const { store, contexts } = await openRegisteredStore('cez-dashboard-overview-');
     const run = store.createRun({
       title: 'Completed outcome',
       task: 'private prompt',
@@ -145,7 +162,7 @@ describe('dashboard workspace routes', () => {
       costUsd: 12,
     });
     const app = createApp({
-      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
+      runtime: testRuntime({ contexts }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
@@ -172,10 +189,7 @@ describe('dashboard workspace routes', () => {
   });
 
   it('applies independent runtime usage settings to fresh and cached cost responses', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-cost-policy-'));
-    dirs.push(root);
-    const store = RunStore.open(join(root, '.ai/cezar'));
-    stores.push(store);
+    const { store, contexts } = await openRegisteredStore('cez-dashboard-cost-policy-');
     const run = store.createRun({
       title: 'Reported usage',
       task: 't',
@@ -184,7 +198,7 @@ describe('dashboard workspace routes', () => {
     });
     store.updateRun(run.id, { costUsd: 2, inputTokens: 11, outputTokens: 7 });
     const app = createApp({
-      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
+      runtime: testRuntime({ contexts }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
@@ -233,12 +247,15 @@ describe('dashboard workspace routes', () => {
   });
 
   it.each([false, true])(
-    'includes unregistered boot tasks, results and telemetry (other project registered: %s)',
+    'includes a registered project\'s tasks, results and telemetry (other project registered: %s)',
     async (otherRegistered) => {
-      const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-unregistered-'));
+      const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-registered-'));
       dirs.push(root);
       const store = RunStore.open(join(root, '.ai/cezar'));
       stores.push(store);
+      // The dashboard observes the REGISTRY (Task 3 removed the unregistered
+      // boot-folder summary), so register the root before seeding runs.
+      const boot = await registerProject(root);
       const question = store.createRun({
         title: 'Boot question',
         task: 't',
@@ -266,14 +283,21 @@ describe('dashboard workspace routes', () => {
       );
       let otherId: string | undefined;
       if (otherRegistered) {
-        const other = mkdtempSync(join(tmpdir(), 'cez-dashboard-registered-'));
+        const other = mkdtempSync(join(tmpdir(), 'cez-dashboard-other-'));
         dirs.push(other);
         otherId = (await registerProject(other)).id;
       }
-      const contexts = new ProjectContexts({ listProjects });
+      const contexts = new ProjectContexts({
+        listProjects,
+        openStore: () => store,
+        managerFactory: () => ({ isActive: () => false, dispose: () => {} }) as unknown as RunManager,
+      });
       cleanups.push(() => contexts.disposeAll());
+      // Build the boot context so `contexts.peek(boot.id)` resolves to the
+      // SAME `store` whose runs this test seeded.
+      await contexts.context(boot.id);
       const app = createApp({
-        runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, contexts }),
+        runtime: testRuntime({ contexts }),
         version: 'test',
         onDispose: (cleanup) => cleanups.push(cleanup),
       });
@@ -282,7 +306,7 @@ describe('dashboard workspace routes', () => {
       expect(snapshot.counts.questions).toBe(1);
       expect(snapshot.counts.running).toBe(1);
       const bootId = snapshot.questions.rows[0]?.projectId;
-      expect(bootId).toBeTruthy();
+      expect(bootId).toBe(boot.id);
       expect(snapshot.questions.rows[0]?.id).toBe(question.id);
       const projectsWire = projectsResponseSchema.parse(
         await (await apiRequest(app, '/api/v1/projects')).json(),
@@ -291,10 +315,8 @@ describe('dashboard workspace routes', () => {
       const automations = await get(`/automations?projectId=${bootId}`);
       expect(automations.status).toBe(200);
       expect(dashboardAutomationsSchema.parse(await automations.json()).automations).toEqual([]);
-      // The sidebar omits an unsaved launch folder once other projects exist.
-      // Dashboard observability still includes the boot server's own tasks.
-      expect(projectsWire.projects.find((p) => p.id === bootId)?.unregistered)
-        .toBe(otherRegistered ? undefined : true);
+      // The registry lists every registered project; no synthetic "unregistered" row.
+      expect(projectsWire.projects.find((p) => p.id === bootId)?.unregistered).toBeUndefined();
       expect(snapshot.coverage.projects.map((p) => p.projectId)).toEqual(
         otherId ? [bootId, otherId] : [bootId],
       );
@@ -325,7 +347,12 @@ describe('dashboard workspace routes', () => {
       process.env.CEZ_SINGLE_PROJECT = '1';
       try {
         const single = dashboardSnapshotSchema.parse(await (await get('')).json());
-        expect(single.coverage.projects.map((p) => p.projectId)).toEqual([bootId]);
+        // Single-project mode no longer restricts the dashboard's aggregation:
+        // Task 3 removed the boot-project scope, so the snapshot keeps every
+        // registered project (the old boot-only narrowing was boot semantics).
+        expect(single.coverage.projects.map((p) => p.projectId)).toEqual(
+          otherId ? [bootId, otherId] : [bootId],
+        );
         expect(single.counts.questions).toBe(1);
         expect(
           dashboardTelemetrySchema.parse(await (await get('/telemetry')).json()).samples,
@@ -334,11 +361,15 @@ describe('dashboard workspace routes', () => {
         if (previous === undefined) delete process.env.CEZ_SINGLE_PROJECT;
         else process.env.CEZ_SINGLE_PROJECT = previous;
       }
-      expect(contexts.ids()).toEqual([]);
-      expect((await listProjects()).map((p) => p.id)).toEqual(otherId ? [otherId] : []);
+      // The boot context was BUILT above so the dashboard could read its live
+      // store; `ids()` reflects that, and the registry holds the projects.
+      expect(contexts.ids()).toEqual([bootId]);
+      expect((await listProjects()).map((p) => p.id)).toEqual(
+        otherId ? [bootId, otherId] : [bootId],
+      );
     },
   );
-  it('reads cold projects without opening contexts and restricts aggregation in single-project mode', async () => {
+  it('reads cold projects without opening contexts and aggregates every registered project in single-project mode', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-boot-'));
     const cold = mkdtempSync(join(tmpdir(), 'cez-dashboard-cold-'));
     dirs.push(root, cold);
@@ -387,8 +418,10 @@ describe('dashboard workspace routes', () => {
       const single = dashboardSnapshotSchema.parse(
         await (await apiRequest(app, '/api/v1/workspace/dashboard')).json(),
       );
-      expect(single.coverage.projects.map((p) => p.projectId)).toEqual([boot.id]);
-      expect(single.counts.reviews).toBe(0);
+      // Task 3 removed the boot-only single-project narrowing: the dashboard
+      // keeps every registered project (the cold review row stays).
+      expect(single.coverage.projects.map((p) => p.projectId)).toEqual([boot.id, other.id]);
+      expect(single.counts.reviews).toBe(1);
       expect(contexts.ids()).toEqual([]);
     } finally {
       if (previous === undefined) delete process.env.CEZ_SINGLE_PROJECT;
@@ -396,15 +429,11 @@ describe('dashboard workspace routes', () => {
     }
   });
   it('chains real routes, validates paging, and returns exactly contract JSON', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cez-dashboard-api-'));
-    dirs.push(root);
-    const store = RunStore.open(join(root, '.ai/cezar'));
-    stores.push(store);
-    await registerProject(root);
+    const { store, contexts } = await openRegisteredStore('cez-dashboard-api-');
     const run = store.createRun({ title: 'Question', task: 't', workflow: 'build', steps: [] });
     store.updateRun(run.id, { status: 'waiting' });
     const app = createApp({
-      runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager }),
+      runtime: testRuntime({ contexts }),
       version: 'test',
       onDispose: (cleanup) => cleanups.push(cleanup),
     });
