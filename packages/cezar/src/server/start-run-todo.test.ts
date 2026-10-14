@@ -15,10 +15,10 @@ import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 
 /**
- * `POST /api/v1/runs` `todoId` (#374) — the audit trail across the composer detour.
+ * `POST /api/v1/p/boot/runs` `todoId` (#374) — the audit trail across the composer detour.
  *
  * Since the cockpit's Inbox "▶ Run" prefills `/new` instead of POSTing
- * `/api/v1/todos/:id/start` (never launch blind — #355), the entry's id travels
+ * `/api/v1/p/boot/todos/:id/start` (never launch blind — #355), the entry's id travels
  * `/new?…&todo=t1` → `todoId` → here, and a started run must land on the entry's
  * `startedTaskId` exactly as that route would have written it. Otherwise the
  * entry never leaves the inbox and a second Run duplicates the task.
@@ -27,7 +27,7 @@ import { connectedProviderAuth } from './provider-auth.testkit.ts';
  * is already created by the time we touch todos.json, so nothing about an
  * unknown, stale or already-started id may turn into a failed start.
  */
-describe('POST /api/v1/runs todoId', () => {
+describe('POST /api/v1/p/boot/runs todoId', () => {
   let repoRoot: string;
   let dataDir: string;
   let store: RunStore;
@@ -70,7 +70,7 @@ describe('POST /api/v1/runs todoId', () => {
   });
 
   const post = (body: unknown) =>
-    apiRequest(app, '/api/v1/runs', {
+    apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -85,7 +85,7 @@ describe('POST /api/v1/runs todoId', () => {
     expect(res.status).toBe(201);
     const run = (await res.json()) as RunRecord;
 
-    // Exactly what POST /api/v1/todos/:id/start writes — `visibleTodos()` hides it from here on.
+    // Exactly what POST /api/v1/p/boot/todos/:id/start writes — `visibleTodos()` hides it from here on.
     expect(readTodosFile()[0]?.startedTaskId).toBe(run.id);
     // …and the entry survives as the audit trail rather than being deleted.
     expect(readTodosFile()).toHaveLength(1);
@@ -112,7 +112,7 @@ describe('POST /api/v1/runs todoId', () => {
 
     const res = await post({ ...base, todoId: 't1' });
 
-    // The run the user asked for still starts — the 409 belongs to /api/v1/todos/:id/start, which
+    // The run the user asked for still starts — the 409 belongs to /api/v1/p/boot/todos/:id/start, which
     // is the route that has an inbox entry (not a task) as its subject.
     expect(res.status).toBe(201);
     expect(readTodosFile()[0]?.startedTaskId).toBe('run-first');

@@ -11,6 +11,7 @@ import { RunManager } from '../workflows/run.ts';
 import { ensureLaunchKey } from './launch-key.ts';
 import { getRepoInfo } from './git.ts';
 import { resolveTrackerAgentEnv } from './tracker/agent-credentials.ts';
+import { ensureDataGitignore } from '../data-gitignore.ts';
 
 /**
  * Per-project server context (spec 2026-07-20-multi-project-workspace,
@@ -224,6 +225,10 @@ export class ProjectContexts {
     if (project.status === 'missing') throw new ProjectContextError('missing-root', projectId);
 
     const dataDir = join(project.root, '.ai/cezar');
+    // Seed the per-project `.gitignore` so run data stays out of the user's
+    // repo history (spec § zero-config: the register path must do what the
+    // retired boot path did). Never throws.
+    ensureDataGitignore(project.root);
     // keepLive + recover() (#367), same as serveCommand: runs that were live
     // when this project's context last existed are re-queued or resumed.
     const openStore = this.deps.openStore ?? RunStore.open;
@@ -259,7 +264,13 @@ export class ProjectContexts {
       // failed build: the promise still resolves after `teardown` flushed the index and detached
       // every listener, and a healed record would then `touch()` a store whose lifecycle had
       // ended — scheduling a `runs.json` write from a context nobody owns any more.
-      armRepoHandle(store, project.root);
+      // Skipped under a managerFactory (route tests): arming shells out to `gh`, and a
+      // fire-and-forget spawn holding the temp root cwd races the test's `rmSync` (Windows EPERM).
+      // Skipped under CEZ_DRY_RUN: the handle is a network fetch for a cosmetic chip, and
+      // DRY_RUN is the offline/no-network mode (the same gate every other `gh` call here honors).
+      // Skipped for `not-git`: a project with no `.git` has no remote to classify, so `gh repo
+      // view` could only fail — spawning it is pure waste that still holds the root as cwd.
+      if (!this.deps.managerFactory && process.env.CEZ_DRY_RUN !== '1' && project.status !== 'not-git') armRepoHandle(store, project.root);
       return { id: project.id, root: project.root, dataDir, store, manager, automationStore, launchKey };
     } catch (err) {
       // A failed build must not leak the half-built context's subscriptions.

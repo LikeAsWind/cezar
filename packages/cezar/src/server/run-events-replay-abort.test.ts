@@ -53,7 +53,7 @@ describe('per-run SSE replay stops when the client disconnects', () => {
       store.appendEvent(run.id, { type: 'note', message: `m${index}`, padding: 'x'.repeat(128) });
     }
 
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/events`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/events`);
     const reader = res.body!.getReader();
     await reader.read();
     await reader.cancel();

@@ -5,7 +5,6 @@ import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { emitUsageForTest, type ProcessUsage } from '../core/process-usage.ts';
 import { RunStore } from '../runs/store.ts';
-import type { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -27,9 +26,9 @@ describe('usage SSE fan-out is scoped per project', () => {
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
-  let store: RunStore;
   let contexts: ProjectContexts;
   let app: Hono;
+  let bootId: string;
   let bootRunId: string;
   const closers: Array<() => Promise<void>> = [];
 
@@ -45,22 +44,32 @@ describe('usage SSE fan-out is scoped per project', () => {
       writeFileSync(join(root, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
-    bootRunId = store.createRun({
+    contexts = new ProjectContexts({
+      listProjects,
+      // A real store per project, but a managerFactory stub: the stub skips
+      // prune/recover AND the fire-and-forget repo-handle `gh` spawn, which
+      // would hold the temp root's cwd and race this suite's `rmSync`.
+      openStore: (dataDir) => RunStore.open(dataDir, { keepLive: true }),
+      managerFactory: () => ({ isActive: () => false, dispose: () => {} }) as unknown as import('../workflows/run.ts').RunManager,
+    });
+    bootId = (await registerProject(repoRoot)).id;
+    app = createApp({ runtime: testRuntime({ contexts }), version: '0.0.0-test' });
+    // Build the boot project's context and seed its run in the CONTEXT store —
+    // the /events usage filter reads `c.get('project').store`, and the legacy
+    // unscoped `/api/v1/events` boot alias was removed in Task 3, so the boot
+    // stream is the scoped `/api/v1/p/<boot>/events` spelling.
+    expect((await apiRequest(app, `/api/v1/p/${bootId}/runs`)).status).toBe(200);
+    bootRunId = contexts.peek(bootId)!.store.createRun({
       title: 'boot',
       workflow: 'quick-task',
       task: 'boot',
       steps: [],
     }).id;
-    contexts = new ProjectContexts({ listProjects });
-    await registerProject(repoRoot);
-    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts }), version: '0.0.0-test' });
   });
 
   afterEach(async () => {
     for (const close of closers.splice(0)) await close().catch(() => undefined);
     contexts.disposeAll();
-    store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
     if (savedHome === undefined) delete process.env.CEZ_HOME;
     else process.env.CEZ_HOME = savedHome;
@@ -116,7 +125,7 @@ describe('usage SSE fan-out is scoped per project', () => {
       steps: [],
     }).id;
 
-    const bootStream = await openStream('/api/v1/events'); // legacy alias = boot project
+    const bootStream = await openStream(`/api/v1/p/${bootId}/events`);
     const otherStream = await openStream(`/api/v1/p/${other.id}/events`);
     // The first ping is written after the handler subscribed to the sampler —
     // once it arrives, the fan-out below is guaranteed to reach the stream.

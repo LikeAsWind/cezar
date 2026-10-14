@@ -138,7 +138,7 @@ describe('workspace model catalog API', () => {
   });
 
   it('is workspace-level rather than project-scoped', async () => {
-    const response = await apiRequest(app(async () => []), '/api/v1/p/default/models?runner=codex');
+    const response = await apiRequest(app(async () => []), '/api/v1/p/boot/models?runner=codex');
     expect(response.status).toBe(404);
   });
 });

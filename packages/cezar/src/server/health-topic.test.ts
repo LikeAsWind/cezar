@@ -6,6 +6,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { testRuntime } from './runtime.testkit.ts';
+import { cezarHomeDir } from '../paths.ts';
 import type { SocketHub, TopicPublisher } from './ws.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
@@ -75,11 +76,15 @@ describe('health topic + cache (live-server path)', () => {
     vi.restoreAllMocks();
   });
 
-  /** `defaultRunner` comes from `.ai/cezar/config.json`, so writing it is a cheap way to
-   *  change what a fresh snapshot would say without touching git or the CLI probes. */
+  /** `defaultRunner` now comes from the machine-wide default (workspace mode,
+   *  Tasks 2–3): `~/.cezar/config.json` `agentDefaults.runner`. Writing it there
+   *  is a cheap way to change what a fresh snapshot would say. */
   const setRunner = (runner: string): void => {
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar/config.json'), JSON.stringify({ defaultRunner: runner }));
+    mkdirSync(cezarHomeDir(), { recursive: true });
+    writeFileSync(
+      join(cezarHomeDir(), 'config.json'),
+      JSON.stringify({ agentDefaults: { runner } }),
+    );
   };
 
   const build = () => {

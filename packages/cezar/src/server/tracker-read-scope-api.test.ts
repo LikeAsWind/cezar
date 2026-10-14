@@ -41,7 +41,7 @@ it.each(endpoints)('rejects stale browser identity before vendor read on %s', as
   ];
   for (const current of changes) {
     mocks.driver.mockResolvedValue({ association: current, listIssues: read, searchItems: read, getItem: read });
-    for (const base of ['/api/v1', '/api/v1/p/default']) {
+    for (const base of ['/api/v1/p/boot']) {
       const response = await apiRequest(app, scopedUrl(base, endpoint, expectedScope));
       expect(response.status).toBe(200);
       expect(trackerFailureSchema.parse(await response.json())).toMatchObject({ available: false, code: 'source_changed' });
@@ -53,7 +53,7 @@ it.each(endpoints)('rejects stale browser identity before vendor read on %s', as
 it.each(endpoints)('allows matching identity, display renames and legacy omitted scope on %s', async endpoint => {
   mocks.driver.mockResolvedValue({ association: { ...association, externalName: 'Renamed' }, listIssues: read, searchItems: read, getItem: read });
   for (const scope of [expectedScope, undefined]) {
-    const response = await apiRequest(app, scopedUrl('/api/v1/p/default', endpoint, scope));
+    const response = await apiRequest(app, scopedUrl('/api/v1/p/boot', endpoint, scope));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ reason: 'Vendor reached' });
   }
@@ -61,7 +61,7 @@ it.each(endpoints)('allows matching identity, display renames and legacy omitted
 });
 
 it.each(endpoints)('bounds expectedScope in middleware on %s', async endpoint => {
-  const response = await apiRequest(app, scopedUrl('/api/v1', endpoint, 'x'.repeat(4097)));
+  const response = await apiRequest(app, scopedUrl('/api/v1/p/boot', endpoint, 'x'.repeat(4097)));
   expect(response.status).toBe(400);
   expect(mocks.driver).not.toHaveBeenCalled();
   expect(read).not.toHaveBeenCalled();

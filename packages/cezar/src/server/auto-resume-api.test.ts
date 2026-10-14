@@ -11,7 +11,7 @@ import { apiRequest } from './loopback-request.testkit.js';
 
 /**
  * The PER-TASK off switch for a usage-limit resume (spec
- * 2026-08-03-auto-resume-after-usage-limit): `DELETE /api/v1/runs/:id/auto-resume`, and the same
+ * 2026-08-03-auto-resume-after-usage-limit): `DELETE /api/v1/p/boot/runs/:id/auto-resume`, and the same
  * retirement riding the archive route because archiving is how a user resigns from a task.
  *
  * The manager is a spy rather than a real one: what the ROUTES owe is calling
@@ -58,7 +58,7 @@ describe('per-task auto-resume cancellation', () => {
 
   it('retires the pending resume and answers cancelled', async () => {
     const id = limited();
-    const res = await apiRequest(app, `/api/v1/runs/${id}/auto-resume`, { method: 'DELETE' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${id}/auto-resume`, { method: 'DELETE' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cancelled: true });
     expect(cancelled).toEqual([id]);
@@ -67,21 +67,21 @@ describe('per-task auto-resume cancellation', () => {
 
   it('is idempotent — a task with nothing scheduled answers the same way', async () => {
     const id = limited();
-    await apiRequest(app, `/api/v1/runs/${id}/auto-resume`, { method: 'DELETE' });
-    const again = await apiRequest(app, `/api/v1/runs/${id}/auto-resume`, { method: 'DELETE' });
+    await apiRequest(app, `/api/v1/p/boot/runs/${id}/auto-resume`, { method: 'DELETE' });
+    const again = await apiRequest(app, `/api/v1/p/boot/runs/${id}/auto-resume`, { method: 'DELETE' });
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ cancelled: true });
   });
 
   it('404s an unknown id, and never touches the manager for one', async () => {
-    const res = await apiRequest(app, '/api/v1/runs/nope/auto-resume', { method: 'DELETE' });
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/nope/auto-resume', { method: 'DELETE' });
     expect(res.status).toBe(404);
     expect(cancelled).toEqual([]);
   });
 
   it('answers under the project-scoped alias too', async () => {
     const id = limited();
-    const res = await apiRequest(app, `/api/v1/p/default/runs/${id}/auto-resume`, { method: 'DELETE' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${id}/auto-resume`, { method: 'DELETE' });
     expect(res.status).toBe(200);
     expect(cancelled).toEqual([id]);
   });
@@ -90,7 +90,7 @@ describe('per-task auto-resume cancellation', () => {
     // No manager call here on purpose: the rule is `setArchived`'s, so the bulk sweep obeys it
     // too (pinned in `src/runs/store.test.ts`). The route only has to keep going through it.
     const id = limited();
-    const res = await apiRequest(app, `/api/v1/runs/${id}/archive`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${id}/archive`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect((await res.json()) as RunRecord).toMatchObject({ archived: true });
     expect(store.getRun(id)?.autoResumeAt).toBeUndefined();
@@ -98,8 +98,8 @@ describe('per-task auto-resume cancellation', () => {
 
   it('UN-archiving does not silently re-promise a resume', async () => {
     const id = limited();
-    await apiRequest(app, `/api/v1/runs/${id}/archive`, { method: 'POST' });
-    const res = await apiRequest(app, `/api/v1/runs/${id}/archive`, {
+    await apiRequest(app, `/api/v1/p/boot/runs/${id}/archive`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${id}/archive`, {
       method: 'POST',
       body: JSON.stringify({ archived: false }),
       headers: { 'content-type': 'application/json' },

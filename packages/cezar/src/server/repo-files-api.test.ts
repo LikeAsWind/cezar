@@ -209,7 +209,7 @@ describe('repo file-browser routes', () => {
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  const file = (query: string) => apiRequest(app, `/api/v1/repo/files?${query}`);
+  const file = (query: string) => apiRequest(app, `/api/v1/p/boot/repo/files?${query}`);
   const errorOf = async (res: Response) => ((await res.json()) as { error: string }).error;
 
   // ---- the security-critical guard -------------------------------------------------------
@@ -258,7 +258,7 @@ describe('repo file-browser routes', () => {
   });
 
   it('rejects a missing or empty path, and a bogus raw value, as a 400 before the handler', async () => {
-    expect((await apiRequest(app, '/api/v1/repo/files')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/repo/files')).status).toBe(400);
     expect((await file('path=')).status).toBe(400);
     expect((await file('path=src%2Fapp.ts&raw=maybe')).status).toBe(400);
     // A REPEATED key reaches the validator as an array. The older /runs/:id/files had to collapse
@@ -330,7 +330,7 @@ describe('repo file-browser routes', () => {
   // ---- the tree route ----------------------------------------------------------------------
 
   it('GET /repo/tree answers the index, ignored paths absent', async () => {
-    const res = await apiRequest(app, '/api/v1/repo/tree');
+    const res = await apiRequest(app, '/api/v1/p/boot/repo/tree');
     expect(res.status).toBe(200);
     const body = (await res.json()) as RepoTree;
     expect(repoTreeSchema.safeParse(body).success).toBe(true);
@@ -343,8 +343,8 @@ describe('repo file-browser routes', () => {
     try {
       const plainStore = RunStore.open(join(plain, '.ai/cezar'));
       const plainApp = createApp({ runtime: testRuntime({ repoRoot: plain, store: plainStore, manager: {} as unknown as RunManager }), version: '0.0.0-test' });
-      const tree = await apiRequest(plainApp, '/api/v1/repo/tree');
-      const changes = await apiRequest(plainApp, '/api/v1/repo/changes');
+      const tree = await apiRequest(plainApp, '/api/v1/p/boot/repo/tree');
+      const changes = await apiRequest(plainApp, '/api/v1/p/boot/repo/changes');
       expect(tree.status).toBe(409);
       expect(await errorOf(tree)).toBe('not a git repository');
       expect(await errorOf(changes)).toBe('not a git repository');
@@ -359,7 +359,7 @@ describe('repo file-browser routes', () => {
     try {
       const plainStore = RunStore.open(join(plain, '.ai/cezar'));
       const plainApp = createApp({ runtime: testRuntime({ repoRoot: plain, store: plainStore, manager: {} as unknown as RunManager }), version: '0.0.0-test' });
-      const res = await apiRequest(plainApp, '/api/v1/repo/files?path=a.ts');
+      const res = await apiRequest(plainApp, '/api/v1/p/boot/repo/files?path=a.ts');
       expect(res.status).toBe(409);
       expect(await errorOf(res)).toBe('not a git repository');
       plainStore.flush();
@@ -370,7 +370,7 @@ describe('repo file-browser routes', () => {
 
   it('is a pure read — neither route touches the user’s index or working tree', async () => {
     const before = g(repoRoot, 'status', '--porcelain');
-    await apiRequest(app, '/api/v1/repo/tree');
+    await apiRequest(app, '/api/v1/p/boot/repo/tree');
     await file('path=src%2Fapp.ts');
     await file('path=secret.env');
     expect(g(repoRoot, 'status', '--porcelain')).toBe(before);

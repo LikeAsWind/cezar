@@ -10,11 +10,11 @@ import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
- * `PATCH /api/v1/runs/:id` (#389) through the real Hono app. The route touches
+ * `PATCH /api/v1/p/boot/runs/:id` (#389) through the real Hono app. The route touches
  * only the store, so the manager can be an empty stub — no fakes beyond that
  * were needed (the createApp harness concern from the review didn't bite here).
  */
-describe('PATCH /api/v1/runs/:id', () => {
+describe('PATCH /api/v1/p/boot/runs/:id', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
@@ -34,7 +34,7 @@ describe('PATCH /api/v1/runs/:id', () => {
   });
 
   const patch = (id: string, body: unknown) =>
-    apiRequest(app, `/api/v1/runs/${id}`, {
+    apiRequest(app, `/api/v1/p/boot/runs/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -80,7 +80,7 @@ describe('PATCH /api/v1/runs/:id', () => {
   });
 
   it('400s a non-JSON body', async () => {
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}`, { method: 'PATCH', body: 'not json' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}`, { method: 'PATCH', body: 'not json' });
     expect(res.status).toBe(400);
   });
 

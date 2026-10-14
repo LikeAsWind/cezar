@@ -49,7 +49,7 @@ describe('POST /api/v1/runs systemPrompt', () => {
   });
 
   const post = (body: unknown) =>
-    apiRequest(app, '/api/v1/runs', {
+    apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -160,7 +160,7 @@ describe('POST /api/v1/runs generateFollowups — the CEZ_FOLLOWUPS ceiling (#47
   });
 
   const post = (body: unknown) =>
-    apiRequest(app, '/api/v1/runs', {
+    apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),

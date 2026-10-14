@@ -11,7 +11,7 @@ import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
- * `GET /api/v1/github/ref-status?prs=…&issues=…` — the batched status behind a task's PR/issue
+ * `GET /api/v1/p/boot/github/ref-status?prs=…&issues=…` — the batched status behind a task's PR/issue
  * chip. The contract under test is the route's, not the driver's: both lists are optional but at
  * least one must name something, each is strictly validated (positive integers, ≤100 — a 400,
  * never a throw), and the payload maps only the numbers the forge actually knew about. Driven
@@ -45,7 +45,7 @@ describe('the github ref-status API', () => {
   });
 
   async function refStatus(query: string): Promise<GithubRefStatusData> {
-    const res = await apiRequest(app, `/api/v1/github/ref-status?${query}`);
+    const res = await apiRequest(app, `/api/v1/p/boot/github/ref-status?${query}`);
     expect(res.status).toBe(200);
     return (await res.json()) as GithubRefStatusData;
   }
@@ -79,21 +79,21 @@ describe('the github ref-status API', () => {
   });
 
   it('400s when neither list names anything', async () => {
-    expect((await apiRequest(app, '/api/v1/github/ref-status')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/github/ref-status?prs=')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/github/ref-status?prs=&issues=')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?prs=')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?prs=&issues=')).status).toBe(400);
   });
 
   it('400s on a malformed entry in either list', async () => {
-    expect((await apiRequest(app, '/api/v1/github/ref-status?prs=12,abc')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/github/ref-status?issues=1.5')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/github/ref-status?prs=0')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/github/ref-status?prs=-3')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?prs=12,abc')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?issues=1.5')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?prs=0')).status).toBe(400);
+    expect((await apiRequest(app, '/api/v1/p/boot/github/ref-status?prs=-3')).status).toBe(400);
   });
 
   it('400s past 100 numbers in one list', async () => {
     const many = Array.from({ length: 101 }, (_, i) => i + 1).join(',');
-    expect((await apiRequest(app, `/api/v1/github/ref-status?prs=${many}`)).status).toBe(400);
-    expect((await apiRequest(app, `/api/v1/github/ref-status?issues=${many}`)).status).toBe(400);
+    expect((await apiRequest(app, `/api/v1/p/boot/github/ref-status?prs=${many}`)).status).toBe(400);
+    expect((await apiRequest(app, `/api/v1/p/boot/github/ref-status?issues=${many}`)).status).toBe(400);
   });
 });

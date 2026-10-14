@@ -82,13 +82,13 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
   const post = (body: unknown): RequestInit => ({
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
-  const status = async (instance: Awaited<ReturnType<typeof app>>['instance'], path = '/api/v1/e2e') =>
+  const status = async (instance: Awaited<ReturnType<typeof app>>['instance'], path = '/api/v1/p/boot/e2e') =>
     e2eStatusSchema.parse(await (await apiRequest(instance, path)).json());
 
   it('reports an empty project, on both mounts', async () => {
     gitInit();
     const { id, instance } = await app();
-    for (const path of ['/api/v1/e2e', `/api/v1/p/${id}/e2e`]) {
+    for (const path of ['/api/v1/p/boot/e2e', `/api/v1/p/${id}/e2e`]) {
       expect(await status(instance, path)).toEqual({ configFile: null, workflow: false, credentials: [], setup: null });
     }
   });
@@ -96,11 +96,11 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
   it('stores the key as a checks secret and starts the setup task without handing the agent the value', async () => {
     gitInit();
     const { instance } = await app();
-    const response = await apiRequest(instance, '/api/v1/e2e/setup', post({ credential: { name: 'ANTHROPIC_API_KEY', value: KEY } }));
+    const response = await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({ credential: { name: 'ANTHROPIC_API_KEY', value: KEY } }));
     expect(response.status).toBe(201);
     const { runId } = (await response.json()) as { runId: string };
 
-    const listed = secretsListSchema.parse(await (await apiRequest(instance, '/api/v1/secrets')).json());
+    const listed = secretsListSchema.parse(await (await apiRequest(instance, '/api/v1/p/boot/secrets')).json());
     expect(listed.secrets.map((s) => [s.name, s.audiences])).toEqual([['ANTHROPIC_API_KEY', ['checks']]]);
 
     expect(started).toHaveLength(1);
@@ -123,9 +123,9 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
   it('starts without a key, and refuses a second setup while the first is in flight', async () => {
     gitInit();
     const { instance } = await app();
-    expect((await apiRequest(instance, '/api/v1/e2e/setup', post({}))).status).toBe(201);
+    expect((await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({}))).status).toBe(201);
     expect(started[0]!.workflow.steps[0]!.prompt).toContain('No model key is stored yet');
-    const again = await apiRequest(instance, '/api/v1/e2e/setup', post({}));
+    const again = await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({}));
     expect(again.status).toBe(409);
     expect(((await again.json()) as { error: string }).error).toContain('already in progress');
     expect(started).toHaveLength(1);
@@ -134,26 +134,26 @@ describe('one-click e2e setup API (spec 2026-10-10-e2e-one-click-setup)', () => 
   it('allows a new setup once the previous one settled', async () => {
     gitInit();
     const { instance } = await app();
-    expect((await apiRequest(instance, '/api/v1/e2e/setup', post({}))).status).toBe(201);
+    expect((await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({}))).status).toBe(201);
     const first = store.listRuns()[0]!;
     store.updateRun(first.id, { status: 'failed' });
-    expect((await apiRequest(instance, '/api/v1/e2e/setup', post({}))).status).toBe(201);
+    expect((await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({}))).status).toBe(201);
     expect(started).toHaveLength(2);
   });
 
   it('refuses a project that is not a git repository, before storing anything', async () => {
     const { instance } = await app();
-    const response = await apiRequest(instance, '/api/v1/e2e/setup', post({ credential: { name: 'OPENAI_API_KEY', value: KEY } }));
+    const response = await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({ credential: { name: 'OPENAI_API_KEY', value: KEY } }));
     expect(response.status).toBe(409);
     expect(((await response.json()) as { error: string }).error).toContain('git repository');
-    expect(secretsListSchema.parse(await (await apiRequest(instance, '/api/v1/secrets')).json()).secrets).toEqual([]);
+    expect(secretsListSchema.parse(await (await apiRequest(instance, '/api/v1/p/boot/secrets')).json()).secrets).toEqual([]);
     expect(started).toHaveLength(0);
   });
 
   it('rejects a key name it does not know how to wire', async () => {
     gitInit();
     const { instance } = await app();
-    const response = await apiRequest(instance, '/api/v1/e2e/setup', post({ credential: { name: 'MY_KEY', value: KEY } }));
+    const response = await apiRequest(instance, '/api/v1/p/boot/e2e/setup', post({ credential: { name: 'MY_KEY', value: KEY } }));
     expect(response.status).toBe(400);
     expect(started).toHaveLength(0);
   });

@@ -29,7 +29,7 @@ describe('the shapes that cannot come from a route are still mirrored faithfully
   type ExactKeys<A, B> = Exact<keyof A, keyof B>;
 
   const guards = {
-    /** `GET /api/v1/runs/:id/events` and `/api/v1/events` — the run event stream. */
+    /** `GET /api/v1/p/boot/runs/:id/events` and `/api/v1/p/boot/events` — the run event stream. */
     runEvent: true satisfies Exact<RunEvent, WebRunEvent>,
   };
 

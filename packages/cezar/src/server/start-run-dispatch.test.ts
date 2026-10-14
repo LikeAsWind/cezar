@@ -47,7 +47,7 @@ describe('POST /runs and the dispatch intent', () => {
   });
 
   const post = (body: unknown) =>
-    apiRequest(app, '/api/v1/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    apiRequest(app, '/api/v1/p/boot/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
   it('threads the intent into startRun while dispatch is on (the default)', async () => {
     const res = await post({ steps: [{ id: 'work', prompt: '{{task}}' }], task: 'split this', dispatch: { maxSubtasks: 10, inFlight: 2, model: 'sonnet' } });

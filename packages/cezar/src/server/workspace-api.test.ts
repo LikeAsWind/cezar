@@ -536,7 +536,7 @@ describe('the workspace settings API (step 2.7)', () => {
       sidebar: { collapsed: { cezar: true } },
     });
     // The workspace file, not the boot repo's — the per-repo twin stays empty.
-    expect(await (await apiRequest(app, '/api/v1/ui-state')).json()).toEqual({});
+    expect(await (await apiRequest(app, '/api/v1/p/boot/ui-state')).json()).toEqual({});
   });
 
   it('round-trips future dashboard widget IDs and nested preferences through the file and API', async () => {

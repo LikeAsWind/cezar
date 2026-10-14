@@ -44,7 +44,7 @@ describe('the workflow graph API', () => {
   };
 
   it('serves the node catalog', async () => {
-    const res = await apiRequest(app(), '/api/v1/workflows/nodes');
+    const res = await apiRequest(app(), '/api/v1/p/boot/workflows/nodes');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { nodes: { type: string; ports: string[] }[] };
     expect(body.nodes.map((n) => n.type)).toEqual([
@@ -74,27 +74,27 @@ describe('the workflow graph API', () => {
   });
 
   it('validates: [] for a sound graph, issues for an unsound one, 400 for a non-graph', async () => {
-    expect(await (await post('/api/v1/workflows/validate', { graph: GRAPH })).json()).toEqual({ issues: [] });
+    expect(await (await post('/api/v1/p/boot/workflows/validate', { graph: GRAPH })).json()).toEqual({ issues: [] });
     const cyclic = { ...GRAPH, edges: [...GRAPH.edges, { from: 'tests.fail', to: 'work' }] };
-    const res = await post('/api/v1/workflows/validate', { graph: cyclic });
+    const res = await post('/api/v1/p/boot/workflows/validate', { graph: cyclic });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { issues: string[] }).issues.join()).toMatch(/does not pass a loop node/);
-    expect((await post('/api/v1/workflows/validate', { graph: { nodes: 'x' } })).status).toBe(400);
+    expect((await post('/api/v1/p/boot/workflows/validate', { graph: { nodes: 'x' } })).status).toBe(400);
   });
 
   it('saves a version: 2 file (409 without overwrite), and the catalog loads it back', async () => {
-    const created = await post('/api/v1/workflows/graph', { name: 'Review Flow', graph: GRAPH });
+    const created = await post('/api/v1/p/boot/workflows/graph', { name: 'Review Flow', graph: GRAPH });
     expect(created.status).toBe(201);
     const { path } = (await created.json()) as { path: string };
-    expect(path.endsWith('.ai/cezar/workflows/review-flow.yaml')).toBe(true);
+    expect(path.endsWith(join('.ai', 'cezar', 'workflows', 'review-flow.yaml'))).toBe(true);
     expect(parseYaml(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, name: 'Review Flow', layout: GRAPH.layout });
 
-    const again = await post('/api/v1/workflows/graph', { name: 'Review Flow', graph: GRAPH });
+    const again = await post('/api/v1/p/boot/workflows/graph', { name: 'Review Flow', graph: GRAPH });
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ exists: true });
-    expect((await post('/api/v1/workflows/graph', { name: 'Review Flow', graph: GRAPH, overwrite: true })).status).toBe(201);
+    expect((await post('/api/v1/p/boot/workflows/graph', { name: 'Review Flow', graph: GRAPH, overwrite: true })).status).toBe(201);
 
-    const catalog = (await (await apiRequest(app(), '/api/v1/workflows')).json()) as {
+    const catalog = (await (await apiRequest(app(), '/api/v1/p/boot/workflows')).json()) as {
       workflows: { name: string; steps: { id: string }[]; graph?: unknown }[];
     };
     const loaded = catalog.workflows.find((w) => w.name === 'Review Flow');
@@ -103,19 +103,19 @@ describe('the workflow graph API', () => {
   });
 
   it('refuses to save an unsound graph', async () => {
-    const res = await post('/api/v1/workflows/graph', { name: 'bad', graph: { ...GRAPH, nodes: GRAPH.nodes.slice(1) } });
+    const res = await post('/api/v1/p/boot/workflows/graph', { name: 'bad', graph: { ...GRAPH, nodes: GRAPH.nodes.slice(1) } });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toMatch(/exactly one start node/);
   });
 
   it('parses pasted v2 YAML into steps + graph, and v1 YAML exactly as before', async () => {
-    const v2 = await post('/api/v1/workflows/parse', { yaml: stringifyYaml({ version: 2, name: 'g', ...GRAPH }) });
+    const v2 = await post('/api/v1/p/boot/workflows/parse', { yaml: stringifyYaml({ version: 2, name: 'g', ...GRAPH }) });
     expect(v2.status).toBe(200);
     const body = (await v2.json()) as { steps: { id: string }[]; graph?: unknown };
     expect(body.steps.map((s) => s.id)).toEqual(['work', 'review', 'tests']);
     expect(body.graph).toBeDefined();
 
-    const v1 = await post('/api/v1/workflows/parse', { yaml: 'name: s\nskills: [a, b]\n' });
+    const v1 = await post('/api/v1/p/boot/workflows/parse', { yaml: 'name: s\nskills: [a, b]\n' });
     expect(await v1.json()).toEqual({
       name: 's',
       steps: [

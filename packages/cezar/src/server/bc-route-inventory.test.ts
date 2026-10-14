@@ -140,7 +140,7 @@ describe('BACKWARD_COMPATIBILITY.md §2 route inventory', () => {
     // The specific regression the app-walk replaced a source regex to prevent: a family
     // converted to a chained builder must stay inventoried.
     const registered = registeredApiRoutes(app.routes);
-    for (const path of ['/api/v1/health', '/api/v1/agent-config', '/api/v1/agent-config/:p', '/api/v1/workflows']) {
+    for (const path of ['/api/v1/health', '/api/v1/models']) {
       expect(registered, `${path} disappeared from the registered set`).toContain(path);
     }
   });

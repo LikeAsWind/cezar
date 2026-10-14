@@ -48,7 +48,7 @@ describe('contract/drafts.ts schemas', () => {
   });
 });
 
-describe('/api/v1/runs/:id/drafts', () => {
+describe('/api/v1/p/boot/runs/:id/drafts', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
@@ -74,9 +74,9 @@ describe('/api/v1/runs/:id/drafts', () => {
     body: JSON.stringify(body),
   });
 
-  const drafts = (id = run.id) => apiRequest(app, `/api/v1/runs/${id}/drafts`);
+  const drafts = (id = run.id) => apiRequest(app, `/api/v1/p/boot/runs/${id}/drafts`);
   const put = (surface: string, body: unknown, id = run.id) =>
-    apiRequest(app, `/api/v1/runs/${id}/drafts/${surface}`, json('PUT', body));
+    apiRequest(app, `/api/v1/p/boot/runs/${id}/drafts/${surface}`, json('PUT', body));
 
   it('answers an empty listing for a run that has never held a draft', async () => {
     const res = await drafts();
@@ -126,7 +126,7 @@ describe('/api/v1/runs/:id/drafts', () => {
     await put('composer', { text: 'a reply' });
     await put('review-notes', { text: 'some notes' });
 
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/drafts/composer`, { method: 'DELETE' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/drafts/composer`, { method: 'DELETE' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ deleted: true });
 
@@ -143,13 +143,13 @@ describe('/api/v1/runs/:id/drafts', () => {
     expect((await drafts('no-such-run')).status).toBe(404);
     expect((await put('composer', { text: 'x' }, 'no-such-run')).status).toBe(404);
     expect(
-      (await apiRequest(app, '/api/v1/runs/no-such-run/drafts/composer', { method: 'DELETE' })).status,
+      (await apiRequest(app, '/api/v1/p/boot/runs/no-such-run/drafts/composer', { method: 'DELETE' })).status,
     ).toBe(404);
     expect(
       (
         await apiRequest(
           app,
-          '/api/v1/runs/no-such-run/drafts/composer/images',
+          '/api/v1/p/boot/runs/no-such-run/drafts/composer/images',
           json('POST', { mediaType: 'image/png', data: png }),
         )
       ).status,
@@ -160,14 +160,14 @@ describe('/api/v1/runs/:id/drafts', () => {
     await put('composer', { text: 'never sent' });
     expect(existsSync(join(repoRoot, '.ai/cezar', 'drafts', run.id))).toBe(true);
 
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}`, { method: 'DELETE' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}`, { method: 'DELETE' });
     expect(res.status).toBe(200);
     expect(existsSync(join(draftsRoot(join(repoRoot, '.ai/cezar')), run.id))).toBe(false);
   });
 
   describe('attachments', () => {
     const upload = (surface = 'composer', body: unknown = { mediaType: 'image/png', data: png, name: 'shot.png' }) =>
-      apiRequest(app, `/api/v1/runs/${run.id}/drafts/${surface}/images`, json('POST', body));
+      apiRequest(app, `/api/v1/p/boot/runs/${run.id}/drafts/${surface}/images`, json('POST', body));
 
     it('uploads on attach, then references the id from the draft', async () => {
       const stored = (await (await upload()).json()) as DraftImage;
@@ -178,7 +178,7 @@ describe('/api/v1/runs/:id/drafts', () => {
 
       const blob = await apiRequest(
         app,
-        `/api/v1/runs/${run.id}/drafts/composer/images/${stored.id}`,
+        `/api/v1/p/boot/runs/${run.id}/drafts/composer/images/${stored.id}`,
       );
       expect(blob.status).toBe(200);
       expect(await blob.json()).toEqual({ ...stored, data: png });
@@ -204,7 +204,7 @@ describe('/api/v1/runs/:id/drafts', () => {
     });
 
     it('rejects a traversal-shaped image id at the param validator', async () => {
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/drafts/composer/images/..%2F..%2Fx`);
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/drafts/composer/images/..%2F..%2Fx`);
       expect(res.status).toBe(400);
     });
 
@@ -212,7 +212,7 @@ describe('/api/v1/runs/:id/drafts', () => {
       const stored = (await (await upload()).json()) as DraftImage;
       await put('composer', { text: 'with an image', images: [stored.id] });
 
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/drafts/composer/images/${stored.id}`, {
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/drafts/composer/images/${stored.id}`, {
         method: 'DELETE',
       });
       expect(res.status).toBe(200);
@@ -223,7 +223,7 @@ describe('/api/v1/runs/:id/drafts', () => {
     });
 
     it('404s for a blob that was never stored', async () => {
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/drafts/composer/images/deadbeef`);
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/drafts/composer/images/deadbeef`);
       expect(res.status).toBe(404);
     });
   });

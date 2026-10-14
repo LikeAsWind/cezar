@@ -47,7 +47,7 @@ describe('per-run SSE replay without a live cursor', () => {
     for (const message of ['one', 'two', 'three']) store.appendEvent(run.id, { type: 'note', message });
     const readEvents = vi.spyOn(store, 'readEvents');
 
-    expect(await replayedIds(`/api/v1/runs/${run.id}/events`)).toEqual([1, 2, 3]);
+    expect(await replayedIds(`/api/v1/p/boot/runs/${run.id}/events`)).toEqual([1, 2, 3]);
     expect(readEvents).not.toHaveBeenCalled();
   });
 
@@ -55,12 +55,12 @@ describe('per-run SSE replay without a live cursor', () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
     for (const message of ['one', 'two', 'three']) store.appendEvent(run.id, { type: 'note', message });
 
-    expect(await replayedIds(`/api/v1/runs/${run.id}/events?afterSeq=2`)).toEqual([3]);
+    expect(await replayedIds(`/api/v1/p/boot/runs/${run.id}/events?afterSeq=2`)).toEqual([3]);
   });
 
   it('answers a run with no transcript yet with an empty replay', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
 
-    expect(await replayedIds(`/api/v1/runs/${run.id}/events`)).toEqual([]);
+    expect(await replayedIds(`/api/v1/p/boot/runs/${run.id}/events`)).toEqual([]);
   });
 });

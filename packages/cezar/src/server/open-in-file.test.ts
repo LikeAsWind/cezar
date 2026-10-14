@@ -8,7 +8,7 @@ import { createApp, type ServerDeps } from './server.ts';
 import { testRuntime } from './runtime.testkit.ts';
 
 /**
- * `POST /api/v1/runs/:id/open-in` with `target: 'default'` (#365): the diff pane's "open in OS
+ * `POST /api/v1/p/boot/runs/:id/open-in` with `target: 'default'` (#365): the diff pane's "open in OS
  * default app" action for one worktree file. Must (a) 409 in hosted mode before ever touching
  * the filesystem, (b) reject any path that doesn't resolve inside the run's own worktree, and
  * (c) actually launch the OS opener only for a real in-worktree file — `openFileInDefaultApp`
@@ -22,7 +22,7 @@ vi.mock('./open-in-app.js', async (importOriginal) => {
 import { openFileInDefaultApp } from './open-in-app.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
-describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file open, #365)", () => {
+describe("POST /api/v1/p/boot/runs/:id/open-in — target 'default' (local-mode file open, #365)", () => {
   let repoRoot: string;
   let store: RunStore;
   let runId: string;
@@ -53,7 +53,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
   const post = (body: unknown, over: Partial<ServerDeps> = {}) =>
     apiRequest(
       createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over }),
-      `/api/v1/runs/${runId}/open-in`,
+      `/api/v1/p/boot/runs/${runId}/open-in`,
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     );
 
@@ -164,7 +164,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
 
   it('404s for an unknown run before any gate', async () => {
     const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
-    const res = await apiRequest(app, '/api/v1/runs/nope/open-in', {
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/nope/open-in', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ target: 'default', path: 'logo.png' }),

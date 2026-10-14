@@ -75,16 +75,16 @@ describe('attachment routes (#950)', () => {
   it.each(['messages', 'continue'])('does not file images when %s rejects the request', async (action) => {
     accept = false;
     const run = store.createRun({ title: 't', workflow: 'test', task: 'test', steps: [] });
-    const res = await post('/api/v1/runs/' + run.id + '/' + action, {
+    const res = await post('/api/v1/p/boot/runs/' + run.id + '/' + action, {
       text: 'test', images: [{ mediaType: 'image/png', data: PNG_B64, name: 'rejected.png' }],
     });
     expect(res.status).toBe(409);
     expect(existsSync(attachmentLibraryDir(join(repoRoot, '.ai/cezar')))).toBe(false);
   });
 
-  describe('POST /api/v1/runs', () => {
+  describe('POST /api/v1/p/boot/runs', () => {
     it('takes a PDF and a markdown file, and hands the engine file blocks', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [
           { mediaType: 'application/pdf', data: PDF_B64 },
@@ -99,7 +99,7 @@ describe('attachment routes (#950)', () => {
     });
 
     it('still hands an image through as a viewable block', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [{ mediaType: 'image/png', data: PNG_B64 }],
       });
@@ -111,7 +111,7 @@ describe('attachment routes (#950)', () => {
 
     // A mocked engine does not persist; conversion alone must never write library files.
     it('hands a named image to the engine without writing a library copy at the HTTP boundary', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [{ mediaType: 'image/png', data: PNG_B64, name: 'diagram.png' }],
       });
@@ -126,7 +126,7 @@ describe('attachment routes (#950)', () => {
     /** A clipboard paste never carries a name, so there is nothing to file — a library of
      *  numbered pastes is exactly the clutter #929/#960 exist to avoid. */
     it('never files a nameless (pasted) image', async () => {
-      const res = await post('/api/v1/runs', { ...base, images: [{ mediaType: 'image/png', data: PNG_B64 }] });
+      const res = await post('/api/v1/p/boot/runs', { ...base, images: [{ mediaType: 'image/png', data: PNG_B64 }] });
       expect(res.status).toBe(201);
       expect(existsSync(attachmentLibraryDir(join(repoRoot, '.ai/cezar')))).toBe(false);
     });
@@ -134,7 +134,7 @@ describe('attachment routes (#950)', () => {
     /** The allowlist is what keeps `text/html` and SVG-as-a-document out of a folder this server
      *  serves back from its own origin. A refusal is a 400, not a silent drop. */
     it('refuses a type outside the allowlist', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [{ mediaType: 'application/zip', data: PDF_B64 }],
       });
@@ -142,7 +142,7 @@ describe('attachment routes (#950)', () => {
     });
 
     it('refuses text/html, which is the type the allowlist exists for', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [{ mediaType: 'text/html', data: MD_B64 }],
       });
@@ -152,7 +152,7 @@ describe('attachment routes (#950)', () => {
     /** Images were NEVER narrowed by this change — an exotic image type a client has always been
      *  allowed to paste must still be allowed. */
     it('keeps accepting any image/* type, as it always did', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         images: [{ mediaType: 'image/svg+xml', data: PNG_B64 }],
       });
@@ -166,7 +166,7 @@ describe('attachment routes (#950)', () => {
      * deliberately absent from the mock: reaching it at all would be its own failure here.
      */
     it('refuses parallel variants outside a git repo without filing the image first', async () => {
-      const res = await post('/api/v1/runs', {
+      const res = await post('/api/v1/p/boot/runs', {
         ...base,
         variants: 2,
         images: [{ mediaType: 'image/png', data: PNG_B64, name: 'diagram.png' }],
@@ -176,11 +176,11 @@ describe('attachment routes (#950)', () => {
     });
   });
 
-  describe('POST /api/v1/runs/:id/messages', () => {
+  describe('POST /api/v1/p/boot/runs/:id/messages', () => {
     it('accepts an attachment-only message and delivers it as a file block', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'chat', steps: [] });
       store.updateRun(run.id, { status: 'waiting' });
-      const res = await post(`/api/v1/runs/${run.id}/messages`, {
+      const res = await post(`/api/v1/p/boot/runs/${run.id}/messages`, {
         images: [{ mediaType: 'text/plain', data: MD_B64 }],
       });
       expect(res.status).toBe(200);
@@ -190,13 +190,13 @@ describe('attachment routes (#950)', () => {
     it('refuses a message that is empty in both text and attachments', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'chat', steps: [] });
       store.updateRun(run.id, { status: 'waiting' });
-      const res = await post(`/api/v1/runs/${run.id}/messages`, { text: '   ' });
+      const res = await post(`/api/v1/p/boot/runs/${run.id}/messages`, { text: '   ' });
       expect(res.status).toBe(400);
       expect(((await res.json()) as { error: string }).error).toContain('at least one attachment');
     });
   });
 
-  describe('GET /api/v1/runs/:id/images/:file', () => {
+  describe('GET /api/v1/p/boot/runs/:id/images/:file', () => {
     const seed = (id: string, name: string, body: string) => {
       const dir = join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
       mkdirSync(dir, { recursive: true });
@@ -206,7 +206,7 @@ describe('attachment routes (#950)', () => {
     it('serves an image exactly as before — no download headers in the way of an <img>', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });
       seed(run.id, 'pasted-1.png', 'png-bytes');
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/images/pasted-1.png`);
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/images/pasted-1.png`);
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('image/png');
       expect(res.headers.get('content-disposition')).toBeNull();
@@ -215,7 +215,7 @@ describe('attachment routes (#950)', () => {
     it('serves a PDF as a download, never as a document on the cockpit origin', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });
       seed(run.id, 'pasted-2.pdf', '%PDF-1.4 fake');
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/images/pasted-2.pdf`);
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/images/pasted-2.pdf`);
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('application/pdf');
       expect(res.headers.get('x-content-type-options')).toBe('nosniff');
@@ -227,11 +227,11 @@ describe('attachment routes (#950)', () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });
       seed(run.id, 'pasted-3.md', '<script>alert(1)</script>');
       seed(run.id, 'pasted-4.txt', 'notes');
-      const md = await apiRequest(app, `/api/v1/runs/${run.id}/images/pasted-3.md`);
+      const md = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/images/pasted-3.md`);
       expect(md.headers.get('content-type')).toBe('text/plain; charset=utf-8');
       expect(md.headers.get('x-content-type-options')).toBe('nosniff');
       expect(md.headers.get('content-disposition')).toBe('attachment; filename="pasted-3.md"');
-      const txt = await apiRequest(app, `/api/v1/runs/${run.id}/images/pasted-4.txt`);
+      const txt = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/images/pasted-4.txt`);
       expect(txt.headers.get('content-type')).toBe('text/plain; charset=utf-8');
       expect(txt.headers.get('x-content-type-options')).toBe('nosniff');
     });
@@ -241,7 +241,7 @@ describe('attachment routes (#950)', () => {
     it('keeps the octet-stream default for an extension it does not name', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });
       seed(run.id, 'pasted-5.img', 'whatever');
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/images/pasted-5.img`);
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/images/pasted-5.img`);
       expect(res.headers.get('content-type')).toBe('application/octet-stream');
       expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     });

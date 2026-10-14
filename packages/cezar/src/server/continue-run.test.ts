@@ -11,12 +11,12 @@ import { createApp } from './server.ts';
 import { testRuntime } from './runtime.testkit.ts';
 
 /**
- * `POST /api/v1/runs/:id/continue` runner/model override (#401) — the follow-up composer lets the
+ * `POST /api/v1/p/boot/runs/:id/continue` runner/model override (#401) — the follow-up composer lets the
  * user pick which backend/model reopen the session. Contract: the parsed override is handed to
  * the manager verbatim; an empty POST omits both (the run's current backend is kept — backward
  * compat); a bad runner is a 400. A capturing stub is all the boundary needs (start-run pattern).
  */
-describe('POST /api/v1/runs/:id/continue override', () => {
+describe('POST /api/v1/p/boot/runs/:id/continue override', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
@@ -82,7 +82,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   };
 
   const post = (body: unknown) =>
-    apiRequest(app, `/api/v1/runs/${runId}/continue`, {
+    apiRequest(app, `/api/v1/p/boot/runs/${runId}/continue`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -199,7 +199,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   });
 
   it('404s for an unknown run before validating the body', async () => {
-    const res = await apiRequest(app, '/api/v1/runs/missing/continue', {
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/missing/continue', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',

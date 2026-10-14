@@ -1,4 +1,5 @@
 import type { AutomationStore } from '../automations/store.ts';
+import type { ProviderAuthService } from '../core/provider-auth.ts';
 import type { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import type { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -22,10 +23,11 @@ export interface TestRuntimeOptions {
   semaphore?: WorkspaceSemaphore;
   workspaceEvents?: WorkspaceEvents;
   contexts?: ProjectContexts;
+  providerAuth?: ProviderAuthService;
 }
 
 export function testRuntime(options: TestRuntimeOptions = {}): SystemRuntime {
-  const { repoRoot, store, manager, automationStore, semaphore, workspaceEvents, contexts } = options;
+  const { repoRoot, store, manager, automationStore, semaphore, workspaceEvents, contexts, providerAuth } = options;
   const runtimeContexts = contexts ?? new ProjectContexts({
     listProjects: async () =>
       repoRoot ? [{ id: 'boot', root: repoRoot, status: 'ok' as const }] : [],
@@ -38,5 +40,6 @@ export function testRuntime(options: TestRuntimeOptions = {}): SystemRuntime {
     contexts: runtimeContexts,
     semaphore,
     workspaceEvents,
+    providerAuth,
   });
 }

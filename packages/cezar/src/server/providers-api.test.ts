@@ -12,6 +12,7 @@ import {
 import { RunStore } from '../runs/store.ts';
 import { defaultWorkspaceConfig, type WorkspaceConfig } from '../workspace/config.ts';
 import { RunManager } from '../workflows/run.ts';
+import { cezarHomeDir } from '../paths.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
@@ -155,7 +156,13 @@ describe('workspace provider API', () => {
     workspaceEvents?: WorkspaceEventBus;
     workspaceConfig?: ReturnType<typeof memoryWorkspaceConfig>;
     contexts?: ProjectContexts;
-  } = {}) => createApp({ runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, workspaceEvents: options.workspaceEvents, contexts: options.contexts }), version: 'test', providerAuth: options.providerAuth ?? service(), openTerminal: options.openTerminal, bindHost: options.bindHost, workspaceConfig: options.workspaceConfig });
+  } = {}) => createApp({
+    runtime: testRuntime({ repoRoot: root, store, manager: {} as RunManager, workspaceEvents: options.workspaceEvents, contexts: options.contexts, providerAuth: options.providerAuth ?? service() }),
+    version: 'test',
+    openTerminal: options.openTerminal,
+    bindHost: options.bindHost,
+    workspaceConfig: options.workspaceConfig,
+  });
 
   const connect = (server: ReturnType<typeof app>, provider: unknown) => apiRequest(
     server,
@@ -428,6 +435,10 @@ describe('workspace provider API', () => {
       steps: [{ id: 'work', name: 'Work', kind: 'agent' }],
     });
     store.updateStep(run.id, 'work', { backend: 'claude' });
+    // Build the boot context so the provider-auth observer attaches to this
+    // store (`onStoreCreated` fires on the first scoped touch — there is no
+    // boot store wired at `createApp` time any more).
+    expect((await apiRequest(server, '/api/v1/p/boot/runs')).status).toBe(200);
 
     store.appendEvent(run.id, {
       type: 'error',
@@ -509,7 +520,7 @@ describe('workspace provider API', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ opened: true, command: "'claude' auth login" });
-    expect(openTerminal).toHaveBeenCalledWith(root, "'claude' auth login");
+    expect(openTerminal).toHaveBeenCalledWith(cezarHomeDir(), "'claude' auth login");
   });
 
   it('POST opens login when a runtime rejection arrives during its status probe', async () => {
@@ -534,7 +545,7 @@ describe('workspace provider API', () => {
     const response = await pending;
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ opened: true, command: "'claude' auth login" });
-    expect(openTerminal).toHaveBeenCalledWith(root, "'claude' auth login");
+    expect(openTerminal).toHaveBeenCalledWith(cezarHomeDir(), "'claude' auth login");
   });
 
   it('GET ?refresh=1 retains a runtime latch after a fresh connected probe', async () => {
@@ -560,18 +571,18 @@ describe('workspace provider API', () => {
 
   it('is workspace-level rather than project-scoped', async () => {
     const server = app();
-    const status = await apiRequest(server, '/api/v1/p/default/providers/status');
-    const connectResponse = await apiRequest(server, '/api/v1/p/default/providers/connect', {
+    const status = await apiRequest(server, '/api/v1/p/boot/providers/status');
+    const connectResponse = await apiRequest(server, '/api/v1/p/boot/providers/connect', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ provider: 'claude' }),
     });
-    const enabledResponse = await apiRequest(server, '/api/v1/p/default/providers/claude/enabled', {
+    const enabledResponse = await apiRequest(server, '/api/v1/p/boot/providers/claude/enabled', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: false }),
     });
-    const retryResponse = await apiRequest(server, '/api/v1/p/default/providers/claude/retry', {
+    const retryResponse = await apiRequest(server, '/api/v1/p/boot/providers/claude/retry', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ authFailureId: 'auth-incident-1' }),
@@ -604,7 +615,7 @@ describe('workspace provider API', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ opened: true, command: "'codex' login" });
     expect(openTerminal).toHaveBeenCalledOnce();
-    expect(openTerminal).toHaveBeenCalledWith(root, "'codex' login");
+    expect(openTerminal).toHaveBeenCalledWith(cezarHomeDir(), "'codex' login");
   });
 
   it('POST returns opened false and does not open a terminal when already connected', async () => {

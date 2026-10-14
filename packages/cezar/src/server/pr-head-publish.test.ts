@@ -37,7 +37,7 @@ describe('POST /runs/:id/pr on a pull-request head run', () => {
       status: 'review',
       prHead: { number: 42, repo: 'acme/shop', headRepo: 'acme/shop', headRef: 'f', headSha: 'a'.repeat(40), baseRef: 'main', ref: 'refs/cezar/pr/42' },
     });
-    const response = await apiRequest(app(), `/api/v1/runs/${run.id}/pr`, { method: 'POST' });
+    const response = await apiRequest(app(), `/api/v1/p/boot/runs/${run.id}/pr`, { method: 'POST' });
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error: 'this run verified pull request #42; publishing its changes is not supported yet',
@@ -47,7 +47,7 @@ describe('POST /runs/:id/pr on a pull-request head run', () => {
   it('leaves an ordinary run on its existing answer', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 'x', steps: [] });
     store.updateRun(run.id, { status: 'review' });
-    const response = await apiRequest(app(), `/api/v1/runs/${run.id}/pr`, { method: 'POST' });
+    const response = await apiRequest(app(), `/api/v1/p/boot/runs/${run.id}/pr`, { method: 'POST' });
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: string }).error).toContain('no worktree/branch to publish');
   });

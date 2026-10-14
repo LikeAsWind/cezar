@@ -59,13 +59,25 @@ describe('GET /api/v1/workspace/events', () => {
       writeFileSync(join(root, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
-    contexts = new ProjectContexts({ listProjects });
+    // A managerFactory stub keeps the lazy build light (no git prune/recover,
+    // no `gh` repo-handle spawn) — a real build would shell out with the temp
+    // root as cwd and race this suite's `rmSync` (Windows EPERM).
+    contexts = new ProjectContexts({
+      listProjects,
+      managerFactory: () => ({ isActive: () => false, dispose: () => {} }) as unknown as RunManager,
+    });
     bus = new WorkspaceEventBus();
     bootId = (await registerProject(repoRoot)).id;
-    app = createApp({ runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts, workspaceEvents: bus }), version: '0.0.0-test', providerAuth: new ProviderAuthService({
-        createAuthFailureId: () => 'auth-incident-1',
-      }) });
+    // Thread the SAME ProviderAuthService through the runtime so the observer
+    // (which emits `provider-status` on the injected bus) and the routes share
+    // one latch — with `contexts` injected, `createSystemRuntime` no longer
+    // auto-observes the map's stores, so the observer must be the runtime's.
+    const providerAuth = new ProviderAuthService({ createAuthFailureId: () => 'auth-incident-1' });
+    app = createApp({ runtime: testRuntime({ contexts, workspaceEvents: bus, providerAuth }), version: '0.0.0-test', providerAuth });
+    // The boot project's context is built lazily on its first scoped touch
+    // (there is no boot store any more); `store` below is that context's own.
+    expect((await apiRequest(app, `/api/v1/p/${bootId}/runs`)).status).toBe(200);
+    store = contexts.peek(bootId)!.store;
   });
 
   afterEach(async () => {
@@ -156,10 +168,10 @@ describe('GET /api/v1/workspace/events', () => {
     expect(payloadsOf(withDeleted, 'run-deleted')).toEqual([{ id: otherRun.id, project: other.id }]);
   });
 
-  it('legacy /api/v1/events stays boot-filtered with the byte-identical, UN-stamped shape', async () => {
+  it('the scoped boot stream stays boot-filtered with the byte-identical, UN-stamped shape', async () => {
     const other = await buildOtherContext();
 
-    const legacy = await openStream('/api/v1/events');
+    const legacy = await openStream(`/api/v1/p/${bootId}/events`);
     await legacy.readUntil('event: ping');
 
     // Other project first: were it going to leak, it would arrive BEFORE the

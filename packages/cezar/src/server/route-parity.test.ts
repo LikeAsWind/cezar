@@ -152,19 +152,6 @@ describe('explicit project scoping (scoped-only routes)', () => {
     expect(await res.json()).toEqual([]);
   });
 
-  it('never resolves default when two projects exist', async () => {
-    await registerProject(otherRoot);
-    const res = await apiRequest(app, '/api/v1/p/default/runs');
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'select a project' });
-  });
-
-  it('resolves default to the one usable project', async () => {
-    const res = await apiRequest(app, '/api/v1/p/default/runs');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
-  });
-
   it('unknown and malformed project ids answer 404 {error}', async () => {
     for (const url of ['/api/v1/p/no-such-project/runs', '/api/v1/p/no-such-project/events']) {
       const res = await apiRequest(app, url);

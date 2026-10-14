@@ -1221,6 +1221,7 @@ export function createApp(deps: ServerDeps) {
     },
   });
   const providerAuth = deps.providerAuth ?? runtime.providerAuth;
+  const providerRuntimeAuth = deps.providerRuntimeAuth ?? runtime.providerRuntimeAuth;
   const workspaceConfig = deps.workspaceConfig ?? {
     load: loadWorkspaceConfig,
     mergeWrite: mergeWriteWorkspaceConfig,
@@ -1293,7 +1294,7 @@ export function createApp(deps: ServerDeps) {
   // answer only under `/api/v1/p/:projectId/*`, resolved through the runtime's
   // lazy context map. The compatibility resolver below answers legacy
   // `/p/default/*` and flat project requests.
-  const resolveLegacyProjectId = (projects: readonly WorkspaceProject[]): string | null => {
+  const resolveLegacyProjectId = (projects: readonly ProjectListEntry[]): string | null => {
     const usable = projects.filter((project) => project.status !== 'missing');
     return usable.length === 1 ? (usable[0]?.id ?? null) : null;
   };
@@ -1348,8 +1349,11 @@ export function createApp(deps: ServerDeps) {
   });
   const automationsChanged = () => deps.automationsChanged?.();
 
-  const providerRuntimeAuth = deps.providerRuntimeAuth ?? runtime.providerRuntimeAuth;
-
+  // Re-observe any context that is ALREADY built when the app is constructed
+  // (a long-lived test server, a caller that warmed a project first): the
+  // provider-auth observer holds the `event` listener the workspace stream and
+  // the auth routes rely on, and the store-created/built hooks below only fire
+  // for contexts built AFTER `createApp` runs.
   for (const id of contexts.ids()) {
     const ctx = contexts.peek(id);
     if (ctx) providerRuntimeAuth.watch(ctx.store);
@@ -1487,7 +1491,7 @@ export function createApp(deps: ServerDeps) {
     }
     let id = raw;
     if (raw === 'default') {
-      const legacy = resolveLegacyProjectId((await loadWorkspaceConfig()).projects);
+      const legacy = resolveLegacyProjectId(await listProjects());
       if (legacy === null) return c.json({ error: 'select a project' }, 409);
       id = legacy;
     }
@@ -1601,6 +1605,12 @@ export function createApp(deps: ServerDeps) {
   const healthSnapshot = async () => {
     const [checks, config, workspace] = await Promise.all([
       detectEnvironment(),
+      // `defaultRunner` still answers in workspace mode: it is the machine-wide
+      // default a fresh project inherits, read from `~/.cezar/config.json`
+      // (`agentDefaults.runner`) with `claude` as the schema fallback — the
+      // same source a repo's own config would override. The deprecated
+      // repo-bound fields (`repoRoot`/`repo`/`forge`/`bootProject`) are ABSENT
+      // because there is no boot project (Tasks 2–3).
       loadConfig(workspaceRoot),
       workspaceSummary(),
     ]);
@@ -2367,7 +2377,7 @@ export function createApp(deps: ServerDeps) {
           // `default` is the legacy alias, resolved to the one usable project
           // (409 when ambiguous). Everything else addresses a registered id.
           const resolvedId = projectId === 'default'
-            ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+            ? resolveLegacyProjectId(await listProjects())
             : projectId;
           if (resolvedId === null) return c.json({ error: 'select a project' }, 409);
           // Keyed by repo ROOT, so the selection survives the registry being rebuilt and needs no
@@ -2512,7 +2522,7 @@ export function createApp(deps: ServerDeps) {
       // `default` is the legacy alias: resolve it to the one usable project,
       // refusing with 409 when ambiguous.
       const id = raw === 'default'
-        ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+        ? resolveLegacyProjectId(await listProjects())
         : raw;
       if (id === null) return c.json({ error: 'select a project' }, 409);
 
@@ -2581,7 +2591,7 @@ export function createApp(deps: ServerDeps) {
       const parsed = { data: c.req.valid('json') };
       // `default` is the legacy alias, resolved to the one usable project.
       const id = raw === 'default'
-        ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+        ? resolveLegacyProjectId(await listProjects())
         : raw;
       if (id === null) return c.json({ error: 'select a project' }, 409);
       const { maxParallel, tags } = parsed.data;
@@ -2892,7 +2902,7 @@ export function createApp(deps: ServerDeps) {
   > => {
     if (!projectIdSchema.safeParse(raw).success) return { status: 404, error: `unknown project: ${raw}` };
     const id = raw === 'default'
-      ? resolveLegacyProjectId((await loadWorkspaceConfig()).projects)
+      ? resolveLegacyProjectId(await listProjects())
       : raw;
     if (id === null) return { status: 409, error: 'select a project' };
     const project = (await loadWorkspaceConfig()).projects.find((entry) => entry.id === id);

@@ -8,7 +8,7 @@ import { createApp, type ServerDeps } from './server.ts';
 import { testRuntime } from './runtime.testkit.ts';
 
 /**
- * `POST /api/v1/open-in` — Settings → "Project folder" → Open with.
+ * `POST /api/v1/p/boot/open-in` — Settings → "Project folder" → Open with.
  *
  * The route takes NO path: the folder is the scoped project's own root, so what has to be pinned
  * is which TARGETS it accepts and that hosted mode refuses before anything launches. `openInApp`
@@ -31,7 +31,7 @@ vi.mock('./open-in-app.js', async (importOriginal) => {
 import { openInApp } from './open-in-app.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
-describe('POST /api/v1/open-in — the project folder in a local app', () => {
+describe('POST /api/v1/p/boot/open-in — the project folder in a local app', () => {
   let repoRoot: string;
   let store: RunStore;
   const savedRemote = process.env.CEZ_REMOTE;
@@ -53,7 +53,7 @@ describe('POST /api/v1/open-in — the project folder in a local app', () => {
   const post = (body: unknown, over: Partial<ServerDeps> = {}) =>
     apiRequest(
       createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over }),
-      '/api/v1/open-in',
+      '/api/v1/p/boot/open-in',
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     );
 

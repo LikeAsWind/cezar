@@ -10,7 +10,7 @@ import { testRuntime } from './runtime.testkit.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
- * `GET/PUT /api/v1/config` (R6 Step 1.5 — Settings → Agents). The contract under
+ * `GET/PUT /api/v1/p/boot/config` (R6 Step 1.5 — Settings → Agents). The contract under
  * test: GET answers every Settings-editable knob in one shape; PUT merges into
  * the RAW config.json (user keys survive, defaults never materialize); the R6
  * keys (`systemPrompt`, `defaultModels`) are additive — `null`/`''` clears,
@@ -63,10 +63,10 @@ describe('the config API', () => {
   const configPath = () => join(repoRoot, '.ai/cezar', 'config.json');
   const rawFile = () => JSON.parse(readFileSync(configPath(), 'utf8')) as Record<string, unknown>;
 
-  const get = () => apiRequest(app, '/api/v1/config');
+  const get = () => apiRequest(app, '/api/v1/p/boot/config');
   const getBody = async () => (await (await get()).json()) as Record<string, unknown>;
   const put = (body: unknown) =>
-    apiRequest(app, '/api/v1/config', {
+    apiRequest(app, '/api/v1/p/boot/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -322,7 +322,7 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
   });
 
   const put = (body: unknown) =>
-    apiRequest(app, '/api/v1/config', {
+    apiRequest(app, '/api/v1/p/boot/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -359,7 +359,7 @@ describe('branchNaming round-trip (spec 2026-10-11-branch-naming-instructions)',
   });
 
   const put = (body: unknown) =>
-    apiRequest(app, '/api/v1/config', {
+    apiRequest(app, '/api/v1/p/boot/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -407,7 +407,7 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
   });
 
   const put = (body: unknown) =>
-    apiRequest(app, '/api/v1/config', {
+    apiRequest(app, '/api/v1/p/boot/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -417,7 +417,7 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
 
   it('GET exposes reviewGate; PUT true/false/null round-trips and clears the raw key', async () => {
     // Default (no config key) is null — the CEZ_REVIEW_GATE env (OFF) decides.
-    expect(((await (await apiRequest(app, '/api/v1/config')).json()) as Record<string, unknown>).reviewGate).toBeNull();
+    expect(((await (await apiRequest(app, '/api/v1/p/boot/config')).json()) as Record<string, unknown>).reviewGate).toBeNull();
 
     const on = (await (await put({ reviewGate: true })).json()) as Record<string, unknown>;
     expect(on.reviewGate).toBe(true);

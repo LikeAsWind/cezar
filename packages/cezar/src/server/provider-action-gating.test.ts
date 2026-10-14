@@ -124,7 +124,7 @@ describe('provider action gating', () => {
   };
 
   it('blocks a new run selected with a disabled provider before starting it', async () => {
-    const response = await apiRequest(app, '/api/v1/runs', {
+    const response = await apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -140,7 +140,7 @@ describe('provider action gating', () => {
 
   it('keeps every runner selectable under the explicit model lock despite provider preferences', async () => {
     process.env.CEZ_AGENT_MODELS_LOCKED = '1';
-    const response = await apiRequest(app, '/api/v1/runs', {
+    const response = await apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -158,7 +158,7 @@ describe('provider action gating', () => {
   });
 
   it('blocks a mixed inline workflow when one agent step uses a disabled provider', async () => {
-    const response = await apiRequest(app, '/api/v1/runs', {
+    const response = await apiRequest(app, '/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -180,7 +180,7 @@ describe('provider action gating', () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ defaultRunner: 'codex' }), 'utf8');
 
-    const response = await apiRequest(app, '/api/v1/plan', {
+    const response = await apiRequest(app, '/api/v1/p/boot/plan', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ task: 'Plan it' }),
@@ -191,7 +191,7 @@ describe('provider action gating', () => {
 
   it('blocks a message using the persisted current backend before delivery', async () => {
     const run = createExistingRun('codex');
-    const response = await apiRequest(app, `/api/v1/runs/${run.id}/messages`, {
+    const response = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: 'Continue' }),
@@ -203,7 +203,7 @@ describe('provider action gating', () => {
 
   it('blocks a continue override before resuming the run', async () => {
     const run = createExistingRun('claude');
-    const response = await apiRequest(app, `/api/v1/runs/${run.id}/continue`, {
+    const response = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/continue`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ runner: 'codex' }),
@@ -215,7 +215,7 @@ describe('provider action gating', () => {
 
   it('uses the run runner, not a historical step backend, for a no-override continue', async () => {
     const run = createExistingRun('codex');
-    const response = await apiRequest(app, `/api/v1/runs/${run.id}/continue`, {
+    const response = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/continue`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
@@ -240,7 +240,7 @@ describe('provider action gating', () => {
     store.updateStep(run.id, 'retry', { backend: 'claude', status: 'running' });
     store.updateStep(run.id, 'later', { backend: 'codex', status: 'done' });
 
-    const response = await apiRequest(app, `/api/v1/runs/${run.id}/messages`, {
+    const response = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: 'Continue retrying' }),
@@ -253,7 +253,7 @@ describe('provider action gating', () => {
   it('blocks starting an inbox todo with a disabled provider', async () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, 'todos.json'), JSON.stringify([{ id: 'todo-1', summary: 'Follow up' }]), 'utf8');
-    const response = await apiRequest(app, '/api/v1/todos/todo-1/start', {
+    const response = await apiRequest(app, '/api/v1/p/boot/todos/todo-1/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ runner: 'codex' }),
@@ -323,7 +323,7 @@ describe('the gate verifies before it refuses', () => {
     return { app, providerAuth, state, advance: (ms: number) => { now += ms; } };
   };
 
-  const start = (app: Hono, runner: ProviderId) => apiRequest(app, '/api/v1/runs', {
+  const start = (app: Hono, runner: ProviderId) => apiRequest(app, '/api/v1/p/boot/runs', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ task: 'Task', runner, steps: [{ id: 'task', prompt: '{{task}}' }] }),

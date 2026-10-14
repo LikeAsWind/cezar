@@ -43,6 +43,7 @@ describe('workspace runs index API', () => {
   let repoRoot: string;
   let otherRoot: string;
   let store: RunStore;
+  let contexts: ProjectContexts;
 
   beforeEach(() => {
     home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-runs-index-home-'));
@@ -52,9 +53,19 @@ describe('workspace runs index API', () => {
     process.env.CEZ_DRY_RUN = '1';
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
     clearProjectProbeCache();
+    // The cross-project index reads the LIVE store off the registry-backed
+    // context map (there is no boot store). Back the map with the real
+    // `listProjects` and hand it the injected `store` via the openStore seam,
+    // so `contexts.peek(<registered slug>)` finds this suite's seeded runs.
+    contexts = new ProjectContexts({
+      listProjects,
+      openStore: () => store,
+      managerFactory: () => ({ isActive: () => false, dispose: () => {} }) as unknown as RunManager,
+    });
   });
 
   afterEach(() => {
+    contexts.disposeAll();
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
     if (savedHome === undefined) delete process.env.CEZ_HOME;
@@ -63,8 +74,16 @@ describe('workspace runs index API', () => {
     else process.env.CEZ_DRY_RUN = savedDryRun;
   });
 
+  /** Register the boot project and BUILD its context, so the index reads the
+   *  live `store` (in-memory runs, ref-status cache) instead of only disk. */
+  const registerAndBuildBoot = async (): Promise<{ id: string; root: string }> => {
+    const boot = await registerProject(repoRoot);
+    await contexts.context(boot.id);
+    return { id: boot.id, root: boot.root };
+  };
+
   const makeApp = (over: Partial<ServerDeps> = {}) =>
-    createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over });
+    createApp({ runtime: testRuntime({ contexts }), version: '0.0.0-test', ...over });
 
   const getIndex = async (over: Partial<ServerDeps> = {}): Promise<RunsIndexResponse> => {
     const res = await apiRequest(makeApp(over), '/api/v1/workspace/runs-index');
@@ -84,7 +103,7 @@ describe('workspace runs index API', () => {
   });
 
   it('merges the boot project’s live store with a cold project read off disk, newest first', async () => {
-    const boot = await registerProject(repoRoot);
+    const bootId = (await registerAndBuildBoot()).id;
     const other = await registerProject(otherRoot);
     const live = store.createRun({ title: 'Boot task', workflow: 'build', task: 't', steps: [] });
     store.updateRun(live.id, { createdAt: '2026-07-10T10:00:00Z' });
@@ -95,7 +114,7 @@ describe('workspace runs index API', () => {
     const body = await getIndex();
 
     expect(body.runs.map((run) => run.id)).toEqual(['cold-1', live.id]);
-    expect(body.runs.map((run) => run.projectId)).toEqual([other.id, boot.id]);
+    expect(body.runs.map((run) => run.projectId)).toEqual([other.id, bootId]);
     expect(body.truncated).toEqual([]);
   });
 
@@ -366,7 +385,7 @@ describe('workspace runs index API', () => {
   });
 
   it('skips a project whose folder is gone and degrades a corrupt index to no rows', async () => {
-    await registerProject(repoRoot);
+    await registerAndBuildBoot();
     await registerProject(otherRoot);
     mkdirSync(join(otherRoot, '.ai/cezar'), { recursive: true });
     writeFileSync(join(otherRoot, '.ai/cezar/runs.json'), '{ not json', 'utf8');
@@ -386,7 +405,7 @@ describe('workspace runs index API', () => {
    */
   describe('reference statuses', () => {
     it('ships an empty map when the server has looked nothing up', async () => {
-      await registerProject(repoRoot);
+      await registerAndBuildBoot();
       const run = store.createRun({ title: 'Has a PR', workflow: 'build', task: 't', steps: [] });
       store.updateRun(run.id, { pullRequestUrl: 'https://github.com/acme/demo/pull/42' });
 
@@ -399,14 +418,15 @@ describe('workspace runs index API', () => {
     });
 
     it('ships what the cache holds, keyed by project', async () => {
-      await registerProject(repoRoot);
+      const boot = await registerAndBuildBoot();
       const run = store.createRun({ title: 'Has a PR', workflow: 'build', task: 't', steps: [] });
       store.updateRun(run.id, {
         pullRequestUrl: 'https://github.com/acme/demo/pull/42',
         issueNumber: 7,
       });
-      // Warm the cache the way the lazy route would have.
-      __seedRefStatusCacheForTests(realpathSync(repoRoot), [
+      // Warm the cache the way the lazy route would have — keyed by the SAME
+      // registry root the index reads (`project.root` is realpath'd).
+      __seedRefStatusCacheForTests(boot.root, [
         [42, { kind: 'pr', status: 'merged' }],
         [7, { kind: 'issue', status: 'open' }],
       ]);
@@ -421,14 +441,14 @@ describe('workspace runs index API', () => {
       // Which reference is displayed is the cockpit's rule (#407, #526) and is deliberately not
       // re-derived here. A cache read costs nothing per number, so the superset is free — and it
       // is what lets the client apply its own rule to whatever it gets.
-      await registerProject(repoRoot);
+      const boot = await registerAndBuildBoot();
       const run = store.createRun({ title: 'Several', workflow: 'build', task: 't', steps: [] });
       store.updateRun(run.id, {
         pullRequestUrl: 'https://github.com/acme/demo/pull/42',
         referencedPullRequestUrl: 'https://github.com/acme/demo/pull/40',
         referencedIssueUrl: 'https://github.com/acme/demo/issues/12',
       });
-      __seedRefStatusCacheForTests(realpathSync(repoRoot), [
+      __seedRefStatusCacheForTests(boot.root, [
         [42, { kind: 'pr', status: 'merged' }],
         [40, { kind: 'pr', status: 'ready' }],
         [12, { kind: 'issue', status: 'completed' }],

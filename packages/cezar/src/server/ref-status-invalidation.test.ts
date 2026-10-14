@@ -62,10 +62,10 @@ describe('a reference cezar changes itself is forgotten, not waited out', () => 
   });
 
   it('forgets the pull request it merged', async () => {
-    const state = await apiRequest(app, '/api/v1/github/prs/128/merge-state?refresh=1');
+    const state = await apiRequest(app, '/api/v1/p/boot/github/prs/128/merge-state?refresh=1');
     const { mergeState } = (await state.json()) as { mergeState: { headSha: string } };
 
-    const merged = await apiRequest(app, '/api/v1/github/prs/128/merge', {
+    const merged = await apiRequest(app, '/api/v1/p/boot/github/prs/128/merge', {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:4321' },
       body: JSON.stringify({ method: 'squash', expectedHeadSha: mergeState.headSha }),
@@ -78,7 +78,7 @@ describe('a reference cezar changes itself is forgotten, not waited out', () => 
   it('leaves the cache alone when the merge was REFUSED', async () => {
     // Nothing changed on the forge, so nothing we hold about it became wrong. Forgetting anyway
     // would spend a query to be told the same thing.
-    const refused = await apiRequest(app, '/api/v1/github/prs/128/merge', {
+    const refused = await apiRequest(app, '/api/v1/p/boot/github/prs/128/merge', {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:4321' },
       body: JSON.stringify({ method: 'squash', expectedHeadSha: 'f'.repeat(40) }),
@@ -99,7 +99,7 @@ describe('a reference cezar changes itself is forgotten, not waited out', () => 
     const run = store.createRun({ title: 'Ship it', task: 'ship it', workflow: 'quick-task', steps: [] });
     store.updateRun(run.id, { status: 'review', worktreePath: worktree, branch: 'cez/abc' });
 
-    const created = await apiRequest(app, `/api/v1/runs/${run.id}/pr`, {
+    const created = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/pr`, {
       method: 'POST',
       headers: { origin: 'http://127.0.0.1:4321' },
     });

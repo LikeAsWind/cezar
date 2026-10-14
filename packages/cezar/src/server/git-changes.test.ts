@@ -544,7 +544,7 @@ describe('session git API routes', () => {
   });
 
   const commit = (id: string, body: unknown) =>
-    apiRequest(app, `/api/v1/runs/${id}/git/commit`, {
+    apiRequest(app, `/api/v1/p/boot/runs/${id}/git/commit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -552,19 +552,19 @@ describe('session git API routes', () => {
 
   it('GET /changes answers the structured shape; 404 for unknown ids', async () => {
     writeFileSync(join(worktree, 'new.txt'), 'hi\n');
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/changes`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/changes`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as ChangesPayload;
     expect(body.files).toHaveLength(1);
     expect(body.files[0]).toMatchObject({ path: 'new.txt', status: 'added', adds: 1, dels: 0 });
     expect(body.stat).toEqual({ adds: 1, dels: 0, files: 1 });
 
-    expect((await apiRequest(app, '/api/v1/runs/nope/changes')).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/runs/nope/changes')).status).toBe(404);
   });
 
   it('GET /git/status counts what has not left the worktree; 404 unknown, 409 no worktree', async () => {
     writeFileSync(join(worktree, 'new.txt'), 'hi\n');
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/git/status`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/git/status`);
     expect(res.status).toBe(200);
     // No upstream yet: "never pushed" is null, not 0.
     // The fixture's base `main` is where `task` forked from, so it is not behind (yet).
@@ -578,15 +578,15 @@ describe('session git API routes', () => {
       g(worktree, 'commit', '-q', '-m', `main ${n}`);
     }
     g(worktree, 'checkout', '-q', 'task');
-    const behind = await apiRequest(app, `/api/v1/runs/${run.id}/git/status`);
+    const behind = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/git/status`);
     expect(((await behind.json()) as { behind: number }).behind).toBe(2);
 
-    expect((await apiRequest(app, '/api/v1/runs/nope/git/status')).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/runs/nope/git/status')).status).toBe(404);
 
     // A run whose isolated worktree is gone answers the server's own 409, like /changes does.
     const removed = store.createRun({ title: 'gone', workflow: 'quick-task', task: 'gone', steps: [] });
     store.updateRun(removed.id, { worktreePath: join(repoRoot, 'missing-wt'), branch: 'task' });
-    expect((await apiRequest(app, `/api/v1/runs/${removed.id}/git/status`)).status).toBe(409);
+    expect((await apiRequest(app, `/api/v1/p/boot/runs/${removed.id}/git/status`)).status).toBe(409);
   });
 
   it('GET /changes uses the persisted task branch to detect a repointed HEAD', async () => {
@@ -596,7 +596,7 @@ describe('session git API routes', () => {
     g(worktree, 'branch', '-m', 'review/pr-42');
     writeFileSync(join(worktree, 'reviewed.txt'), 'uncommitted conflict resolution\n');
 
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/changes`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/changes`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as ChangesPayload;
     expect(body.files.map((file) => file.path)).toEqual(['reviewed.txt']);
@@ -618,18 +618,18 @@ describe('session git API routes', () => {
     g(repoRoot, 'commit', '-m', 'session commit');
     writeFileSync(join(repoRoot, 'untracked.txt'), 'working copy\n');
 
-    const changes = await apiRequest(app, `/api/v1/runs/${bare.id}/changes`);
+    const changes = await apiRequest(app, `/api/v1/p/boot/runs/${bare.id}/changes`);
     expect(changes.status).toBe(200);
     const changed = (await changes.json()) as ChangesPayload;
     expect(changed.files.map((file) => file.path)).toEqual(['committed.txt', 'untracked.txt']);
     // The read uses a scratch index, so surfacing an untracked file never stages it.
     expect(g(repoRoot, 'status', '--porcelain', 'untracked.txt').startsWith('??')).toBe(true);
 
-    const files = await apiRequest(app, `/api/v1/runs/${bare.id}/files?path=untracked.txt`);
+    const files = await apiRequest(app, `/api/v1/p/boot/runs/${bare.id}/files?path=untracked.txt`);
     expect(files.status).toBe(200);
     expect((await files.json()) as object).toMatchObject({ type: 'file', content: 'working copy\n' });
 
-    const commits = await apiRequest(app, `/api/v1/runs/${bare.id}/commits`);
+    const commits = await apiRequest(app, `/api/v1/p/boot/runs/${bare.id}/commits`);
     expect(commits.status).toBe(200);
     const commitList = (await commits.json()) as { commits: Array<{ sha: string; subject: string }> };
     expect(commitList.commits).toHaveLength(1);
@@ -637,7 +637,7 @@ describe('session git API routes', () => {
     expect(sessionCommit?.subject).toBe('session commit');
     if (!sessionCommit) throw new Error('expected the session commit');
 
-    const detail = await apiRequest(app, `/api/v1/runs/${bare.id}/commit/${sessionCommit.sha}`);
+    const detail = await apiRequest(app, `/api/v1/p/boot/runs/${bare.id}/commit/${sessionCommit.sha}`);
     expect(detail.status).toBe(200);
     expect((await detail.json()) as object).toMatchObject({
       subject: 'session commit',
@@ -647,7 +647,7 @@ describe('session git API routes', () => {
     // Mutations still require an isolated worktree/branch.
     for (const req of [
       commit(bare.id, { message: 'x' }),
-      apiRequest(app, `/api/v1/runs/${bare.id}/git/push`, { method: 'POST' }),
+      apiRequest(app, `/api/v1/p/boot/runs/${bare.id}/git/push`, { method: 'POST' }),
     ]) {
       const res = await req;
       expect(res.status).toBe(409);
@@ -665,10 +665,10 @@ describe('session git API routes', () => {
     store.updateRun(removed.id, { worktreePath: undefined, branch: undefined });
 
     for (const req of [
-      apiRequest(app, `/api/v1/runs/${removed.id}/changes`),
-      apiRequest(app, `/api/v1/runs/${removed.id}/files`),
-      apiRequest(app, `/api/v1/runs/${removed.id}/commits`),
-      apiRequest(app, `/api/v1/runs/${removed.id}/commit/${repoBaseSha}`),
+      apiRequest(app, `/api/v1/p/boot/runs/${removed.id}/changes`),
+      apiRequest(app, `/api/v1/p/boot/runs/${removed.id}/files`),
+      apiRequest(app, `/api/v1/p/boot/runs/${removed.id}/commits`),
+      apiRequest(app, `/api/v1/p/boot/runs/${removed.id}/commit/${repoBaseSha}`),
     ]) {
       const res = await req;
       expect(res.status).toBe(409);
@@ -682,32 +682,32 @@ describe('session git API routes', () => {
     g(worktree, 'add', '-A');
     g(worktree, 'commit', '-m', 'add feature');
 
-    const list = await apiRequest(app, `/api/v1/runs/${run.id}/commits`);
+    const list = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/commits`);
     expect(list.status).toBe(200);
     const { commits } = (await list.json()) as { commits: Array<{ sha: string; subject: string }> };
     expect(commits).toHaveLength(1);
     expect(commits[0]?.subject).toBe('add feature');
 
     const sha = commits[0]!.sha;
-    const diff = await apiRequest(app, `/api/v1/runs/${run.id}/commit/${sha}`);
+    const diff = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/commit/${sha}`);
     expect(diff.status).toBe(200);
     const commit = (await diff.json()) as { files: Array<{ path: string; status: string }> };
     expect(commit.files[0]).toMatchObject({ path: 'feature.txt', status: 'added' });
 
     // Unknown run id → 404 (not 409), like the other run-scoped routes.
-    expect((await apiRequest(app, '/api/v1/runs/nope/commits')).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/runs/nope/commits')).status).toBe(404);
   });
 
   it('GET /files lists and reads inside the worktree, 409s traversal', async () => {
-    const listing = await apiRequest(app, `/api/v1/runs/${run.id}/files`);
+    const listing = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files`);
     expect(listing.status).toBe(200);
     expect((await listing.json()) as object).toMatchObject({ type: 'dir', path: '' });
 
-    const file = await apiRequest(app, `/api/v1/runs/${run.id}/files?path=base.txt`);
+    const file = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?path=base.txt`);
     expect(file.status).toBe(200);
     expect((await file.json()) as object).toMatchObject({ type: 'file', content: 'base\n' });
 
-    const evil = await apiRequest(app, `/api/v1/runs/${run.id}/files?path=${encodeURIComponent('../../etc/passwd')}`);
+    const evil = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?path=${encodeURIComponent('../../etc/passwd')}`);
     expect(evil.status).toBe(409);
     expect(((await evil.json()) as { error: string }).error).toContain('escapes the worktree');
   });
@@ -720,7 +720,7 @@ describe('session git API routes', () => {
 
   it('GET /files?raw=1 serves image bytes with the image content-type and a no-script CSP', async () => {
     writeFileSync(join(worktree, 'logo.png'), PNG);
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/files?path=logo.png&raw=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?path=logo.png&raw=1`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
@@ -730,7 +730,7 @@ describe('session git API routes', () => {
 
   it('GET /files?raw=1 refuses non-images — a worktree HTML file can never become a document', async () => {
     writeFileSync(join(worktree, 'page.html'), '<script>alert(1)</script>\n');
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/files?path=page.html&raw=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?path=page.html&raw=1`);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toContain('limited to images');
   });
@@ -739,14 +739,14 @@ describe('session git API routes', () => {
     const huge = Buffer.alloc(FILE_CONTENT_CAP + 1);
     PNG.copy(huge); // PNG magic up front, NULs after — binary, image extension, over cap
     writeFileSync(join(worktree, 'huge.png'), huge);
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/files?path=huge.png&raw=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?path=huge.png&raw=1`);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toContain('too large');
   });
 
   it('GET /files?raw=1 still rejects traversal with a 409', async () => {
     const res = await apiRequest(app,
-      `/api/v1/runs/${run.id}/files?path=${encodeURIComponent('../../etc/passwd')}&raw=1`,
+      `/api/v1/p/boot/runs/${run.id}/files?path=${encodeURIComponent('../../etc/passwd')}&raw=1`,
     );
     expect(res.status).toBe(409);
   });
@@ -757,7 +757,7 @@ describe('session git API routes', () => {
   // flag half above is unchanged and stays the live wire; these pin the other two rungs.
 
   const files = (query: string, accept?: string) =>
-    apiRequest(app, `/api/v1/runs/${run.id}/files?${query}`, {
+    apiRequest(app, `/api/v1/p/boot/runs/${run.id}/files?${query}`, {
       ...(accept === undefined ? {} : { headers: { accept } }),
     });
 
@@ -864,7 +864,7 @@ describe('session git API routes', () => {
   });
 
   it('POST git/push with no remote is a 409 with a human reason', async () => {
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/git/push`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/git/push`, { method: 'POST' });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toContain('no remote configured');
   });
@@ -875,12 +875,12 @@ describe('session git API routes', () => {
       execFileSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
       g(worktree, 'remote', 'add', 'origin', remote);
 
-      const first = await apiRequest(app, `/api/v1/runs/${run.id}/git/push`, { method: 'POST' });
+      const first = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/git/push`, { method: 'POST' });
       expect(first.status).toBe(200);
       expect((await first.json()) as object).toMatchObject({ pushed: true, branch: 'task', remote: 'origin', upstreamSet: true });
 
       // Second push goes through the existing upstream.
-      const second = await apiRequest(app, `/api/v1/runs/${run.id}/git/push`, { method: 'POST' });
+      const second = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/git/push`, { method: 'POST' });
       expect(second.status).toBe(200);
       expect((await second.json()) as object).toMatchObject({ pushed: true, upstreamSet: false });
     } finally {
@@ -898,7 +898,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-repoapi-'));
     initRepo(repoRoot);
     // The RunStore lives inside the repo (.ai/cezar) — ignore it so it never
-    // shows up in /api/v1/repo/changes.
+    // shows up in /api/v1/p/boot/repo/changes.
     writeFileSync(join(repoRoot, '.gitignore'), '.ai/\n');
     writeFileSync(join(repoRoot, 'base.txt'), 'base\n');
     g(repoRoot, 'add', '-A');
@@ -914,17 +914,17 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
   });
 
   const branch = (body: unknown) =>
-    apiRequest(app, '/api/v1/repo/branch', {
+    apiRequest(app, '/api/v1/p/boot/repo/branch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
 
-  it('GET /api/v1/repo/changes reports uncommitted main-tree changes vs HEAD', async () => {
+  it('GET /api/v1/p/boot/repo/changes reports uncommitted main-tree changes vs HEAD', async () => {
     writeFileSync(join(repoRoot, 'base.txt'), 'base changed\n');
     writeFileSync(join(repoRoot, 'new.txt'), 'brand new\n');
 
-    const res = await apiRequest(app, '/api/v1/repo/changes');
+    const res = await apiRequest(app, '/api/v1/p/boot/repo/changes');
     expect(res.status).toBe(200);
     const body = (await res.json()) as ChangesPayload;
     const byPath = new Map(body.files.map((f) => [f.path, f]));
@@ -934,22 +934,22 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     expect(body.stat).toEqual({ adds: 2, dels: 1, files: 2 });
   });
 
-  it('GET /api/v1/repo/changes on a clean tree is an all-zero payload, not an error', async () => {
-    const res = await apiRequest(app, '/api/v1/repo/changes');
+  it('GET /api/v1/p/boot/repo/changes on a clean tree is an all-zero payload, not an error', async () => {
+    const res = await apiRequest(app, '/api/v1/p/boot/repo/changes');
     expect(res.status).toBe(200);
     const body = (await res.json()) as ChangesPayload;
     expect(body.files).toEqual([]);
     expect(body.stat).toEqual({ adds: 0, dels: 0, files: 0 });
   });
 
-  it('POST /api/v1/repo/branch creates a branch from HEAD and switches to it', async () => {
+  it('POST /api/v1/p/boot/repo/branch creates a branch from HEAD and switches to it', async () => {
     const res = await branch({ name: 'feature' });
     expect(res.status).toBe(200);
     expect((await res.json()) as object).toEqual({ branch: 'feature', created: true });
     expect(g(repoRoot, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('feature');
   });
 
-  it('POST /api/v1/repo/branch creates from an explicit start point', async () => {
+  it('POST /api/v1/p/boot/repo/branch creates from an explicit start point', async () => {
     const mainSha = g(repoRoot, 'rev-parse', 'HEAD').trim();
     // Move ahead on a side branch so `from: main` is not just HEAD.
     g(repoRoot, 'checkout', '-b', 'side');
@@ -963,7 +963,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     expect(g(repoRoot, 'rev-parse', 'HEAD').trim()).toBe(mainSha);
   });
 
-  it('POST /api/v1/repo/branch switches to an existing branch without recreating it', async () => {
+  it('POST /api/v1/p/boot/repo/branch switches to an existing branch without recreating it', async () => {
     g(repoRoot, 'checkout', '-b', 'existing');
     g(repoRoot, 'checkout', 'main');
 
@@ -1005,15 +1005,15 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
   it('a bad body is a 400 (missing, blank, or non-JSON)', async () => {
     expect((await branch({})).status).toBe(400);
     expect((await branch({ name: '   ' })).status).toBe(400);
-    const res = await apiRequest(app, '/api/v1/repo/branch', { method: 'POST', body: 'not json' });
+    const res = await apiRequest(app, '/api/v1/p/boot/repo/branch', { method: 'POST', body: 'not json' });
     expect(res.status).toBe(400);
   });
 
-  // ---- GET /api/v1/repo/commit/:sha (R5 Step 1.7 — structured sibling) ----------
+  // ---- GET /api/v1/p/boot/repo/commit/:sha (R5 Step 1.7 — structured sibling) ----------
 
-  it('GET /api/v1/repo/commit/:sha without the flag keeps the legacy text-blob shape', async () => {
+  it('GET /api/v1/p/boot/repo/commit/:sha without the flag keeps the legacy text-blob shape', async () => {
     const sha = g(repoRoot, 'rev-parse', 'HEAD').trim();
-    const res = await apiRequest(app, `/api/v1/repo/commit/${sha}`);
+    const res = await apiRequest(app, `/api/v1/p/boot/repo/commit/${sha}`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/plain');
     const text = await res.text();
@@ -1028,7 +1028,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     g(repoRoot, 'commit', '-m', 'second: edit + add');
     const sha = g(repoRoot, 'rev-parse', 'HEAD').trim();
 
-    const res = await apiRequest(app, `/api/v1/repo/commit/${sha}?structured=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/repo/commit/${sha}?structured=1`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       sha: string;
@@ -1051,7 +1051,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
 
   it('?structured=1 handles the root commit (no parent) and abbreviated shas', async () => {
     const full = g(repoRoot, 'rev-parse', 'HEAD').trim();
-    const res = await apiRequest(app, `/api/v1/repo/commit/${full.slice(0, 8)}?structured=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/repo/commit/${full.slice(0, 8)}?structured=1`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sha: string; files: Array<{ path: string }> };
     // The abbreviation resolves to the full sha, and --root diffs the initial commit.
@@ -1071,7 +1071,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     g(repoRoot, 'merge', '--no-ff', '-m', 'merge feature', 'feature');
     const sha = g(repoRoot, 'rev-parse', 'HEAD').trim();
 
-    const res = await apiRequest(app, `/api/v1/repo/commit/${sha}?structured=1`);
+    const res = await apiRequest(app, `/api/v1/p/boot/repo/commit/${sha}?structured=1`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { subject: string; files: unknown[]; stat: { files: number } };
     expect(body.subject).toBe('merge feature');
@@ -1080,11 +1080,11 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
   });
 
   it('?structured=1 with an unknown or invalid sha is a 409 with a reason, never HTML', async () => {
-    const unknown = await apiRequest(app, '/api/v1/repo/commit/deadbeefdeadbeef?structured=1');
+    const unknown = await apiRequest(app, '/api/v1/p/boot/repo/commit/deadbeefdeadbeef?structured=1');
     expect(unknown.status).toBe(409);
     expect(((await unknown.json()) as { error: string }).error.length).toBeGreaterThan(0);
 
-    const invalid = await apiRequest(app, '/api/v1/repo/commit/not-a-sha?structured=1');
+    const invalid = await apiRequest(app, '/api/v1/p/boot/repo/commit/not-a-sha?structured=1');
     expect(invalid.status).toBe(409);
     expect(((await invalid.json()) as { error: string }).error).toContain('not a commit hash');
   });
@@ -1096,7 +1096,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
   // a protected surface (BACKWARD_COMPATIBILITY.md §2), so "JSON by default" was not on offer.
 
   const commit = (suffix: string, accept?: string) =>
-    apiRequest(app, `/api/v1/repo/commit/${g(repoRoot, 'rev-parse', 'HEAD').trim()}${suffix}`, {
+    apiRequest(app, `/api/v1/p/boot/repo/commit/${g(repoRoot, 'rev-parse', 'HEAD').trim()}${suffix}`, {
       ...(accept === undefined ? {} : { headers: { accept } }),
     });
 

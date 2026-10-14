@@ -51,7 +51,7 @@ describe('request-origin guard (#426)', () => {
   const startBody = { task: 'do the thing', steps: [{ id: 'work', prompt: '{{task}}' }] };
 
   const postRuns = (headers: Record<string, string>) =>
-    app.request('/api/v1/runs', {
+    app.request('/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(startBody),
@@ -88,7 +88,7 @@ describe('request-origin guard (#426)', () => {
   });
 
   it('rejects even a READ with a foreign Host header (rebinding exfiltration) with 403', async () => {
-    const res = await app.request('/api/v1/runs', { headers: { host: 'evil.tld' } });
+    const res = await app.request('/api/v1/p/boot/runs', { headers: { host: 'evil.tld' } });
     expect(res.status).toBe(403);
   });
 
@@ -100,7 +100,7 @@ describe('request-origin guard (#426)', () => {
 
   for (const host of REBINDING_HOSTS) {
     it(`rejects a READ whose Host is the rebinding hostname ${host} → 403`, async () => {
-      const res = await app.request('/api/v1/runs', { headers: { host: `${host}:4321` } });
+      const res = await app.request('/api/v1/p/boot/runs', { headers: { host: `${host}:4321` } });
       expect(res.status).toBe(403);
     });
 
@@ -127,7 +127,7 @@ describe('request-origin guard (#426)', () => {
   });
 
   it('rejects a read with no Host header → 403', async () => {
-    const res = await app.request('/api/v1/runs', { headers: {} });
+    const res = await app.request('/api/v1/p/boot/runs', { headers: {} });
     expect(res.status).toBe(403);
   });
 
@@ -237,7 +237,7 @@ describe('request-origin guard (#426)', () => {
     '127.0.0.1:evil.com',
     'evil.com:80:127.0.0.1',
   ])('rejects the malformed/spoofing Host %s → 403', async (host) => {
-    const res = await app.request('/api/v1/runs', { headers: { host } });
+    const res = await app.request('/api/v1/p/boot/runs', { headers: { host } });
     expect(res.status).toBe(403);
   });
 
@@ -249,19 +249,19 @@ describe('request-origin guard (#426)', () => {
 
   // ---- reads and the SSE / health surfaces stay unaffected ----------------
 
-  it('leaves loopback reads unaffected (GET /api/v1/runs) → 200', async () => {
-    const res = await app.request('/api/v1/runs', { headers: { host: LOOPBACK } });
+  it('leaves loopback reads unaffected (GET /api/v1/p/boot/runs) → 200', async () => {
+    const res = await app.request('/api/v1/p/boot/runs', { headers: { host: LOOPBACK } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
   });
 
   it('lets a loopback SSE read through to its route (unknown id → 404, not a 403)', async () => {
-    const res = await app.request('/api/v1/runs/nope/events', { headers: { host: LOOPBACK } });
+    const res = await app.request('/api/v1/p/boot/runs/nope/events', { headers: { host: LOOPBACK } });
     expect(res.status).toBe(404); // the route's own answer — the guard let it pass
   });
 
   it('still guards the SSE route against a foreign Host → 403', async () => {
-    const res = await app.request('/api/v1/runs/nope/events', { headers: { host: 'evil.tld' } });
+    const res = await app.request('/api/v1/p/boot/runs/nope/events', { headers: { host: 'evil.tld' } });
     expect(res.status).toBe(403);
   });
 
@@ -314,7 +314,7 @@ describe('request-origin guard — hosted mode (#426)', () => {
 
   const startBody = { task: 'do the thing', steps: [{ id: 'work', prompt: '{{task}}' }] };
   const postRuns = (headers: Record<string, string>) =>
-    app.request('/api/v1/runs', {
+    app.request('/api/v1/p/boot/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(startBody),

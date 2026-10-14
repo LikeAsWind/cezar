@@ -40,15 +40,15 @@ describe('SSE responses defeat intermediary buffering', () => {
     return res.headers;
   }
 
-  it('global /api/v1/events carries no-transform and X-Accel-Buffering: no', async () => {
-    const headers = await headersOf('/api/v1/events');
+  it('global /api/v1/p/boot/events carries no-transform and X-Accel-Buffering: no', async () => {
+    const headers = await headersOf('/api/v1/p/boot/events');
     expect(headers.get('cache-control')).toBe('no-cache, no-transform');
     expect(headers.get('x-accel-buffering')).toBe('no');
   });
 
-  it('per-run /api/v1/runs/:id/events carries the same contract', async () => {
+  it('per-run /api/v1/p/boot/runs/:id/events carries the same contract', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const headers = await headersOf(`/api/v1/runs/${run.id}/events`);
+    const headers = await headersOf(`/api/v1/p/boot/runs/${run.id}/events`);
     expect(headers.get('cache-control')).toBe('no-cache, no-transform');
     expect(headers.get('x-accel-buffering')).toBe('no');
   });

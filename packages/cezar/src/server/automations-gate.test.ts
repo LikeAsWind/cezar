@@ -83,16 +83,16 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
     });
     /** Every route of the feature, in the spelling BACKWARD_COMPATIBILITY.md §2 inventories. */
     const routes = (id: string): Array<[label: string, path: string, init?: RequestInit]> => [
-      ['GET /automations', '/api/v1/automations'],
-      ['POST /automations', '/api/v1/automations', json(DEFINITION)],
-      ['GET /automations/:id', `/api/v1/automations/${id}`],
-      ['PUT /automations/:id', `/api/v1/automations/${id}`, json({ ...DEFINITION, revision: 1 }, 'PUT')],
-      ['DELETE /automations/:id', `/api/v1/automations/${id}`, { method: 'DELETE' }],
-      ['POST /automations/:id/enable', `/api/v1/automations/${id}/enable`, json({ revision: 1 })],
-      ['POST /automations/:id/pause', `/api/v1/automations/${id}/pause`, json({ revision: 1 })],
-      ['POST /automations/:id/check', `/api/v1/automations/${id}/check`, json({ mode: 'preview' })],
-      ['GET /automation-log', '/api/v1/automation-log'],
-      ['POST /automation-log/:receiptId/retry', '/api/v1/automation-log/no-such-receipt/retry', { method: 'POST' }],
+      ['GET /automations', '/api/v1/p/boot/automations'],
+      ['POST /automations', '/api/v1/p/boot/automations', json(DEFINITION)],
+      ['GET /automations/:id', `/api/v1/p/boot/automations/${id}`],
+      ['PUT /automations/:id', `/api/v1/p/boot/automations/${id}`, json({ ...DEFINITION, revision: 1 }, 'PUT')],
+      ['DELETE /automations/:id', `/api/v1/p/boot/automations/${id}`, { method: 'DELETE' }],
+      ['POST /automations/:id/enable', `/api/v1/p/boot/automations/${id}/enable`, json({ revision: 1 })],
+      ['POST /automations/:id/pause', `/api/v1/p/boot/automations/${id}/pause`, json({ revision: 1 })],
+      ['POST /automations/:id/check', `/api/v1/p/boot/automations/${id}/check`, json({ mode: 'preview' })],
+      ['GET /automation-log', '/api/v1/p/boot/automation-log'],
+      ['POST /automation-log/:receiptId/retry', '/api/v1/p/boot/automation-log/no-such-receipt/retry', { method: 'POST' }],
       ['GET /automation-checks/:checkId', '/api/v1/automation-checks/no-such-check'],
     ];
 
@@ -113,22 +113,22 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
     it('gates only its own family — health and its neighbours are untouched', async () => {
       const built = app();
       expect((await apiRequest(built, '/api/v1/health')).status).toBe(200);
-      expect((await apiRequest(built, '/api/v1/runs')).status).toBe(200);
-      expect((await apiRequest(built, '/api/v1/todos')).status).toBe(200);
-      expect((await apiRequest(built, '/api/v1/workflows')).status).toBe(200);
+      expect((await apiRequest(built, '/api/v1/p/boot/runs')).status).toBe(200);
+      expect((await apiRequest(built, '/api/v1/p/boot/todos')).status).toBe(200);
+      expect((await apiRequest(built, '/api/v1/p/boot/workflows')).status).toBe(200);
     });
 
     it('gates the project-scoped mirror too, not just the boot alias', async () => {
-      const res = await apiRequest(app(), '/api/v1/p/default/automations');
+      const res = await apiRequest(app(), '/api/v1/p/boot/automations');
       expect(res.status).toBe(409);
       expect(((await res.json()) as { error: string }).error).toContain('CEZ_AUTOMATIONS');
     });
 
     it('hides definitions without destroying them — flipping the flag brings them back', async () => {
-      await apiRequest(app(), '/api/v1/automations');
-      await apiRequest(app(), `/api/v1/automations/${automationId}`, { method: 'DELETE' });
+      await apiRequest(app(), '/api/v1/p/boot/automations');
+      await apiRequest(app(), `/api/v1/p/boot/automations/${automationId}`, { method: 'DELETE' });
       delete process.env.CEZ_AUTOMATIONS;
-      const res = await apiRequest(app(), '/api/v1/automations');
+      const res = await apiRequest(app(), '/api/v1/p/boot/automations');
       expect(res.status).toBe(200);
       const body = (await res.json()) as { automations: Array<{ id: string; name: string }> };
       expect(body.automations).toHaveLength(1);
@@ -145,19 +145,19 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
   describe('on (the default)', () => {
 
     it('serves the real definitions', async () => {
-      const res = await apiRequest(app(), '/api/v1/automations');
+      const res = await apiRequest(app(), '/api/v1/p/boot/automations');
       expect(res.status).toBe(200);
       const body = (await res.json()) as { automations: Array<{ id: string }> };
       expect(body.automations.map((item) => item.id)).toEqual([automationId]);
     });
 
     it('an unknown id still 404s — the gate is not swallowing it', async () => {
-      const res = await apiRequest(app(), '/api/v1/automations/nope');
+      const res = await apiRequest(app(), '/api/v1/p/boot/automations/nope');
       expect(res.status).toBe(404);
     });
 
     it('a malformed body still 400s ahead of the 404 — validator order is unchanged', async () => {
-      const res = await apiRequest(app(), '/api/v1/automations/nope/check', json({ mode: 'nonsense' }));
+      const res = await apiRequest(app(), '/api/v1/p/boot/automations/nope/check', json({ mode: 'nonsense' }));
       expect(res.status).toBe(400);
     });
 
@@ -253,13 +253,18 @@ describe('automations gate (#801, default-on since spec 2026-09-14)', () => {
     const savedDryRun = process.env.CEZ_DRY_RUN;
     let home: string;
     let staleId: string;
+    let bootId: string;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       home = mkdtempSync(join(tmpdir(), 'cez-automations-gate-rebaseline-home-'));
       process.env.CEZ_HOME = home;
       process.env.CEZ_DRY_RUN = '1';
       const seed = AutomationStore.open(dataDir);
       staleId = seed.create({ ...DEFINITION, name: 'Stale poll', enabled: true }).id;
+      // The warm-up only re-baselines REGISTERED projects (there is no boot
+      // project any more), so register `repoRoot` and pass its slug as the
+      // projectId the boot sequence reads.
+      bootId = (await projects.registerProject(repoRoot)).id;
     });
 
     afterEach(() => {

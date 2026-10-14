@@ -435,6 +435,6 @@ describe('dashboard workspace routes', () => {
     const feed = await (await get('/feed?filter=tasks')).json();
     expect(dashboardFeedSchema.parse(feed)).toEqual(feed);
     expect((await get('/feed?filter=nope')).status).toBe(400);
-    expect((await apiRequest(app, '/api/v1/p/default/workspace/dashboard')).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/workspace/dashboard')).status).toBe(404);
   });
 });

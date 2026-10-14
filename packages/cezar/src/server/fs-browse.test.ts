@@ -236,6 +236,6 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
   // ---- mounting ------------------------------------------------------------
 
   it('is workspace-level: never mirrored under /api/v1/p/', async () => {
-    expect((await apiRequest(app, '/api/v1/p/default/fs/browse')).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/fs/browse')).status).toBe(404);
   });
 });

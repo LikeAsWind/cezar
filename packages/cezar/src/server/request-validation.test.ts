@@ -72,13 +72,13 @@ describe('request validation bounds (#429)', () => {
   const stepsBody = { steps: [{ id: 'work', prompt: '{{task}}' }] };
 
   it('accepts a 100k-char task', async () => {
-    const res = await postJson('/api/v1/runs', { ...stepsBody, task: 'x'.repeat(100_000) });
+    const res = await postJson('/api/v1/p/boot/runs', { ...stepsBody, task: 'x'.repeat(100_000) });
     expect(res.status).toBe(201);
     expect(captured?.task).toHaveLength(100_000);
   });
 
   it('rejects an over-cap task with a 400', async () => {
-    const res = await postJson('/api/v1/runs', { ...stepsBody, task: 'x'.repeat(100_001) });
+    const res = await postJson('/api/v1/p/boot/runs', { ...stepsBody, task: 'x'.repeat(100_001) });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain('task');
     expect(captured).toBeUndefined();
@@ -86,7 +86,7 @@ describe('request validation bounds (#429)', () => {
 
   // ---- planSchema.task -----------------------------------------------------
   it('rejects an over-cap plan task with a 400 (before planChain runs)', async () => {
-    const res = await postJson('/api/v1/plan', { task: 'x'.repeat(100_001) });
+    const res = await postJson('/api/v1/p/boot/plan', { task: 'x'.repeat(100_001) });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain('task');
   });
@@ -94,28 +94,28 @@ describe('request validation bounds (#429)', () => {
   // ---- continue text -------------------------------------------------------
   it('accepts a 100k-char continue text', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await postJson(`/api/v1/runs/${run.id}/continue`, { text: 'y'.repeat(100_000) });
+    const res = await postJson(`/api/v1/p/boot/runs/${run.id}/continue`, { text: 'y'.repeat(100_000) });
     expect(res.status).toBe(200);
     expect(continueText).toHaveLength(100_000);
   });
 
   it('rejects over-cap continue text with a 400', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await postJson(`/api/v1/runs/${run.id}/continue`, { text: 'y'.repeat(100_001) });
+    const res = await postJson(`/api/v1/p/boot/runs/${run.id}/continue`, { text: 'y'.repeat(100_001) });
     expect(res.status).toBe(400);
     expect(continueText).toBeUndefined();
   });
 
   it('an empty continue body still resumes (text optional)', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/continue`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/continue`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect(continueText).toBeUndefined();
   });
 
   // ---- saveWorkflowSchema.description --------------------------------------
   it('accepts a workflow with a 2k-char description', async () => {
-    const res = await postJson('/api/v1/workflows', {
+    const res = await postJson('/api/v1/p/boot/workflows', {
       name: 'wf-ok',
       description: 'd'.repeat(2_000),
       skills: ['some-skill'],
@@ -124,7 +124,7 @@ describe('request validation bounds (#429)', () => {
   });
 
   it('rejects an over-cap workflow description with a 400', async () => {
-    const res = await postJson('/api/v1/workflows', {
+    const res = await postJson('/api/v1/p/boot/workflows', {
       name: 'wf-bad',
       description: 'd'.repeat(2_001),
       skills: ['some-skill'],
@@ -136,7 +136,7 @@ describe('request validation bounds (#429)', () => {
   // ---- archive schema ------------------------------------------------------
   it('archives with no body', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/archive`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/archive`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect(store.getRun(run.id)?.archived).toBe(true);
   });
@@ -148,9 +148,9 @@ describe('request validation bounds (#429)', () => {
       awaitingAnswerSince: new Date().toISOString(),
       dispatch: { rootRunId: 'root', parentRunId: 'root', pendingAsk: { questions: ['Continue?'], askedAt: new Date().toISOString() } },
     });
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/archive`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/archive`, { method: 'POST' });
     expect(res.status).toBe(200);
-    await apiRequest(app, `/api/v1/runs/${run.id}/archive`, { method: 'POST' });
+    await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/archive`, { method: 'POST' });
     expect(retiredQuestionRunId).toBe(run.id);
     expect(retiredQuestionCount).toBe(1);
     expect(store.getRun(run.id)?.awaitingAnswerSince).toBeUndefined();
@@ -158,14 +158,14 @@ describe('request validation bounds (#429)', () => {
 
   it('rejects a wrong-typed archived flag with a 400', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await postJson(`/api/v1/runs/${run.id}/archive`, { archived: 'nope' });
+    const res = await postJson(`/api/v1/p/boot/runs/${run.id}/archive`, { archived: 'nope' });
     expect(res.status).toBe(400);
   });
 
   // ---- pin schema (#935) — the archive route's twin, so the same three cases ---------------
   it('pins with no body, and answers the updated record', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/pin`, { method: 'POST' });
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/pin`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect((await res.json()) as { pinned?: boolean }).toMatchObject({ id: run.id, pinned: true });
     expect(store.getRun(run.id)?.pinned).toBe(true);
@@ -173,8 +173,8 @@ describe('request validation bounds (#429)', () => {
 
   it('unpins on {pinned:false}, leaving the record with no pin keys at all', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    await apiRequest(app, `/api/v1/runs/${run.id}/pin`, { method: 'POST' });
-    const res = await postJson(`/api/v1/runs/${run.id}/pin`, { pinned: false });
+    await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/pin`, { method: 'POST' });
+    const res = await postJson(`/api/v1/p/boot/runs/${run.id}/pin`, { pinned: false });
     expect(res.status).toBe(200);
     // Absent, not `false`: the shape a cezar that never heard of pins would have written.
     expect(await res.json()).not.toHaveProperty('pinned');
@@ -183,19 +183,19 @@ describe('request validation bounds (#429)', () => {
 
   it('rejects a wrong-typed pinned flag with a 400', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await postJson(`/api/v1/runs/${run.id}/pin`, { pinned: 'nope' });
+    const res = await postJson(`/api/v1/p/boot/runs/${run.id}/pin`, { pinned: 'nope' });
     expect(res.status).toBe(400);
   });
 
   it('answers 404 for a run that does not exist', async () => {
-    const res = await apiRequest(app, '/api/v1/runs/no-such-run/pin', { method: 'POST' });
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/no-such-run/pin', { method: 'POST' });
     expect(res.status).toBe(404);
   });
 
   // ---- open-in schema ------------------------------------------------------
   it('rejects an open-in with no target (400)', async () => {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-    const res = await apiRequest(app, `/api/v1/runs/${run.id}/open-in`, {
+    const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/open-in`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
@@ -212,7 +212,7 @@ describe('request validation bounds (#429)', () => {
     });
 
   it('passes an unknown ui-state key through and persists it', async () => {
-    const res = await putJson('/api/v1/ui-state', { someFuturePref: 'keep-me' });
+    const res = await putJson('/api/v1/p/boot/ui-state', { someFuturePref: 'keep-me' });
     expect(res.status).toBe(200);
     const merged = (await res.json()) as Record<string, unknown>;
     expect(merged.someFuturePref).toBe('keep-me');
@@ -223,13 +223,13 @@ describe('request validation bounds (#429)', () => {
   it('rejects a ui-state body with too many top-level keys (400)', async () => {
     const body: Record<string, number> = {};
     for (let i = 0; i < 201; i++) body[`k${i}`] = i;
-    const res = await putJson('/api/v1/ui-state', body);
+    const res = await putJson('/api/v1/p/boot/ui-state', body);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain('too many keys');
   });
 
   it('accepts a valid known ui-state field', async () => {
-    const res = await putJson('/api/v1/ui-state', { runsView: 'table' });
+    const res = await putJson('/api/v1/p/boot/ui-state', { runsView: 'table' });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { runsView: string }).runsView).toBe('table');
   });
@@ -247,7 +247,7 @@ describe('request validation bounds (#429)', () => {
    */
   describe('body parsing stays as tolerant as the inline parse it replaced', () => {
     it('answers malformed JSON with the {error} shape, not Hono plain text', async () => {
-      const res = await apiRequest(app, '/api/v1/runs', {
+      const res = await apiRequest(app, '/api/v1/p/boot/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: '{ this is not json',
@@ -260,7 +260,7 @@ describe('request validation bounds (#429)', () => {
     });
 
     it('still reads a body sent without a JSON content-type', async () => {
-      const res = await apiRequest(app, '/api/v1/runs', {
+      const res = await apiRequest(app, '/api/v1/p/boot/runs', {
         method: 'POST',
         body: JSON.stringify({ ...stepsBody, task: 'no content-type here' }),
       });
@@ -271,7 +271,7 @@ describe('request validation bounds (#429)', () => {
     it('treats a body-less request as the route’s own fallback, not as {}', async () => {
       // `POST /runs` required a body before; a bodyless request must still 400 rather than
       // sail through on the `{}` Hono hands a validator when there is nothing to parse.
-      const res = await apiRequest(app, '/api/v1/runs', { method: 'POST' });
+      const res = await apiRequest(app, '/api/v1/p/boot/runs', { method: 'POST' });
       expect(res.status).toBe(400);
       expect(await res.json()).toHaveProperty('error');
       expect(captured).toBeUndefined();
@@ -279,7 +279,7 @@ describe('request validation bounds (#429)', () => {
 
     it('lets a body-less request through where the route tolerated one (archive)', async () => {
       const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
-      const res = await apiRequest(app, `/api/v1/runs/${run.id}/archive`, { method: 'POST' });
+      const res = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/archive`, { method: 'POST' });
       expect(res.status).toBe(200);
     });
   });

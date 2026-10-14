@@ -321,7 +321,7 @@ describe('fetchCommentCounts', () => {
 });
 
 /** Comment threads (#499 Phase 2): the pure normalize/merge seam behind
- *  `GET /api/v1/github/comments/:kind/:number`. The `gh`-shelling in `fetchGithubComments` isn't
+ *  `GET /api/v1/p/boot/github/comments/:kind/:number`. The `gh`-shelling in `fetchGithubComments` isn't
  *  unit-tested (it degrades on any failure and is covered by the route + component tests); the
  *  transforms below carry the real logic — review filtering, chronological merge, and caps. */
 

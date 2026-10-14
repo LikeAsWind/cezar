@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DATA_GITIGNORE_ENTRIES } from '../data-gitignore.ts';
 import { AutomationStore } from '../automations/store.ts';
 import { emitUsageForTest } from '../core/process-usage.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContextSource } from './project-context.ts';
@@ -88,6 +89,19 @@ describe('ProjectContexts', () => {
     const context = await contexts.context('a');
     expect(context.automationStore).toBe(automationStore);
     expect(resolveAutomationStore).toHaveBeenCalledWith('a', rootA);
+    contexts.disposeAll();
+  });
+
+  it('seeds the per-project .gitignore on build (the register path does what the retired boot path did)', async () => {
+    const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
+    await contexts.context('a');
+    const gitignorePath = join(rootA, '.ai/cezar', '.gitignore');
+    expect(existsSync(gitignorePath)).toBe(true);
+    const contents = readFileSync(gitignorePath, 'utf8');
+    for (const entry of ['drafts/', 'runs/', 'worktrees/']) {
+      expect(contents.split('\n')).toContain(entry);
+    }
+    expect(DATA_GITIGNORE_ENTRIES.every((e) => contents.split('\n').includes(e))).toBe(true);
     contexts.disposeAll();
   });
 

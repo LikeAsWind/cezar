@@ -18,11 +18,11 @@ import { apiRequest } from './loopback-request.testkit.ts';
 
 interface HealthBody {
   version: string;
-  repoRoot: string;
-  repo: unknown;
+  repoRoot?: string;
+  repo?: unknown;
   checks: unknown[];
   defaultRunner?: string;
-  forge: { kind: string; available: boolean; reason?: string } | null;
+  forge?: { kind: string; available: boolean; reason?: string } | null;
   capabilities: {
     localHandoff: boolean;
     followups: boolean;
@@ -101,14 +101,14 @@ describe('GET /api/v1/health — forge + capabilities', () => {
 
   it('local mode: keeps every pre-forge field and adds localHandoff:true + forge:null outside a repo', async () => {
     const body = await health();
-    // Protected pre-existing shape — additive only.
+    // Protected pre-existing shape — additive only. The repo-bound fields
+    // (`repoRoot`/`repo`/`forge`) are absent in workspace mode (Tasks 2–3).
     expect(body.version).toBe('0.0.0-test');
-    expect(body.repoRoot).toBe(repoRoot);
-    expect(body).toHaveProperty('repo');
+    expect(body).not.toHaveProperty('repoRoot');
+    expect(body).not.toHaveProperty('repo');
     expect(Array.isArray(body.checks)).toBe(true);
     expect(body).toHaveProperty('defaultRunner');
-    // New additive fields.
-    expect(body.forge).toBeNull(); // tmp dir — not a git repo, no remote
+    expect(body.forge).toBeUndefined();
     expect(body.capabilities).toEqual({
       localHandoff: true,
       followups: false,
@@ -137,28 +137,28 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     execFileSync('git', ['remote', 'add', remoteName, remote], { cwd: repoRoot });
   };
 
-  it('reports the GitHub forge for a repo with a github.com remote', async () => {
+  it('reports no forge field for a repo with a github.com remote (workspace mode)', async () => {
     initRepo('https://github.com/acme/demo.git');
     const body = await health();
-    expect(body.forge).toEqual({ kind: 'github', available: true });
+    expect(body.forge).toBeUndefined();
   });
 
-  it('reports the GitHub forge for an SSH (scp-like) origin remote', async () => {
+  it('reports no forge field for an SSH (scp-like) origin remote', async () => {
     initRepo('git@github.com:acme/demo.git');
     const body = await health();
-    expect(body.forge).toEqual({ kind: 'github', available: true });
+    expect(body.forge).toBeUndefined();
   });
 
-  it('reports the GitHub forge when the only remote is not named origin', async () => {
+  it('reports no forge field when the only remote is not named origin', async () => {
     initRepo('git@github.com:acme/demo.git', 'github');
     const body = await health();
-    expect(body.forge).toEqual({ kind: 'github', available: true });
+    expect(body.forge).toBeUndefined();
   });
 
-  it('reports forge:null for a non-GitHub remote', async () => {
+  it('reports no forge field for a non-GitHub remote', async () => {
     initRepo('git@gitlab.com:acme/demo.git');
     const body = await health();
-    expect(body.forge).toBeNull();
+    expect(body.forge).toBeUndefined();
   });
 
   it('hosted mode via CEZ_REMOTE=1: localHandoff:false', async () => {
@@ -176,19 +176,15 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     });
   });
 
-  it('hosted mode trims repoRoot to a basename — no absolute path/username leak (#431)', async () => {
+  it('hosted mode trims no repoRoot (the field is absent in workspace mode)', async () => {
     process.env.CEZ_REMOTE = '1';
     const body = await health();
-    // The absolute checkout path (with the developer's username) must not be exposed to a
-    // site/host that reads the CORS-open health endpoint in hosted mode.
-    expect(body.repoRoot).toBe(basename(repoRoot));
-    expect(body.repoRoot).not.toContain(sep);
-    expect(body.repoRoot).not.toBe(repoRoot);
+    expect(body.repoRoot).toBeUndefined();
   });
 
-  it('hosted mode via a non-loopback bind host also trims repoRoot (#431)', async () => {
+  it('hosted mode via a non-loopback bind host also has no repoRoot', async () => {
     const body = await health({ bindHost: '0.0.0.0' });
-    expect(body.repoRoot).toBe(basename(repoRoot));
+    expect(body.repoRoot).toBeUndefined();
   });
 
   it('hosted mode via a non-loopback bind host: localHandoff:false', async () => {
@@ -294,7 +290,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
   });
 });
 
-describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', () => {
+describe('POST /api/v1/p/boot/runs/:id/open-in-cli — hosted-mode defense in depth', () => {
   let repoRoot: string;
   let store: RunStore;
   let runId: string;
@@ -317,7 +313,7 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
   const post = (over: Partial<ServerDeps> = {}) =>
     apiRequest(
       createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', ...over }),
-      `/api/v1/runs/${runId}/open-in-cli`,
+      `/api/v1/p/boot/runs/${runId}/open-in-cli`,
       { method: 'POST' },
     );
 
@@ -345,7 +341,7 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
   it('unknown runs still 404 first', async () => {
     process.env.CEZ_REMOTE = '1';
     const app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test' });
-    const res = await apiRequest(app, '/api/v1/runs/nope/open-in-cli', { method: 'POST' });
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/nope/open-in-cli', { method: 'POST' });
     expect(res.status).toBe(404);
   });
 });

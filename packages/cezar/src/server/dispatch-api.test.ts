@@ -54,7 +54,7 @@ describe('the dispatch routes', () => {
   const json = (body: unknown) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
   it('creates a child through the manager and answers its id and branch', async () => {
-    const res = await apiRequest(app, '/api/v1/runs/parent-1/dispatch', json({ objective: 'take the flank', max_cost: 2 }));
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/parent-1/dispatch', json({ objective: 'take the flank', max_cost: 2 }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: 'child-1', branch: 'cez/child1' });
     expect(calls).toEqual([{ kind: 'dispatch', runId: 'parent-1', body: { objective: 'take the flank', max_cost: 2 } }]);
@@ -62,32 +62,32 @@ describe('the dispatch routes', () => {
 
   it('answers a refusal as 409 with the reason', async () => {
     outcome = { refused: 'no budget left' };
-    const res = await apiRequest(app, '/api/v1/runs/parent-1/dispatch', json({ objective: 'x' }));
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/parent-1/dispatch', json({ objective: 'x' }));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'no budget left' });
   });
 
   it('400s an order with an unknown key — a misspelled cap is a brake that did not fire', async () => {
-    const res = await apiRequest(app, '/api/v1/runs/parent-1/dispatch', json({ objective: 'x', max_costs: 2 }));
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/parent-1/dispatch', json({ objective: 'x', max_costs: 2 }));
     expect(res.status).toBe(400);
     expect(calls).toEqual([]);
   });
 
   it('records a report and answers ok; 404 for a run outside any tree', async () => {
     const report = { status: 'done', result: 'all green', evidence: ['npm test → 3 passed'], verdict: 'approve' };
-    const res = await apiRequest(app, '/api/v1/runs/child-1/report', json(report));
+    const res = await apiRequest(app, '/api/v1/p/boot/runs/child-1/report', json(report));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(calls[0]).toMatchObject({ kind: 'report', runId: 'child-1' });
     expect(calls[0]?.body).toMatchObject({ ...report, side_effects: [], errors: [], suggestions: [] });
     reportOk = false;
-    expect((await apiRequest(app, '/api/v1/runs/plain/report', json(report))).status).toBe(404);
+    expect((await apiRequest(app, '/api/v1/p/boot/runs/plain/report', json(report))).status).toBe(404);
   });
 
   it('answers 409 on both routes while CEZ_DISPATCH=0, before touching the manager', async () => {
     process.env.CEZ_DISPATCH = '0';
     app = createApp({ runtime: testRuntime({ repoRoot, store, manager: {} as RunManager }), version: '0.0.0-test', providerAuth: connectedProviderAuth() });
-    for (const path of ['/api/v1/runs/p/dispatch', '/api/v1/runs/p/report']) {
+    for (const path of ['/api/v1/p/boot/runs/p/dispatch', '/api/v1/p/boot/runs/p/report']) {
       const res = await apiRequest(app, path, json({ objective: 'x', status: 'done', result: 'r' }));
       expect(res.status).toBe(409);
       expect(((await res.json()) as { error: string }).error).toMatch(/^dispatch is disabled on this cockpit \(CEZ_DISPATCH=0\).*stop and report/);

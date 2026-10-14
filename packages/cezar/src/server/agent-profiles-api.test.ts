@@ -36,7 +36,7 @@ vi.mock('../core/junie-auth-probe.ts', () => ({
  * second login of the same agent CLI.
  *
  * Workspace-level and single-mount — an account belongs to the person and the machine. Writing is
- * a local-machine capability on the same terms as `PUT /api/v1/agent-config/:id`.
+ * a local-machine capability on the same terms as `PUT /api/v1/p/boot/agent-config/:id`.
  */
 describe('agent profiles API', () => {
   const saved = {

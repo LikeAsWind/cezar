@@ -38,8 +38,12 @@ describe('shared SSE subscriptions (#1222)', () => {
 
   it('keeps one event listener for many run streams and restores the baseline', async () => {
     const run = store.createRun({ title: 'run', workflow: 'w', task: 't', steps: [] });
+    // Build the boot context first: the provider-auth observer's own `event`
+    // listener attaches lazily on first access now that there is no boot
+    // project, so it must already be in the baseline this assertion compares.
+    expect((await apiRequest(app, '/api/v1/p/boot/runs')).status).toBe(200);
     const baseline = store.listenerCount('event');
-    await Promise.all(Array.from({ length: 50 }, () => open(`/api/v1/runs/${run.id}/events`)));
+    await Promise.all(Array.from({ length: 50 }, () => open(`/api/v1/p/boot/runs/${run.id}/events`)));
     expect(store.listenerCount('event')).toBe(baseline + 1);
 
     await Promise.all(bodies.splice(0).map((body) => body.cancel().catch(() => undefined)));
@@ -50,7 +54,7 @@ describe('shared SSE subscriptions (#1222)', () => {
   it('shares deleted listeners between project and workspace streams', async () => {
     const baseline = store.listenerCount('deleted');
     await Promise.all([
-      ...Array.from({ length: 20 }, () => open('/api/v1/events')),
+      ...Array.from({ length: 20 }, () => open('/api/v1/p/boot/events')),
       ...Array.from({ length: 20 }, () => open('/api/v1/workspace/events')),
     ]);
     expect(store.listenerCount('deleted')).toBe(baseline + 1);
@@ -94,7 +98,7 @@ describe('shared SSE subscriptions (#1222)', () => {
       return events;
     });
 
-    const response = await apiRequest(app, `/api/v1/runs/${run.id}/events`);
+    const response = await apiRequest(app, `/api/v1/p/boot/runs/${run.id}/events`);
     expect(response.status).toBe(200);
     const reader = (response.body as ReadableStream<Uint8Array>).getReader();
     const decoder = new TextDecoder();
