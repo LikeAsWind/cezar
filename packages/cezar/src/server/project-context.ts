@@ -65,6 +65,9 @@ export interface ProjectContextDeps {
    *  When omitted, the map still shares one private instance across the
    *  managers it builds (workspace defaults, never refreshed). */
   semaphore?: WorkspaceSemaphore;
+  /** Store factory seam for runtime tests; production opens the project's
+   * persisted store with the normal keep-live recovery policy. */
+  openStore?: typeof RunStore.open;
 }
 
 export type ProjectContextFailure = 'unknown-project' | 'missing-root';
@@ -87,9 +90,8 @@ export class ProjectContextError extends Error {
 
 /**
  * Lazy `Map<projectId, ProjectContext>`. Nothing is instantiated at
- * construction — the boot project is built eagerly by the caller via
- * `context(bootId)`; every other project on first API touch. Concurrent
- * `context()` calls for the same id share one build (the in-flight promise is
+ * construction — a registered project is built only on explicit access.
+ * Concurrent `context()` calls for the same id share one build (the in-flight promise is
  * cached), so recovery never runs twice for a project.
  */
 export class ProjectContexts {
@@ -124,6 +126,11 @@ export class ProjectContexts {
     } finally {
       this.building.delete(projectId);
     }
+  }
+
+  /** Explicitly activate a registered project's runtime in the background. */
+  async warm(projectId: string): Promise<ProjectContext> {
+    return this.context(projectId);
   }
 
   /**
@@ -210,7 +217,8 @@ export class ProjectContexts {
     const dataDir = join(project.root, '.ai/cezar');
     // keepLive + recover() (#367), same as serveCommand: runs that were live
     // when this project's context last existed are re-queued or resumed.
-    const store = RunStore.open(dataDir, { keepLive: true });
+    const openStore = this.deps.openStore ?? RunStore.open;
+    const store = openStore(dataDir, { keepLive: true });
     const automationStore = this.deps.automationStore?.(project.id, project.root)
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);

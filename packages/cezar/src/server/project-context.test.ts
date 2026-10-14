@@ -6,6 +6,9 @@ import { AutomationStore } from '../automations/store.ts';
 import { emitUsageForTest } from '../core/process-usage.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContextSource } from './project-context.ts';
 
+vi.mock('../runs/arm-repo-handle.ts', () => ({ armRepoHandle: vi.fn() }));
+vi.mock('./git.ts', () => ({ getRepoInfo: vi.fn(async () => null) }));
+
 /**
  * Lazy per-project context map (spec 2026-07-20-multi-project-workspace,
  * step 2.1): nothing instantiated until first access, one instance per id,
@@ -53,12 +56,26 @@ describe('ProjectContexts', () => {
 
     const second = await contexts.context('a');
     expect(second).toBe(first);
+    contexts.disposeAll();
   });
 
   it('dedupes concurrent builds of the same project into one instance', async () => {
     const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
     const [one, two] = await Promise.all([contexts.context('a'), contexts.context('a')]);
     expect(one).toBe(two);
+    contexts.disposeAll();
+  });
+
+  it('warm() shares the in-flight build with context()', async () => {
+    const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
+    const [warmed, requested] = await Promise.all([
+      contexts.warm('a'),
+      contexts.context('a'),
+    ]);
+
+    expect(warmed).toBe(requested);
+    expect(contexts.ids()).toEqual(['a']);
+    contexts.disposeAll();
   });
 
   it('uses the injected coordinator-owned automation store', async () => {
@@ -179,5 +196,23 @@ describe('ProjectContexts', () => {
     emitUsageForTest({});
     expect(spyA).not.toHaveBeenCalled();
     expect(spyB).not.toHaveBeenCalled();
+  });
+
+  it('dispose() flushes only the selected project', async () => {
+    const contexts = makeContexts([
+      { id: 'a', root: rootA, status: 'not-git' },
+      { id: 'b', root: rootB, status: 'not-git' },
+    ]);
+    const a = await contexts.context('a');
+    const b = await contexts.context('b');
+
+    expect(contexts.dispose('a')).toBe(true);
+
+    expect(existsSync(join(rootA, '.ai/cezar', 'runs.json'))).toBe(true);
+    expect(a.store.listenerCount('event')).toBe(0);
+    expect(contexts.peek('b')).toBe(b);
+    expect(existsSync(join(rootB, '.ai/cezar', 'runs.json'))).toBe(false);
+    contexts.disposeAll();
+    expect(existsSync(join(rootB, '.ai/cezar', 'runs.json'))).toBe(true);
   });
 });
