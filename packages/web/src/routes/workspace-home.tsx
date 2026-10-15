@@ -14,6 +14,7 @@ import { useDashboardOverview } from '@/api/dashboard-overview'
 import { useHostUsage } from '@/api/host-usage'
 import { useProjects, useWorkspaceConfig } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
+import { Button } from '@/components/ui/button'
 import { effectiveHostView, formatCpuCores, formatMemPair } from '@/lib/host-effective'
 import { readStoredLastLocation, recentProjectLocation } from '@/lib/last-location'
 
@@ -58,9 +59,9 @@ export function WorkspaceHomeRoute() {
           subtitle={t('No projects registered')}
           backdrop
           actions={
-            <Link to="/projects?register=1" className="text-sm text-primary underline">
-              {t('Register project')}
-            </Link>
+            <Button asChild>
+              <Link to="/projects?register=1">{t('Register project')}</Link>
+            </Button>
           }
         >
           <p className="text-sm text-muted-foreground">
@@ -170,9 +171,9 @@ export function WorkspaceHomeRoute() {
         <section aria-label={t('Projects')} className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold">{t('Projects')}</h2>
-            <Link to="/projects?register=1" className="text-sm text-primary underline">
-              {t('Register project')}
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/projects?register=1">{t('Register project')}</Link>
+            </Button>
           </div>
           {!projects.data ? (
             <p className="text-sm text-muted-foreground">{t('Loading projects…')}</p>
