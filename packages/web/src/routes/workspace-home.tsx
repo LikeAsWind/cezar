@@ -14,11 +14,8 @@ import { useDashboardOverview } from '@/api/dashboard-overview'
 import { useHostUsage } from '@/api/host-usage'
 import { useProjects, useWorkspaceConfig } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
-import { Card } from '@/components/ui/card'
 import { effectiveHostView, formatCpuCores, formatMemPair } from '@/lib/host-effective'
 import { readStoredLastLocation, recentProjectLocation } from '@/lib/last-location'
-import { cn } from '@/lib/utils'
-import { metricAccents, metricSurface, MetricContent } from './dashboard/presentation'
 
 /**
  * The fixed global workspace home — the one page outside every `/p/:projectId`.
@@ -31,6 +28,11 @@ import { metricAccents, metricSurface, MetricContent } from './dashboard/present
  * Every project action is an explicit `/p/:projectId/` link. This page renders outside every
  * project scope, so the scope-aware `Link` (which would prefix the active project) is never used;
  * a remembered recent project is offered only as an explicit link too.
+ *
+ * It wears the same page frame as every other global page (tasks, projects, settings): the sticky
+ * `h-14` header with a `text-base` title beside its description, and `rounded-lg border bg-card`
+ * cards. The Dashboard's `metricSurface` hairline tiles and centered `max-w-[…]` layout stay on
+ * the Dashboard — this is a cockpit page, not a landing page.
  */
 export function WorkspaceHomeRoute() {
   useLocale()
@@ -73,134 +75,131 @@ export function WorkspaceHomeRoute() {
   const hostView = host === undefined ? null : effectiveHostView(host)
 
   return (
-    <div
-      data-route="workspace-home"
-      className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:px-8 md:py-7"
-    >
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{t('Workspace')}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('Every project in one place. Open a project from the sidebar, or start a task in one.')}
-          </p>
-        </div>
+    <div data-route="workspace-home" className="flex min-h-full flex-col">
+      {/* The shared global-page header. Below `md` it is hidden and the shell's top bar owns the
+          title, exactly like the other global pages. */}
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+        <h1 className="text-base font-semibold">{t('Workspace')}</h1>
+        <p className="text-[13px] text-soft-foreground">
+          {t('Every project in one place. Open a project from the sidebar, or start a task in one.')}
+        </p>
         {recent && recentProject ? (
           <Link
             to={`${recent.pathname}${recent.search ?? ''}${recent.hash ?? ''}`}
-            className="text-sm text-primary underline"
+            className="ml-auto text-sm text-primary underline"
           >
             {t('Recent project: {0}', { 0: recentProject.name || recentProject.id })}
           </Link>
         ) : null}
       </header>
 
-      <section aria-label={t('Workspace metrics')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {(
-          [
-            { key: 'needsYou', label: t('Needs attention'), value: metrics?.needsYou, tint: metricAccents.violet, Icon: CircleHelp },
-            { key: 'running', label: t('Running'), value: metrics?.running, tint: metricAccents.info, Icon: Activity },
-            { key: 'completed', label: t('Completed'), value: metrics?.completed, tint: metricAccents.success, Icon: CheckCheck },
-            { key: 'failed', label: t('Failed'), value: metrics?.failed, tint: metricAccents.danger, Icon: CircleAlert },
-          ] as const
-        ).map(({ key, label, value, tint, Icon }) => (
-          <div
-            key={key}
-            className={cn(metricSurface, value === undefined ? metricAccents.neutral : tint)}
-          >
-            <MetricContent
-              label={label}
-              value={value === undefined ? '—' : value}
-              icon={<Icon className="size-4" />}
-            >
-              {t('Across every project')}
-            </MetricContent>
-          </div>
-        ))}
-      </section>
-
-      <section aria-label={t('Workspace resources')} className="grid gap-3 md:grid-cols-2">
-        <Card className="gap-4 py-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <CpuIcon className="size-4 text-soft-foreground" aria-hidden="true" />
-            {t('Machine')}
-          </div>
-          {hostView === null ? (
-            <p className="text-sm text-muted-foreground">{t('Sampling…')}</p>
-          ) : (
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p>
-                {t('CPU')}{' '}
-                <span className="font-mono tabular-nums text-foreground">
-                  {hostView.cpuPct === undefined ? '—' : `${Math.round(hostView.cpuPct)}%`}
-                </span>{' '}
-                · {formatCpuCores(hostView.cpuCores)}
-              </p>
-              <p>
-                {t('Memory')}{' '}
-                <span className="font-mono tabular-nums text-foreground">
-                  {formatMemPair(hostView.memUsedBytes, hostView.memTotalBytes)}
-                </span>
-              </p>
+      <div className="flex flex-1 flex-col gap-4 p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
+        <section aria-label={t('Workspace metrics')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {(
+            [
+              { key: 'needsYou', label: t('Needs attention'), value: metrics?.needsYou, Icon: CircleHelp },
+              { key: 'running', label: t('Running'), value: metrics?.running, Icon: Activity },
+              { key: 'completed', label: t('Completed'), value: metrics?.completed, Icon: CheckCheck },
+              { key: 'failed', label: t('Failed'), value: metrics?.failed, Icon: CircleAlert },
+            ] as const
+          ).map(({ key, label, value, Icon }) => (
+            <div key={key} className="flex flex-col gap-1 rounded-lg border border-border bg-card p-4 shadow-xs">
+              <span className="flex items-center justify-between gap-2 text-[13px] font-medium text-muted-foreground">
+                {label}
+                <Icon className="size-4 text-soft-foreground" aria-hidden="true" />
+              </span>
+              <span className="mt-1 text-2xl font-semibold tabular-nums">
+                {value === undefined ? '—' : value}
+              </span>
+              <span className="text-xs text-soft-foreground">{t('Across every project')}</span>
             </div>
-          )}
-        </Card>
-        <Card className="gap-4 py-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <GaugeIcon className="size-4 text-soft-foreground" aria-hidden="true" />
-            {t('Workspace configuration')}
-          </div>
-          {config.data === undefined ? (
-            <p className="text-sm text-muted-foreground">{t('Loading…')}</p>
-          ) : (
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p className="text-foreground">{config.data.branding.name}</p>
-              <p>
-                {t('Max parallel')}{' '}
-                <span className="font-mono tabular-nums text-foreground">{config.data.resources.maxParallel}</span>
-              </p>
-              <p>
-                {t('Memory limit')}{' '}
-                <span className="font-mono tabular-nums text-foreground">
-                  {config.data.resources.memoryLimitMb ?? t('Unlimited')}
-                </span>
-              </p>
-            </div>
-          )}
-        </Card>
-      </section>
+          ))}
+        </section>
 
-      <section aria-label={t('Projects')} className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">{t('Projects')}</h2>
-          <Link to="/projects?register=1" className="text-sm text-primary underline">
-            {t('Register project')}
-          </Link>
-        </div>
-        {!projects.data ? (
-          <p className="text-sm text-muted-foreground">{t('Loading projects…')}</p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {registered.map((project) => (
-              <li key={project.id}>
-                <Link
-                  to={`/p/${encodeURIComponent(project.id)}/`}
-                  className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 shadow-xs transition-colors hover:bg-card-2"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {t('Open {0}', { 0: project.name || project.id })}
+        <section aria-label={t('Workspace resources')} className="grid gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CpuIcon className="size-4 text-soft-foreground" aria-hidden="true" />
+              {t('Machine')}
+            </div>
+            {hostView === null ? (
+              <p className="text-sm text-muted-foreground">{t('Sampling…')}</p>
+            ) : (
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  {t('CPU')}{' '}
+                  <span className="font-mono tabular-nums text-foreground">
+                    {hostView.cpuPct === undefined ? '—' : `${Math.round(hostView.cpuPct)}%`}
+                  </span>{' '}
+                  · {formatCpuCores(hostView.cpuCores)}
+                </p>
+                <p>
+                  {t('Memory')}{' '}
+                  <span className="font-mono tabular-nums text-foreground">
+                    {formatMemPair(hostView.memUsedBytes, hostView.memTotalBytes)}
                   </span>
-                  <span
-                    className="truncate font-mono text-[11px] text-soft-foreground"
-                    title={project.root}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <GaugeIcon className="size-4 text-soft-foreground" aria-hidden="true" />
+              {t('Workspace configuration')}
+            </div>
+            {config.data === undefined ? (
+              <p className="text-sm text-muted-foreground">{t('Loading…')}</p>
+            ) : (
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p className="text-foreground">{config.data.branding.name}</p>
+                <p>
+                  {t('Max parallel')}{' '}
+                  <span className="font-mono tabular-nums text-foreground">{config.data.resources.maxParallel}</span>
+                </p>
+                <p>
+                  {t('Memory limit')}{' '}
+                  <span className="font-mono tabular-nums text-foreground">
+                    {config.data.resources.memoryLimitMb ?? t('Unlimited')}
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section aria-label={t('Projects')} className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">{t('Projects')}</h2>
+            <Link to="/projects?register=1" className="text-sm text-primary underline">
+              {t('Register project')}
+            </Link>
+          </div>
+          {!projects.data ? (
+            <p className="text-sm text-muted-foreground">{t('Loading projects…')}</p>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {registered.map((project) => (
+                <li key={project.id}>
+                  <Link
+                    to={`/p/${encodeURIComponent(project.id)}/`}
+                    className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 shadow-xs transition-colors hover:bg-card-2"
                   >
-                    {project.root}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                    <span className="text-sm font-medium text-foreground">
+                      {t('Open {0}', { 0: project.name || project.id })}
+                    </span>
+                    <span
+                      className="truncate font-mono text-[11px] text-soft-foreground"
+                      title={project.root}
+                    >
+                      {project.root}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   )
 }
