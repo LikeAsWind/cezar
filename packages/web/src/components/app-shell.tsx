@@ -3,8 +3,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FolderPlusIcon,
-  LayersIcon,
-  LayoutDashboardIcon,
   MenuIcon,
   PlusIcon,
   SearchIcon,
@@ -13,7 +11,7 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import type { ReactNode } from 'react'
-import { Link as RouterLink, NavLink, matchPath, useLocation } from 'react-router'
+import { Link as RouterLink, matchPath, useLocation, useNavigate } from 'react-router'
 
 import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
 import { AddProjectDialog } from '@/components/add-project-dialog'
@@ -23,7 +21,7 @@ import { DialogErrorBoundary } from '@/components/dialog-error-boundary'
 import { openCommandPalette } from '@/components/command-palette'
 import { GithubIcon } from '@/components/icons'
 import { commandShortcutHint } from '@/lib/use-command-shortcut'
-import { Link, stripProjectPrefix } from '@/lib/project-router'
+import { Link, scopeTo, stripProjectPrefix, useActiveProjectId } from '@/lib/project-router'
 import { CEZAR_REPO_URL, formatStarCount } from '@/lib/star-promo'
 import { BrandLockup } from '@/components/brand-mark'
 import { SelfUpdateDialog } from '@/components/self-update-dialog'
@@ -38,8 +36,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { activeNavItem, activeNavPath, visibleNavItems, type NavItem } from '@/components/nav-items'
-import type { TrackerKind } from '@open-mercato/cezar-api-client'
+import { activeNavItem, activeNavPath, GLOBAL_NAV_ITEMS, projectNavItems, type NavItem } from '@/components/nav-items'
+import { WorkspaceSwitcher } from '@/components/workspace-switcher'
+import type { ProjectListEntry, TrackerKind } from '@open-mercato/cezar-api-client'
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
@@ -110,24 +109,10 @@ export type AppShellProps = {
    *  the slot is generic and currently unused (the #391 skills promo it once held is gone,
    *  replaced by the opt-in Import panel on the Skills page). */
   banner?: ReactNode
-  /** Step 3.3's multi-project sidebar: one collapsible group per registered project, each
-   *  carrying its own nav + task list. When present it REPLACES the flat nav and the
-   *  `taskQuickList` slot (each group brings its own copies of both); absent — the registry
-   *  still loading, or unreachable — the shell renders the single-project sidebar it always
-   *  did, which is the honest degradation, not a special case. */
-  projectGroups?: ReactNode
+  projects?: readonly ProjectListEntry[]
   brandName?: string
   brandLogoUrl?: string | null
 }
-
-/**
- * The drawer's close-on-navigate callback, published to whatever renders inside the sidebar's
- * slots (`projectGroups`, `taskQuickList`). The route-change effect already closes the drawer
- * for every *changed* route; this covers re-clicking a link to the CURRENT route (per the spec,
- * Tasks navigates home even when already active), which changes no pathname at all. Undefined
- * on desktop, where there is nothing to close.
- */
-const SidebarNavigateContext = React.createContext<(() => void) | undefined>(undefined)
 
 const AppShellMain = React.memo(function AppShellMain({
   children,
@@ -148,10 +133,6 @@ const AppShellMain = React.memo(function AppShellMain({
     </main>
   )
 })
-
-export function useSidebarNavigate(): (() => void) | undefined {
-  return React.useContext(SidebarNavigateContext)
-}
 
 /** The main transcript owns cached/tail arrival; every other routed surface uses shell-top. */
 export function routeOwnsScrollArrival(pathname: string): boolean {
@@ -197,17 +178,18 @@ export const AppShell = React.memo(function AppShell({
   tracker,
   singleProject = false,
   banner,
-  projectGroups,
+  projects = [],
   brandName = 'cezar',
   brandLogoUrl = null,
 }: AppShellProps) {
   useLocale()
 
   const { pathname } = useLocation()
+  const projectId = useActiveProjectId()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
   // (multi-project spec, step 3.2) so `/p/cezar/git/commits` still lights Git.
   const areaPathname = stripProjectPrefix(pathname)
-  const activeTo = activeNavPath(areaPathname)
+  const activeTo = projectId !== null && areaPathname === '/' ? '/' : activeNavPath(areaPathname)
   const currentBase = activeNavItem(areaPathname)
   const current = currentBase?.to === '/tracker' && tracker
     ? { ...currentBase, label: TRACKER_PROVIDERS[tracker].label }
@@ -261,7 +243,7 @@ export const AppShell = React.memo(function AppShell({
   }, [])
 
   const items = React.useMemo(
-    () => visibleNavItems({ forge: forgeAvailable, inbox: inboxAvailable, automations: automationsAvailable, tracker }),
+    () => projectNavItems({ forge: forgeAvailable, inbox: inboxAvailable, automations: automationsAvailable, tracker }),
     [forgeAvailable, inboxAvailable, automationsAvailable, tracker],
   )
 
@@ -279,7 +261,7 @@ export const AppShell = React.memo(function AppShell({
     taskQuickList,
     hostWidget,
     toolsMenu,
-    projectGroups,
+    projects,
     singleProject,
     brandName,
     brandLogoUrl,
@@ -333,7 +315,15 @@ export const AppShell = React.memo(function AppShell({
           </div>
         ) : null}
 
-        <AppShellMain mainRef={mainRef}>{children}</AppShellMain>
+        <AppShellMain mainRef={mainRef}>
+          {projectId !== null ? (
+            <header data-slot="project-header" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs">
+              <span className="font-semibold text-success">{t('Project')}: {projects.find((project) => project.id === projectId)?.name ?? projectId}</span>
+              <RouterLink to="/" className="ml-auto rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{t('Back to global workspace')}</RouterLink>
+            </header>
+          ) : null}
+          {children}
+        </AppShellMain>
 
         {/* Row 4: the composer dock (thread reply, Step R3) — the bottom safe-area gutter so
             the scroller never runs under the home indicator. */}
@@ -398,7 +388,7 @@ type NavProps = {
   taskQuickList?: ReactNode
   hostWidget?: ReactNode
   toolsMenu?: ReactNode
-  projectGroups?: ReactNode
+  projects: readonly ProjectListEntry[]
   brandName: string
   brandLogoUrl: string | null
   singleProject: boolean
@@ -599,7 +589,7 @@ function SidebarContent({
   taskQuickList,
   hostWidget,
   toolsMenu,
-  projectGroups,
+  projects,
   singleProject,
   brandName,
   brandLogoUrl,
@@ -621,6 +611,10 @@ function SidebarContent({
   compactHeader?: boolean
 }) {
   useLocale()
+  const projectId = useActiveProjectId()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const newTaskReasonId = React.useId()
 
   return (
     <div
@@ -633,9 +627,7 @@ function SidebarContent({
     >
       <div className={cn('flex items-center gap-[9px] px-3.5 pb-2.5', compactHeader ? 'pt-1.5' : 'pt-3.5')}>
         <BrandLockup name={brandName} logoUrl={brandLogoUrl} />
-        {/* With project groups mounted the boot repo/branch is one group header among many —
-            a chip repeating it up here would just be the first group's header said twice. */}
-        {repo && !projectGroups ? (
+        {repo ? (
           <span
             data-slot="repo-chip"
             className="ml-auto truncate font-mono text-[11px] font-medium text-soft-foreground"
@@ -644,17 +636,23 @@ function SidebarContent({
           </span>
         ) : null}
         {headerAction ? (
-          <div className={cn('shrink-0', (!repo || projectGroups) && 'ml-auto')}>{headerAction}</div>
+          <div className={cn('shrink-0', !repo && 'ml-auto')}>{headerAction}</div>
         ) : null}
       </div>
 
+      <div className="px-2.5 pb-1">
+        <WorkspaceSwitcher projects={projects} activeProjectId={projectId}
+          onSelectGlobal={() => { navigate('/'); onNavigate?.() }}
+          onSelectProject={(id) => { navigate(scopeTo(id, '/')); onNavigate?.() }}
+          onRegister={() => { navigate('/projects?register=1'); onNavigate?.() }} />
+      </div>
       <div className="flex gap-1.5 px-2.5 pt-1 pb-2">
-        <Button asChild variant="contrast" className="relative min-w-0 flex-1 justify-center">
+        {projectId !== null ? <Button asChild variant="contrast" className="relative min-w-0 flex-1 justify-center">
           {/* A Router Link since R4 Step 1.1: the React /new composer is real, so deliberate
               New task affordances stay inside the SPA. Full document loads of /new (the
               bookmarklet contract) land on the shell like any route (static-ui.ts) — the
               React composer has owned auto-start parity since R4 Step 1.3. */}
-          <Link to="/new" onClick={onNavigate}>
+          <RouterLink to={scopeTo(projectId, '/new')} onClick={onNavigate}>
             <PlusIcon className="size-[15px]" aria-hidden="true" />{t('New task')}{/* Decorative: the `c`-to-create accelerator is registered in the command palette.
                 (⌘N is also bound there, but only the desktop shell receives it — the browser
                 reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
@@ -662,41 +660,29 @@ function SidebarContent({
               aria-hidden="true"
               className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-[5px] py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
             >{t('C')}</kbd>
-          </Link>
-        </Button>
+          </RouterLink>
+        </Button> : <Button disabled variant="contrast" className="flex-1" aria-describedby={newTaskReasonId}>{t('New task')}</Button>}
         {singleProject ? null : <AddProjectMenu />}
       </div>
 
-      {/* The first of the two top-level doors; `AllTasksLink` is the other. They share one skin
-          (SIDEBAR_SECTION_LINK_CLASS) because they stack directly against each other. */}
-      <div className="shrink-0 px-1.5">
-        <DashboardLink onNavigate={onNavigate} />
-      </div>
-      {projectGroups ? (
-        <>
-          {/* PINNED above the scroller, not the first row inside it. It is about every group
-              rather than a peer of them, and a workspace with enough projects to want this page
-              is exactly the workspace that scrolls it out of sight. Its own bordered band is
-              what stops it reading as an unusually-worded project. Only in a multi-project
-              workspace: with one project the page would be that project's own Tasks table
-              wearing a second name. */}
-          <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
-            <AllTasksLink onNavigate={onNavigate} />
+      {projectId === null ? <p id={newTaskReasonId} className="px-3.5 pb-2 text-xs text-muted-foreground">{t('Select a project before creating a task')}</p> : null}
+      <nav aria-label={t('Global workspace')} className="shrink-0 px-2.5 py-1.5">
+        {GLOBAL_NAV_ITEMS.map((item) => {
+          const isActive = item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(item.to + '/')
+          const Icon = item.icon
+          return <RouterLink key={item.to} to={item.to} onClick={onNavigate}
+            data-slot={item.to === '/' ? 'workspace-link' : item.to === '/tasks' ? 'all-tasks-link' : undefined}
+            aria-current={isActive ? 'page' : undefined} className={cn(SIDEBAR_SECTION_LINK_CLASS, isActive && 'bg-muted')}>
+            <Icon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />{item.label}
+          </RouterLink>
+        })}
+      </nav>
+      {projectId !== null ? (
+        <div data-slot="project-navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="border-t border-border px-3.5 pt-2 text-xs font-semibold text-success">
+            {projects.find((project) => project.id === projectId)?.name ?? projectId}
           </div>
-          {/* Step 3.3: one collapsible group per registered project — nav + task list per group.
-              The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
-          <div
-            data-slot="project-groups"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pt-1.5 pb-2"
-          >
-            <SidebarNavigateContext.Provider value={onNavigate}>
-              {projectGroups}
-            </SidebarNavigateContext.Provider>
-          </div>
-        </>
-      ) : (
-        <>
-          <nav aria-label={t('Main')} className="px-2.5 py-1.5">
+          <nav aria-label={t('Project')} className="px-2.5 py-1.5">
             {items.map((item) => {
               const isActive = item.to === activeTo
               const Icon = item.icon
@@ -755,12 +741,12 @@ function SidebarContent({
           {/* The single-project quick-list (Needs you / Working / Recent). */}
           <div
             data-slot="task-quick-list"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 pb-2"
+            className="px-2.5 pb-2"
           >
             {taskQuickList}
           </div>
-        </>
-      )}
+        </div>
+      ) : <div className="flex-1" />}
 
       {/* Deliberate rows, never a wrap (#702): the machine glance (when one is mounted), then the
        *  search bar, then the chrome controls. `flex-col` rather than `flex-wrap` on purpose — the
@@ -789,19 +775,7 @@ function SidebarContent({
   )
 }
 
-/**
- * The shared skin of the sidebar's two top-level doors — Dashboard and All tasks. They stack
- * directly on top of each other, so they are peers and must be painted as one: the same row
- * height, the same type scale, the same violet icon.
- *
- * ONE constant rather than two copies on purpose. Dashboard shipped as its own inline class
- * string and drifted to `min-h-11`/`text-sm`/no icon colour, which read on desktop as an 8px
- * taller row with the only grey icon of the pair. A shared string is what makes the next tweak
- * land on both rows or on neither.
- *
- * Not the per-project nav rows below them: those are a lower tier (muted foreground, semibold
- * only when active, `md:h-[34px]`) and are deliberately NOT peers of these two.
- */
+/** Global doors share one row size and accent in both sidebar variants. */
 const SIDEBAR_SECTION_LINK_CLASS =
   'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-muted md:h-9'
 
@@ -812,60 +786,6 @@ const SIDEBAR_SECTION_LINK_CLASS =
  */
 function sidebarSectionIconClass(isActive: boolean) {
   return cn('size-4 shrink-0', isActive ? 'text-violet' : 'text-violet/70')
-}
-
-/**
- * The way into the cross-project Dashboard (`/dashboard`).
- *
- * A `NavLink`, unlike its `AllTasksLink` neighbour: `/dashboard` carries its own view and period
- * query strings (`?view=costs`, `?period=30d`), and NavLink's path-only matching keeps the row
- * lit across all of them where a `pathname ===` check on a full location would not.
- */
-function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
-  useLocale()
-
-  return (
-    <NavLink
-      to="/dashboard"
-      data-slot="dashboard-link"
-      onClick={onNavigate}
-      className={({ isActive }) => cn(SIDEBAR_SECTION_LINK_CLASS, isActive && 'bg-muted')}
-    >
-      {({ isActive }) => (
-        <>
-          <LayoutDashboardIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />{t('Dashboard')}</>
-      )}
-    </NavLink>
-  )
-}
-
-/**
- * The way into the global Tasks page (`/tasks`) — every project's work in one table, filtered
- * and grouped by project, tag, status or workflow.
- *
- * A PLAIN router Link, like the footer's global-settings one and for the same reason: the page
- * sits outside every project, and the scoped `Link` this file otherwise uses would prefix it
- * with the active `/p/<id>`, which is not a route. Its own icon (layers, not the per-project
- * checklist) so the two Tasks surfaces never read as the same button.
- */
-function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
-  useLocale()
-
-  const { pathname } = useLocation()
-  const isActive = pathname === '/tasks'
-  return (
-    <RouterLink
-      to="/tasks"
-      data-slot="all-tasks-link"
-      onClick={onNavigate}
-      aria-current={isActive ? 'page' : undefined}
-      // Reads at the weight of a section header rather than a nav row: full-strength foreground
-      // and semibold, where the project groups below it are semibold-on-default and their nav
-      // rows are muted.
-      className={cn(SIDEBAR_SECTION_LINK_CLASS, isActive && 'bg-muted')}
-    >
-      <LayersIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />{t('All tasks')}</RouterLink>
-  )
 }
 
 /**

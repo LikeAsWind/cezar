@@ -2,10 +2,10 @@ import { t, useLocale } from '@/lib/i18n'
 import { CheckIcon, FolderOpenIcon, LayersIcon, MoonIcon, PlusIcon } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate as useRouterNavigate } from 'react-router'
-import { useHealth, useProjects, useRunsForProject, useRunsIndex, useSkills, useUiState } from '@/api/queries'
+import { useHealth, useProjects, useProjectRuns, useRunsIndex, useSkills, useUiState } from '@/api/queries'
 import { scopeTo, useActiveProjectId, useNavigate } from '@/lib/project-router'
 import type { ProjectListEntry, RunIndexEntry, RunRecord } from '@open-mercato/cezar-api-client'
-import { visibleNavItems } from '@/components/nav-items'
+import { GLOBAL_NAV_ITEMS, visibleNavItems } from '@/components/nav-items'
 import { StatusDot } from '@/components/status-dot'
 import { NEXT_THEME } from '@/components/theme-toggle'
 import { useTheme } from '@/components/theme-provider'
@@ -99,11 +99,6 @@ export type PaletteTask = Omit<RunIndexEntry, 'projectId'> & { projectId: string
 
 /**
  * The live runs for one project, plus every other project's from the cross-project index.
- *
- * `runsProjectId` is WHICH PROJECT `activeRuns` belongs to, and it is not always the active one:
- * global settings and other global pages use the boot project's live list. Passing the URL's
- * active id here instead would, on global settings, fail to match the index's boot rows and list
- * every boot task twice. The caller resolves it: active id, else the registry's boot slug.
  *
  * Dedup is per RUN, not per project: an index row is dropped only when the live list already has
  * that exact task. The live row wins — it is the one the SSE stream patches, and preferring a
@@ -206,12 +201,14 @@ export function CommandPalette() {
 
   const [open, setOpen] = React.useState(false)
   const navigate = useNavigate()
+  const projectId = useActiveProjectId()
 
   useCommandShortcut('k', () => setOpen((current) => !current))
   const newTask = React.useCallback(() => {
+    if (projectId === null) return
     setOpen(false)
-    navigate('/new')
-  }, [navigate])
+    navigate(scopeTo(projectId, '/new'))
+  }, [navigate, projectId])
   // ⌘N works only in the desktop shell — the browser reserves it (new window), so the page
   // never sees it. `c`-to-create (GitHub/Linear) is the browser-usable accelerator and the one
   // the hint chips advertise; ⌘N stays registered for the Electron shell where it fires.
@@ -319,25 +316,21 @@ function PaletteContent({ close }: { close: () => void }) {
   // can offer everywhere — including global settings, which has no active project at all. The
   // shell already holds this cache entry; opening the palette costs no extra request.
   const projects = useProjects()
-  // Health is cached by the shell's chips; here it gates the forge-gated Views row (R6 1.1) —
-  // the palette must not offer a GitHub view the sidebar honestly hides.
+  // Machine capabilities are cached by the shell; forge identity comes from the registry.
   const health = useHealth()
   const registry = projects.data
-  const bootProjectId = registry?.bootProject ?? health.data?.bootProject ?? null
   // Runs are already cached by the sidebar/shell. The palette also sits above the project route
   // provider, so ask for the URL project explicitly rather than trusting the module scope.
-  const runs = useRunsForProject(activeProjectId, bootProjectId)
-  const skills = useSkills()
+  const runs = useProjectRuns(activeProjectId ?? '', activeProjectId !== null)
+  const skills = useSkills(activeProjectId !== null, activeProjectId)
   // Skills list most-used → project → global (#519) — the same order every picker renders.
-  const uiState = useUiState()
+  const uiState = useUiState(activeProjectId)
   const now = Date.now()
 
-  // Same threshold as the sidebar's grouped nav (`app-shell-container.tsx`): with one registered
-  // project there is nowhere to switch TO, and a one-row group would be pure noise.
+  // The project-switching group is useful when more than one project is registered.
   const multiProject = registry !== undefined && registry.projects.length > 1
-  // The cross-project index answers "which project is this task in", so it is only worth asking
-  // when that question has more than one answer. A single-project cockpit issues no request.
-  const runsIndex = useRunsIndex(multiProject)
+  // Global search always uses the workspace index; a project can reuse its live run cache.
+  const runsIndex = useRunsIndex(activeProjectId === null || multiProject)
 
   // The sidebar's hand-picked order (#952), read from the same cached workspace ui-state the
   // sidebar writes — so a project dragged to the top of the drawer is also the top of this list.
@@ -350,9 +343,8 @@ function PaletteContent({ close }: { close: () => void }) {
     () => new Map((registry?.projects ?? []).map((project) => [project.id, project.name])),
     [registry],
   )
-  // Which project the live run list answered for — see `mergeTasks`. The active id when there is
-  // one, else the boot project, which is what an unscoped API client always reaches.
-  const runsProjectId = (activeProjectId === 'default' ? null : activeProjectId) ?? bootProjectId
+  // Live rows belong only to the URL project; global rows already carry their own ids.
+  const runsProjectId = activeProjectId
   const tasks = React.useMemo(
     () => mergeTasks(runs.data ?? [], runsProjectId, runsIndex.data?.runs),
     [runs.data, runsProjectId, runsIndex.data],
@@ -418,7 +410,8 @@ function PaletteContent({ close }: { close: () => void }) {
             value="new task"
             data-slot="palette-view"
             data-nav-to="/new"
-            onSelect={() => go('/new')}
+            disabled={activeProjectId === null}
+            onSelect={() => { if (activeProjectId !== null) go('/new') }}
           >
             <PlusIcon aria-hidden="true" />{t('New task')}<CommandShortcut>{t('C')}</CommandShortcut>
           </CommandItem>
@@ -446,7 +439,7 @@ function PaletteContent({ close }: { close: () => void }) {
           {/* The one GLOBAL view, listed first because it is the only row here that is not
               about the project you are standing in. Multi-project only, matching the sidebar:
               with one project it would be that project's own Tasks page under another name. */}
-          {multiProject ? (
+          {multiProject && activeProjectId !== null ? (
             <CommandItem
               value="view All tasks"
               data-slot="palette-view"
@@ -455,12 +448,12 @@ function PaletteContent({ close }: { close: () => void }) {
             >
               <LayersIcon aria-hidden="true" />{t('All tasks')}</CommandItem>
           ) : null}
-          {visibleNavItems({
-            forge: health.data?.forge?.available === true,
+          {(activeProjectId === null ? GLOBAL_NAV_ITEMS : visibleNavItems({
+            forge: registry?.projects.find((project) => project.id === activeProjectId)?.forge === 'github',
             inbox: health.data?.capabilities.followups === true,
             automations: health.data?.capabilities.automations === true,
-            tracker: registry?.projects.find((project) => project.id === (activeProjectId ?? registry.bootProject))?.tracker,
-          }).map((item) => {
+            tracker: registry?.projects.find((project) => project.id === activeProjectId)?.tracker,
+          })).map((item) => {
             const Icon = item.icon
             return (
               <CommandItem
@@ -470,7 +463,7 @@ function PaletteContent({ close }: { close: () => void }) {
                 value={`view ${item.label}`}
                 data-slot="palette-view"
                 data-nav-to={item.to}
-                onSelect={() => go(item.to)}
+                onSelect={() => activeProjectId === null ? goGlobal(item.to) : go(item.to)}
               >
                 <Icon aria-hidden="true" />
                 {item.label}

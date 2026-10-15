@@ -579,10 +579,10 @@ export async function getRunHistoryContext(id: string, opts?: ReadOptions): Prom
   )
 }
 
-export async function getUiState(opts?: ReadOptions): Promise<UiState> {
+export async function getUiState(opts?: ReadOptions, projectId = requireProjectScope()): Promise<UiState> {
   return unwrap(
     await cez.api.v1.p[':projectId']['ui-state'].$get(
-      { param: { projectId: requireProjectScope() } },
+      { param: { projectId } },
       init(opts),
     ),
     '/ui-state',
@@ -599,12 +599,12 @@ export async function getWorkflows(opts?: ReadOptions): Promise<WorkflowsRespons
   )
 }
 
-export async function getSkills(opts?: ReadOptions): Promise<Skill[]> {
+export async function getSkills(opts?: ReadOptions, projectId = requireProjectScope()): Promise<Skill[]> {
   return unwrap(
     await cez.api.v1.p[':projectId'].skills.$get(
       // `query` is required once the route declares one, even when every key in it is optional
       // — `hc` drops the empty search string, so the URL is the one this call always sent.
-      { param: { projectId: requireProjectScope() }, query: {} },
+      { param: { projectId }, query: {} },
       init(opts),
     ),
     '/skills',
@@ -613,10 +613,10 @@ export async function getSkills(opts?: ReadOptions): Promise<Skill[]> {
 
 /** Wait for the server's already-started team-skill load. Used only after the fast catalog
  * read has rendered, so a cold clone never delays opening a skill picker. */
-export async function getSkillsWhenReady(opts?: ReadOptions): Promise<Skill[]> {
+export async function getSkillsWhenReady(opts?: ReadOptions, projectId = requireProjectScope()): Promise<Skill[]> {
   return unwrap(
     await cez.api.v1.p[':projectId'].skills.$get(
-      { param: { projectId: requireProjectScope() }, query: { wait: '1' } },
+      { param: { projectId }, query: { wait: '1' } },
       init(opts),
     ),
     '/skills',
@@ -656,9 +656,9 @@ export async function getImportableSkillsWhenReady(opts?: ReadOptions): Promise<
   )
 }
 
-export async function getTodos(opts?: ReadOptions): Promise<TodoItem[]> {
+export async function getTodos(opts?: ReadOptions, projectId = requireProjectScope()): Promise<TodoItem[]> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].todos.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].todos.$get({ param: { projectId } }, init(opts)),
     '/todos',
   )
 }

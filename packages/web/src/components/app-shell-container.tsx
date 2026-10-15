@@ -1,15 +1,14 @@
-import { memo, useEffect, useMemo, type ReactNode } from 'react'
+import { memo, useMemo, type ReactNode } from 'react'
 import { useLocale } from '@/lib/i18n'
 import { useLocation } from 'react-router'
 
-import { useHealth, useProjectRuns, useProjects, useRunsForProject, useSkillsUpdate, useStarCount, useTodos, useWorkspaceConfig } from '@/api/queries'
+import { useHealth, useProjectRuns, useProjects, useSkillsUpdate, useStarCount, useTodos, useWorkspaceConfig } from '@/api/queries'
 import type { HealthResponse, SkillsUpdateState } from '@open-mercato/cezar-api-client'
 import { AppShell, type RepoChip } from '@/components/app-shell'
 import { CommandPalette } from '@/components/command-palette'
 import { ListViewProvider } from '@/components/list-view'
 import { HostUsageWidget } from '@/components/host-usage-widget'
 import { ProviderBannerContainer } from '@/components/provider-banner-container'
-import { ProjectGroups } from '@/components/project-groups'
 import { TaskQuickListContainer } from '@/components/task-quick-list'
 import { ToolsMenu } from '@/components/tools-menu'
 import { useDocumentTitle } from '@/lib/use-document-title'
@@ -43,18 +42,7 @@ export function skillsUpdateMarkerOf(state: SkillsUpdateState | undefined): bool
   return state?.available === true && (state.status === 'available' || state.status === 'error')
 }
 
-/**
- * The app shell, wired to live data.
- *
- * AppShell itself stays presentational — it takes repo/version/inboxCount and renders them, or
- * renders nothing. This is the seam where those become real: `useHealth()` for the repo and
- * version chips, `useTodos()` for the inbox badge.
- *
- * Nothing here caches boot-time values (#369: the legacy UI read the branch once at startup and
- * then showed a stale branch forever). The chips read whatever is currently in the health query,
- * so keeping them live is `useHealth`'s job — its poll plus Step 3.2's reconnect/visibility
- * reconcile — not a change here.
- */
+/** Workspace chrome stays global; project identity and requests follow the URL registry entry. */
 export const AppShellContainer = memo(function AppShellContainer({ children }: { children: ReactNode }) {
   const locale = useLocale()
   const { pathname } = useLocation()
@@ -69,33 +57,22 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
   // The global inbox is opt-in (#471). With the capability off there is no Inbox nav item to
   // badge and the endpoint can only answer [], so the query parks rather than polls.
   const inboxAvailable = health.data?.capabilities.followups === true
-  // GitHub automations are opt-in too (#801) — same honesty rule: without the server's word for
-  // it the nav must not offer a tab whose every request would 409.
+  // The server capability also accounts for CEZ_AUTOMATIONS=0.
   const automationsAvailable = health.data?.capabilities.automations === true
-  const todos = useTodos(inboxAvailable)
+  const todos = useTodos(inboxAvailable && projectId !== null, projectId)
   // One query in the shell feeds every rendering of the active project's navigation (desktop,
-  // mobile drawer, and grouped sidebar). Routes reuse this TanStack Query cache entry.
+  // mobile drawer). Routes reuse this TanStack Query cache entry.
   const skillsUpdate = useSkillsUpdate(projectId ?? '', projectId !== null)
   const skillsUpdateAvailable = skillsUpdateMarkerOf(skillsUpdate.data)
   const registry = useProjects().data
   const titleContext = pageTitleContext(pathname)
-  const bootProjectId = registry?.bootProject ?? health.data?.bootProject ?? null
-  // Unread done items (#unread-done-items) for the Tasks badge. This shell sits ABOVE the routed
-  // project provider, so name the URL project explicitly instead of reading the module scope.
-  const unreadDoneCountSelector = useMemo(() => unreadDoneCount, [])
-  const runs = useRunsForProject(projectId, bootProjectId, unreadDoneCountSelector)
-  const isBootProject = projectId !== null && projectId === bootProjectId
-  const activeProject = registry?.projects.find((project) => project.id === projectId)
-  const bootProject = registry?.projects.find((project) => project.id === bootProjectId)
-  const tracker = projectId === null ? bootProject?.tracker : activeProject?.tracker
+  const activeProject = registry?.projects.find((project) => project.id === projectId) ?? null
+  const projectAvailable = activeProject !== null && activeProject.status !== 'missing'
+  const runs = useProjectRuns(projectId ?? '', projectAvailable, unreadDoneCount)
   const titleRunId = titleContext.taskId
   const titleLabel = useProjectRuns(
     projectId ?? '',
-    // Wait for the registry to identify the project before choosing the boot/non-boot cache
-    // key. Health can arrive first; fetching then would briefly populate a project-scoped key
-    // for the boot project before switching to the authoritative `default` key.
-    activeProject !== undefined && titleRunId !== null,
-    registry?.bootProject === projectId,
+    projectAvailable && titleRunId !== null,
     useMemo(
       () => (list) => {
         const run = titleRunId ? list.find((item) => item.id === titleRunId) : undefined
@@ -104,53 +81,18 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
       [titleRunId, locale],
     ),
   ).data
-
-  // Global settings intentionally has no selected project. Everywhere else the URL id selects
-  // the authoritative registry entry; health may name only the CONFIRMED boot project while
-  // the registry is unavailable, never a non-boot project whose root health does not describe.
-  const globalSettings = pathname === '/settings/global' || pathname.startsWith('/settings/global/')
-  const projectName = globalSettings
-    ? null
-    : (activeProject?.name ??
-      (isBootProject ? (repoChipOf(health.data)?.name ?? null) : null))
+  const projectName = activeProject?.name ?? null
   const pageLabel = titleLabel ?? titleContext.pageLabel
 
   useDocumentTitle({ projectName, pageLabel, brandName: workspaceConfig.data?.branding.name, brandLogoUrl: workspaceConfig.data?.branding.logoUrl })
 
-  // Multi-project sidebar only from the SECOND project on (multi-project spec, "Sidebar").
-  // With one registered project — or with the registry still loading, or unreachable — the
-  // group header would say nothing the repo chip does not already say, so the shell keeps the
-  // flat nav + single quick-list it has always had. That degenerate case is the upgrade path:
-  // an existing user boots the new version in their usual repo and sees no difference.
-  const projects = registry && registry.projects.length > 1 ? registry : null
-  const repo = useMemo(
-    () => repoChipOf(health.data),
-    [health.data?.repo?.root, health.data?.repo?.branch],
-  )
   const banner = useMemo(() => <ProviderBannerContainer />, [])
-  const taskQuickList = useMemo(() => <TaskQuickListContainer />, [])
+  const taskQuickList = useMemo(() => projectAvailable ? <TaskQuickListContainer key={projectId} /> : null, [projectId, projectAvailable])
   // The sidebar glance. Created here, not inside `AppShell`, because the shell stays presentational
   // and QueryClient-free: the widget's own wrapper evaluates the viewport and transport gates and
   // mounts nothing below `md` or in remote, so neither the CSS-hidden column nor a hosted cockpit
   // ever pays for a sample it cannot show.
   const hostWidget = useMemo(() => <HostUsageWidget />, [])
-  const projectGroups = useMemo(
-    () =>
-      projects ? (
-        <ProjectGroups
-          projects={projects.projects}
-          bootProjectId={projects.bootProject}
-          // No forge prop: each group gates its own GitHub tab on its registry entry's
-          // `forge` field (#698) — the boot folder's health-level answer says nothing about
-          // the other projects in the workspace.
-          inboxAvailable={inboxAvailable}
-          automationsAvailable={automationsAvailable}
-          inboxCount={todos.data?.length ?? null}
-          skillsUpdateAvailable={skillsUpdateAvailable}
-        />
-      ) : undefined,
-    [projects, inboxAvailable, automationsAvailable, todos.data?.length, skillsUpdateAvailable],
-  )
   const toolsMenu = useMemo(() => <ToolsMenu health={health.data} />, [health.data])
 
   return (
@@ -159,7 +101,7 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
     // both of them under it — the spec requires the two sets of tabs to be one filter.
     <ListViewProvider>
       <AppShell
-        repo={repo}
+        projects={registry?.projects ?? []}
         brandName={workspaceConfig.data?.branding.name ?? 'cezar'}
         brandLogoUrl={workspaceConfig.data?.branding.logoUrl ?? null}
         version={health.data?.version ?? null}
@@ -175,23 +117,18 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
         // unread is 0, which AppShell also renders as no badge.
         unreadCount={runs.data ?? null}
         skillsUpdateAvailable={skillsUpdateAvailable}
-        // Hidden until health confirms the forge driver (R6 Step 1.1) — same honesty rule as
-        // the chips: the nav must not claim a GitHub tab it cannot back. The Tools menu's
-        // forge note says why it is absent.
-        forgeAvailable={health.data?.forge?.available === true}
+        // Forge and tracker identity belong to the selected registry entry, not global health.
+        forgeAvailable={activeProject?.forge === 'github'}
         // Hidden unless health reports the opt-in inbox (#471) — same honesty rule as above:
         // the nav must not offer an Inbox this server will never fill.
         inboxAvailable={inboxAvailable}
         // Hidden unless health reports the opt-in automations capability (#801).
         automationsAvailable={automationsAvailable}
-        tracker={tracker}
+        tracker={activeProject?.tracker}
         banner={banner}
         singleProject={health.data?.capabilities.singleProject === true}
         taskQuickList={taskQuickList}
         hostWidget={hostWidget}
-        // Present only in a multi-project workspace; `AppShell` renders the flat nav and the
-        // quick-list above whenever this slot is absent.
-        projectGroups={projectGroups}
         toolsMenu={toolsMenu}
       >
         {children}

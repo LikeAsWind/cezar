@@ -1,7 +1,7 @@
 import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon, ScaleIcon } from 'lucide-react'
 import * as React from 'react'
-import { useHealth, usePinRun, useReferenceProjectId, useRunsForProject } from '@/api/queries'
+import { useHealth, usePinRun, useProjectRuns } from '@/api/queries'
 import { Link, scopeTo, useActiveProjectId, useProjectMatch } from '@/lib/project-router'
 import type { RunRecord } from '@open-mercato/cezar-api-client'
 import { DiffStatLabel } from '@/components/diff-stat'
@@ -627,8 +627,8 @@ export function TaskQuickListContainer() {
 
   const health = useHealth()
   const activeProjectId = useActiveProjectId()
-  const runs = useRunsForProject(activeProjectId, health.data?.bootProject ?? null)
-  const pinMutation = usePinRun()
+  const runs = useProjectRuns(activeProjectId ?? '', activeProjectId !== null)
+  const pinMutation = usePinRun(activeProjectId ?? undefined)
   const visibility = usageMetricVisibility(health.data)
   const [view, setView] = useListView()
   // The remembered Regular | Automations | All split the Tasks tables set — the sidebar shows the
@@ -652,7 +652,7 @@ export function TaskQuickListContainer() {
   )
   // The sidebar's chips are the same chips as the tables', so they get their status the same way:
   // one batched request for the whole list, mounted here where the list is.
-  const projectId = useReferenceProjectId()
+  const projectId = activeProjectId ?? undefined
   const referenceRequests = React.useMemo(
     () =>
       projectId === undefined

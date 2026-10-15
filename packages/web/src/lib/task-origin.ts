@@ -12,8 +12,8 @@ import * as React from 'react'
  * the list is FOR, not a narrowing the user forgets they applied — and the selected control on
  * the filter row says what is hidden, every time the page opens.
  *
- * Per browser, in localStorage, like the sidebar collapse map (`lib/sidebar-collapse.ts`): one
- * answer shared by the per-project table and the global page, with no PUT to race.
+ * Per browser, in localStorage: one answer shared by the per-project table and the global page,
+ * with no PUT to race.
  */
 
 export type TaskOrigin = 'regular' | 'automation' | 'all'

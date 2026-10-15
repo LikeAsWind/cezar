@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import { createQueryClient } from '@/api/query-client'
 import type { ProjectsResponse } from '@open-mercato/cezar-api-client'
 import { AppearanceProvider } from '@/components/appearance-provider'
 import { ListViewProvider } from '@/components/list-view'
-import { ProjectGroups } from '@/components/project-groups'
+import { AppShellContainer } from '@/components/app-shell-container'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppRoutes } from '@/routes'
 
@@ -49,7 +49,6 @@ const REGISTRY: ProjectsResponse = {
     { id: BOOT, name: 'cezar', root: '/home/u/cezar', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' },
     { id: 'other', name: 'other-repo', root: '/home/u/other', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' },
   ],
-  bootProject: BOOT,
   projectsDir: '~/cezar/projects',
 }
 
@@ -150,16 +149,10 @@ function renderAt(entry: string) {
 
 function SidebarHarness() {
   return (
-    <>
-      <ProjectGroups
-        projects={REGISTRY.projects}
-        bootProjectId={REGISTRY.bootProject}
-        inboxAvailable={false}
-        automationsAvailable={false}
-      />
+    <AppShellContainer>
       <AppRoutes />
       <NavigationProbe />
-    </>
+    </AppShellContainer>
   )
 }
 
@@ -211,15 +204,10 @@ describe('opening another project’s task without a reload', () => {
     await expectTheRunWasReadFromItsOwnProject()
   })
 
-  it('reads the run from its own project when clicked from a project sidebar group', async () => {
+  it('reads the run from its own project after selecting a workspace and clicking its sidebar task', async () => {
     renderWithSidebarAt(`/p/${BOOT}/`)
-
-    const otherGroup = await waitFor(() => {
-      const group = document.querySelector('[data-slot="project-group"][data-project="other"]')
-      expect(group).not.toBeNull()
-      return group as HTMLElement
-    })
-    fireEvent.click(within(otherGroup).getByRole('button', { name: 'Expand other-repo', expanded: false }))
+    fireEvent.click(await screen.findByRole('button', { name: /\/home\/u\/cezar/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /other-repo/ }))
     const title = await screen.findByText('Do the thing')
     fireEvent.click(title.closest('a')!)
 

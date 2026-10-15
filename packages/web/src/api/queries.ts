@@ -1219,11 +1219,11 @@ export function useRunDrafts(id: string | undefined) {
  *  `capabilities.followups` is off, #471) parks the query instead of polling an
  *  endpoint that can only answer `[]` — `data` stays undefined, which the inbox
  *  badge already reads as "no badge". */
-export function useTodos(enabled = true) {
+export function useTodos(enabled = true, projectId: string | null = getApiScope()) {
   return useQuery({
-    queryKey: queryKeys.todos,
-    queryFn: ({ signal }) => getTodos({ signal }),
-    enabled,
+    queryKey: projectQueryKeys.todos(projectId ?? ''),
+    queryFn: ({ signal }) => getTodos({ signal }, projectId ?? undefined),
+    enabled: enabled && projectId !== null,
   })
 }
 
@@ -1247,18 +1247,18 @@ export function useWorkflows(opts: { enabled?: boolean } = {}) {
 /** `enabled` gates the fetch for surfaces that need skills only once interacted with — the
  *  composer's `/` autocomplete fetches on first trigger, never on every thread visit. (The
  *  palette gets the same laziness structurally: its content mounts only while open.) */
-export function useSkills(enabled = true) {
+export function useSkills(enabled = true, projectId: string | null = getApiScope()) {
   const queryClient = useQueryClient()
-  const skillsKey = queryKeys.skills
+  const skillsKey = useMemo(() => ['project', projectId ?? '', 'skills'] as const, [projectId])
   const skills = useQuery({
     queryKey: skillsKey,
-    queryFn: ({ signal }) => getSkills({ signal }),
-    enabled,
+    queryFn: ({ signal }) => getSkills({ signal }, projectId ?? undefined),
+    enabled: enabled && projectId !== null,
   })
   const ready = useQuery({
-    queryKey: queryKeys.skillsReady,
-    queryFn: ({ signal }) => getSkillsWhenReady({ signal }),
-    enabled: enabled && skills.isSuccess,
+    queryKey: ['project', projectId ?? '', 'skills', 'ready'],
+    queryFn: ({ signal }) => getSkillsWhenReady({ signal }, projectId ?? undefined),
+    enabled: enabled && projectId !== null && skills.isSuccess,
     staleTime: Infinity,
     retry: false,
   })
@@ -1396,10 +1396,11 @@ export function useWorktrees() {
   })
 }
 
-export function useUiState() {
+export function useUiState(projectId: string | null = getApiScope()) {
   return useQuery({
-    queryKey: queryKeys.uiState,
-    queryFn: ({ signal }) => getUiState({ signal }),
+    queryKey: ['project', projectId ?? '', 'ui-state'],
+    queryFn: ({ signal }) => getUiState({ signal }, projectId ?? undefined),
+    enabled: projectId !== null,
   })
 }
 

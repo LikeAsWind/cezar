@@ -132,14 +132,14 @@ function LocationProbe() {
 function renderPalette({
   runs = [] as RunRecord[],
   skills = [] as Skill[],
-  projects = [] as ProjectListEntry[],
+  forge = true,
+  projects = [project({ id: 'cezar', ...(forge ? { forge: 'github' } : {}) })],
   indexed = [] as RunIndexEntry[],
   truncated = [] as string[],
   theme,
-  forge = true,
   automations = false,
   uiState = {} as Record<string, unknown>,
-  entry = '/',
+  entry = '/p/cezar/',
 }: {
   runs?: RunRecord[]
   skills?: Skill[]
@@ -157,10 +157,12 @@ function renderPalette({
 } = {}) {
   if (theme) localStorage.setItem(THEME_STORAGE_KEY, theme)
   serve({
-    '/api/v1/runs': runs,
-    '/api/v1/skills': skills,
+    ...Object.fromEntries([...new Set(['cezar', ...projects.map((project) => project.id)])].flatMap((projectId) => [
+      [`/api/v1/p/${projectId}/runs`, runs],
+      [`/api/v1/p/${projectId}/skills`, skills],
+      [`/api/v1/p/${projectId}/ui-state`, uiState],
+    ])),
     '/api/v1/health': health(forge, automations),
-    '/api/v1/ui-state': uiState,
     '/api/v1/projects': { projects, bootProject: projects[0]?.id ?? 'default', projectsDir: '/repos' },
     '/api/v1/workspace/runs-index': { runs: indexed, perProjectLimit: 200, truncated },
   })
@@ -185,6 +187,28 @@ function openWith(init: { metaKey?: boolean; ctrlKey?: boolean }) {
 }
 
 describe('opening and closing', () => {
+  it('opens globally without querying project resources or enabling task creation', async () => {
+    renderPalette({ entry: '/', projects: [project({ id: 'alpha' })] })
+    openWith({ metaKey: true })
+    expect(await screen.findByPlaceholderText(/Search projects, tasks/)).toBeTruthy()
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0))
+    expect(document.querySelector('[data-nav-to="/new"]')?.getAttribute('aria-disabled')).toBe('true')
+    const asked = fetchMock.mock.calls.map((call) => String(call[0]))
+    expect(asked.filter((path) => /\/(runs|skills|ui-state)$/.test(path) && !path.includes('/workspace/'))).toEqual([])
+  })
+
+  it.each([{ key: 'c' }, { key: 'n', metaKey: true }])('does not create globally through $key', (event) => {
+    renderPalette({ entry: '/' })
+    fireEvent.keyDown(window, event)
+    expect(location()).toBe('/')
+  })
+  it('finds a single registered project task globally through the workspace index', async () => {
+    renderPalette({ entry: '/', projects: [project({ id: 'alpha' })],
+      indexed: [indexed({ id: 'r-alpha', projectId: 'alpha', title: 'Global search result' })] })
+    openWith({ metaKey: true })
+    fireEvent.click(await screen.findByText('Global search result'))
+    expect(location()).toBe('/p/alpha/tasks/r-alpha')
+  })
   it.each([
     { name: '⌘K', init: { metaKey: true } },
     { name: 'Ctrl+K', init: { ctrlKey: true } },
@@ -234,11 +258,16 @@ describe('opening and closing', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const paths = fetchMock.mock.calls.map((call) => String(call[0]))
-    expect(paths).toContain('/api/v1/skills')
+    expect(paths).toContain('/api/v1/p/cezar/skills')
   })
 })
 
 describe('Views group', () => {
+  it('uses the selected project forge independently from global health', async () => {
+    renderPalette({ projects: [project({ id: 'cezar', forge: 'github' })], forge: false, entry: '/p/cezar/' })
+    openWith({ metaKey: true })
+    await waitFor(() => expect(document.querySelector('[data-nav-to="/github"]')).not.toBeNull())
+  })
   it('uses the associated provider label in a single-project workspace', async () => {
     renderPalette({ projects: [project({ id: 'cezar', tracker: 'linear' })], entry: '/p/cezar/' })
     openWith({ metaKey: true })
@@ -259,7 +288,7 @@ describe('Views group', () => {
     const views = [...document.querySelectorAll('[data-slot="palette-view"]')]
     // New task FIRST — an empty query pre-selects it, so ⌘K then Enter starts a task.
     expect(views.map((view) => view.getAttribute('data-nav-to'))).toEqual([
-      '/new', '/', '/inbox', '/git', '/github', '/automations', '/skills', '/workflows', '/settings',
+      '/new', '/tasks', '/inbox', '/git', '/github', '/automations', '/skills', '/workflows', '/settings',
     ])
     expect(views[0]?.textContent).toContain('New task')
     // The chip advertises `c` — ⌘N is browser-reserved and only fires in the desktop shell.
@@ -278,7 +307,7 @@ describe('Views group', () => {
     )
     const views = [...document.querySelectorAll('[data-slot="palette-view"]')]
     expect(views.map((view) => view.getAttribute('data-nav-to'))).toEqual([
-      '/new', '/', '/inbox', '/git', '/github', '/skills', '/workflows', '/settings',
+      '/new', '/tasks', '/inbox', '/git', '/github', '/skills', '/workflows', '/settings',
     ])
   })
 
@@ -331,7 +360,7 @@ describe('Views group', () => {
 
     fireEvent.click(document.querySelector('[data-nav-to="/workflows"]') as HTMLElement)
 
-    expect(location()).toBe('/workflows')
+    expect(location()).toBe('/p/cezar/workflows')
     await waitFor(() => expect(dialog()).toBeNull())
   })
 
@@ -340,7 +369,7 @@ describe('Views group', () => {
 
     fireEvent.keyDown(window, { key: 'n', metaKey: true })
 
-    expect(location()).toBe('/new')
+    expect(location()).toBe('/p/cezar/new')
     expect(dialog()).toBeNull()
   })
 
@@ -349,7 +378,7 @@ describe('Views group', () => {
 
     fireEvent.keyDown(window, { key: 'c' })
 
-    expect(location()).toBe('/new')
+    expect(location()).toBe('/p/cezar/new')
     expect(dialog()).toBeNull()
   })
 
@@ -361,7 +390,7 @@ describe('Views group', () => {
 
     fireEvent.keyDown(input, { key: 'c' })
 
-    expect(location()).toBe('/')
+    expect(location()).toBe('/p/cezar/')
     input.remove()
   })
 })
@@ -780,7 +809,7 @@ describe('Tasks across projects', () => {
     expect(tasks[0]?.querySelector('[data-slot="status-dot"]')?.getAttribute('data-tone')).toBe('violet')
   })
 
-  it('lists the boot project once from an unscoped screen like global settings', async () => {
+  it('reads global tasks from the workspace index without a fallback project', async () => {
     renderPalette({
       projects: REGISTRY,
       // No `/p/` prefix — the one cockpit area outside every project scope. `useRuns()` still
@@ -845,7 +874,7 @@ describe('Actions group', () => {
 
     fireEvent.click(document.querySelector('[data-nav-to="/new"]') as HTMLElement)
 
-    expect(location()).toBe('/new')
+    expect(location()).toBe('/p/cezar/new')
     await waitFor(() => expect(dialog()).toBeNull())
   })
 })
@@ -892,7 +921,7 @@ describe('Skills group', () => {
 
     fireEvent.click(document.querySelector('[data-skill="project-review"]') as HTMLElement)
 
-    expect(location()).toBe('/new?skill=project-review')
+    expect(location()).toBe('/p/cezar/new?skill=project-review')
     await waitFor(() => expect(dialog()).toBeNull())
   })
 

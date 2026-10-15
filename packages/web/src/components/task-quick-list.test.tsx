@@ -673,7 +673,7 @@ describe('TaskQuickListContainer', () => {
     vi.unstubAllGlobals()
   })
 
-  function renderContainer(runs: RunRecord[], route = '/') {
+  function renderContainer(runs: RunRecord[], route = '/p/cezar/') {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const path = String(input)
       const body = path === '/api/v1/health' ? HEALTH : runs
@@ -699,7 +699,7 @@ describe('TaskQuickListContainer', () => {
   it('renders the live run list', async () => {
     renderContainer([run({ id: 'live', title: 'A real run', status: 'running' })])
     expect(await screen.findByText('A real run')).not.toBeNull()
-    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/runs')
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain('/api/v1/p/cezar/runs')
   })
 
   it('reads a URL-scoped project list without a provider above it', async () => {
@@ -707,15 +707,15 @@ describe('TaskQuickListContainer', () => {
     expect(await screen.findByText('Scoped run')).not.toBeNull()
     const paths = fetchMock.mock.calls.map((call) => String(call[0]))
     expect(paths).toContain('/api/v1/p/other/runs')
-    expect(paths).not.toContain('/api/v1/runs')
+    expect(paths).not.toContain('/api/v1/p/cezar/runs')
   })
 
   it('lights the row for the task open at /tasks/:id, including its child routes', async () => {
-    renderContainer([run({ id: 'open', title: 'Open one' })], '/tasks/open/changes')
+    renderContainer([run({ id: 'open', title: 'Open one' })], '/p/cezar/tasks/open/changes')
     await waitFor(() =>
       expect(
         document.querySelector('[data-slot="task-row"] a[aria-current="page"]')?.getAttribute('href')
-      ).toBe('/tasks/open')
+      ).toBe('/p/cezar/tasks/open')
     )
   })
 
@@ -733,7 +733,7 @@ describe('TaskQuickListContainer', () => {
     })
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={createQueryClient()}>
-        <MemoryRouter initialEntries={['/']}>
+        <MemoryRouter initialEntries={['/p/cezar/']}>
           <ListViewProvider>{children}</ListViewProvider>
         </MemoryRouter>
       </QueryClientProvider>
@@ -742,7 +742,7 @@ describe('TaskQuickListContainer', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Pin task' }))
     await waitFor(() =>
-      expect(sent).toEqual([{ path: '/api/v1/runs/live/pin', body: { pinned: true } }]),
+      expect(sent).toEqual([{ path: '/api/v1/p/cezar/runs/live/pin', body: { pinned: true } }]),
     )
   })
 

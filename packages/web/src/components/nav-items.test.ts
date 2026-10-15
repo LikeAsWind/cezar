@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
-import { NAV_ITEMS, activeNavItem, activeNavPath, visibleNavItems } from './nav-items'
+import { GLOBAL_NAV_ITEMS, NAV_ITEMS, activeNavItem, activeNavPath, projectNavItems, visibleNavItems } from './nav-items'
+
+describe('workspace and project navigation', () => {
+  it('keeps the global doors independent from project capabilities', () => {
+    expect(GLOBAL_NAV_ITEMS.map((item) => [item.to, item.label])).toEqual([
+      ['/', 'Workspace'], ['/tasks', 'All tasks'], ['/projects', 'Projects'], ['/settings/global', 'Global settings'],
+    ])
+  })
+
+  it('provides project overview, task and settings destinations with capability gates', () => {
+    const items = projectNavItems({ tracker: 'linear', automations: true })
+    expect(items.map((item) => [item.to, item.label])).toEqual([
+      ['/', 'Overview'], ['/tasks', 'Tasks & Worktrees'], ['/git', 'Git / GitHub'],
+      ['/tracker', 'Linear'], ['/automations', 'Automations'], ['/skills', 'Skills'],
+      ['/workflows', 'Workflows'], ['/settings', 'Project settings'],
+    ])
+    expect(projectNavItems({ forge: true, inbox: true }).map((item) => item.to)).toContain('/github')
+    expect(projectNavItems({ forge: true, inbox: true }).map((item) => item.to)).toContain('/inbox')
+  })
+})
 
 /** Which nav item owns a URL. This is the rule that decides what the user sees lit up, and it
  *  is not a plain equality check — items own areas, and the Settings area nests. */

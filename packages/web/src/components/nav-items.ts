@@ -1,6 +1,8 @@
 import { t } from '@/lib/i18n'
 import {
   GitBranchIcon,
+  FolderGit2Icon,
+  LayoutDashboardIcon,
   InboxIcon,
   ListChecksIcon,
   SettingsIcon,
@@ -57,6 +59,25 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/workflows', get label() { return t('Workflows') }, icon: WorkflowIcon, match: ['/workflows'] },
   { to: '/settings', get label() { return t('Settings') }, icon: SettingsIcon, match: ['/settings'] },
 ]
+
+export const GLOBAL_NAV_ITEMS: readonly NavItem[] = [
+  { to: '/', get label() { return t('Workspace') }, icon: LayoutDashboardIcon, match: ['/'] },
+  { to: '/tasks', get label() { return t('All tasks') }, icon: ListChecksIcon, match: ['/tasks'] },
+  { to: '/projects', get label() { return t('Projects') }, icon: FolderGit2Icon, match: ['/projects'] },
+  { to: '/settings/global', get label() { return t('Global settings') }, icon: SettingsIcon, match: ['/settings/global'] },
+]
+
+export function projectNavItems(flags: NavAvailability = {}): NavItem[] {
+  return [
+    { to: '/', label: t('Overview'), icon: LayoutDashboardIcon, match: ['/'] },
+    ...visibleNavItems(flags).map((item) => ({
+      ...item,
+      label: item.to === '/tasks' ? t('Tasks & Worktrees')
+        : item.to === '/git' ? t('Git / GitHub')
+          : item.to === '/settings' ? t('Project settings') : item.label,
+    })),
+  ]
+}
 
 /** What `/api/health` says exists. All default to `false` — see `visibleNavItems`. */
 export type NavAvailability = {

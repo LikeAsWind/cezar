@@ -4,7 +4,7 @@ import { Link as RouterLink, MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppShell, routeOwnsScrollArrival, type AppShellProps } from './app-shell'
-import { NAV_ITEMS, visibleNavItems } from './nav-items'
+import { NAV_ITEMS, projectNavItems } from './nav-items'
 import { ThemeProvider } from './theme-provider'
 
 afterEach(() => {
@@ -47,20 +47,41 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>
 }
 
-const nav = () => screen.getByRole('navigation', { name: 'Main' })
+function renderProjectShell(entry = '/', props: Partial<AppShellProps> = {}, children: ReactNode = <p>route content</p>) {
+  return renderShell(entry.startsWith('/p/') ? entry : '/p/alpha' + entry, props, children)
+}
+
+const nav = () => screen.getByRole('navigation', { name: 'Project' })
 const sidebar = () => document.querySelector('[data-slot="sidebar"]') as HTMLElement
 const footer = () => document.querySelector('[data-slot="sidebar-footer"]') as HTMLElement
 
 describe('AppShell', () => {
+  it('keeps global navigation and disables task creation without a URL project', () => {
+    renderShell('/')
+    expect(screen.getByRole('button', { name: 'New task' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('Select a project before creating a task')).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Project' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Workspace' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'Projects' }).getAttribute('href')).toBe('/projects')
+  })
+
+  it('offers an explicit project task link and a return to the global workspace', () => {
+    renderShell('/p/alpha/')
+    expect(screen.getByRole('link', { name: /New task/ }).getAttribute('href')).toBe('/p/alpha/new')
+    fireEvent.click(screen.getByRole('link', { name: 'Back to global workspace' }))
+    expect(screen.getByTestId('location').textContent).toBe('/')
+    expect(screen.queryByRole('navigation', { name: 'Project' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'New task' }).hasAttribute('disabled')).toBe(true)
+  })
   it('renders the routed view in the main region', () => {
-    renderShell('/', {}, <p>route content</p>)
+    renderProjectShell('/', {}, <p>route content</p>)
     expect(within(screen.getByRole('main')).getByText('route content')).toBeTruthy()
   })
 
   // Brand guideline ("Znak z nazwą"): the mark WITHOUT its tile, in the text colour, beside the
   // lowercase name in Chakra Petch SemiBold — 26px over 19px with a gap of 0.6 × the type size.
   it('renders the brand lockup: the tile-less mark beside the lowercase name', () => {
-    renderShell('/')
+    renderProjectShell('/')
     const lockup = sidebar().querySelector('[data-slot="brand-lockup"]') as HTMLElement | null
     expect(lockup).toBeTruthy()
     expect(lockup!.style.gap).toBe('11.4px')
@@ -83,7 +104,7 @@ describe('AppShell', () => {
   })
 
   it('renders a workspace name and uploaded logo when supplied', () => {
-    renderShell('/', { brandName: 'Acme Studio', brandLogoUrl: '/api/v1/workspace/branding-logo?v=abc' })
+    renderProjectShell('/', { brandName: 'Acme Studio', brandLogoUrl: '/api/v1/workspace/branding-logo?v=abc' })
     const lockup = sidebar().querySelector('[data-slot="brand-lockup"]') as HTMLElement
     expect(lockup.querySelector('[data-slot="brand-name"]')?.textContent).toBe('Acme Studio')
     expect(lockup.querySelector('[data-slot="brand-logo"]')?.getAttribute('src')).toBe('/api/v1/workspace/branding-logo?v=abc')
@@ -91,17 +112,17 @@ describe('AppShell', () => {
   })
 
   it('resets the main scroller to the top on navigation (#mobile-scroll-top)', () => {
-    renderShell('/')
+    renderProjectShell('/')
     const main = screen.getByRole('main')
     main.scrollTop = 640
     expect(main.scrollTop).toBe(640) // jsdom kept the write — the reset below is the effect's
     fireEvent.click(within(nav()).getByRole('link', { name: 'GitHub' }))
-    expect(screen.getByTestId('location').textContent).toBe('/github')
+    expect(screen.getByTestId('location').textContent).toBe('/p/alpha/github')
     expect(main.scrollTop).toBe(0)
   })
 
   it('leaves task-to-task arrival to the destination transcript owner (#761)', () => {
-    renderShell(
+    renderProjectShell(
       '/tasks/source',
       {},
       <RouterLink to="/tasks/destination">Switch task</RouterLink>,
@@ -116,13 +137,13 @@ describe('AppShell', () => {
   })
 
   it('restores the generic top reset when leaving a task thread (#761)', () => {
-    renderShell('/tasks/source')
+    renderProjectShell('/tasks/source')
     const main = screen.getByRole('main')
     main.scrollTop = 640
 
     fireEvent.click(within(nav()).getByRole('link', { name: 'GitHub' }))
 
-    expect(screen.getByTestId('location').textContent).toBe('/github')
+    expect(screen.getByTestId('location').textContent).toBe('/p/alpha/github')
     expect(main.scrollTop).toBe(0)
   })
 
@@ -135,67 +156,69 @@ describe('AppShell', () => {
   })
 
   it('renders the whole nav as real router links', () => {
-    renderShell()
+    renderProjectShell()
     const links = within(nav()).getAllByRole('link')
     expect(links.map((a) => a.textContent)).toEqual([
-      'Tasks',
+      'Overview',
+      'Tasks & Worktrees',
       'Inbox',
-      'Git',
+      'Git / GitHub',
       'GitHub',
       'Automations',
       'Skills',
       'Workflows',
-      'Settings',
+      'Project settings',
     ])
     // Deep-linkable per Step 2.1: every nav row is an <a href>, not a button with an onClick.
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '/',
-      '/inbox',
-      '/git',
-      '/github',
-      '/automations',
-      '/skills',
-      '/workflows',
-      '/settings',
+      '/p/alpha/',
+      '/p/alpha/tasks',
+      '/p/alpha/inbox',
+      '/p/alpha/git',
+      '/p/alpha/github',
+      '/p/alpha/automations',
+      '/p/alpha/skills',
+      '/p/alpha/workflows',
+      '/p/alpha/settings',
     ])
   })
 
   // R6 Step 1.1: no forge, no GitHub tab — the nav item disappears entirely (spec's
   // degradation table), it does not render disabled.
   it('drops the GitHub item when the forge is unavailable', () => {
-    renderShell('/', { forgeAvailable: false })
+    renderProjectShell('/', { forgeAvailable: false })
     const links = within(nav()).getAllByRole('link')
-    expect(links.map((a) => a.getAttribute('href'))).not.toContain('/github')
-    expect(links).toHaveLength(NAV_ITEMS.filter((item) => !item.forge && !item.tracker).length)
+    expect(links.map((a) => a.getAttribute('href'))).not.toContain('/p/alpha/github')
+    expect(links).toHaveLength(NAV_ITEMS.filter((item) => !item.forge && !item.tracker).length + 1)
   })
 
   // #801: same degradation for the opt-in automations capability — the item disappears, it does
   // not render disabled. The two gates on that item are independent: a forge alone is not enough.
   it('drops the Automations item when the capability is off', () => {
-    renderShell('/', { automationsAvailable: false })
+    renderProjectShell('/', { automationsAvailable: false })
     const links = within(nav()).getAllByRole('link')
-    expect(links.map((a) => a.getAttribute('href'))).not.toContain('/automations')
-    expect(links).toHaveLength(NAV_ITEMS.filter((item) => !item.automations && !item.tracker).length)
+    expect(links.map((a) => a.getAttribute('href'))).not.toContain('/p/alpha/automations')
+    expect(links).toHaveLength(NAV_ITEMS.filter((item) => !item.automations && !item.tracker).length + 1)
   })
 
   it('shows the Automations item once the capability is on', () => {
-    renderShell('/', { automationsAvailable: true })
+    renderProjectShell('/', { automationsAvailable: true })
     expect(within(nav()).getAllByRole('link').map((a) => a.getAttribute('href')))
-      .toContain('/automations')
+      .toContain('/p/alpha/automations')
   })
 
   describe('active nav state follows the current route', () => {
     const cases: Array<[entry: string, active: string]> = [
-      ['/', 'Tasks'],
-      ['/git', 'Git'],
+      ['/', 'Overview'],
+      ['/git', 'Git / GitHub'],
       ['/skills', 'Skills'],
       // Tasks stays lit while a task thread is open (spec's "Task list & table").
-      ['/tasks/abc123', 'Tasks'],
+      ['/tasks/abc123', 'Tasks & Worktrees'],
     ]
 
     for (const [entry, active] of cases) {
       it(`${entry} → ${active}`, () => {
-        renderShell(entry)
+        renderProjectShell(entry)
         const current = within(nav()).getAllByRole('link', { current: 'page' })
         // Exactly one — two lit rows is as wrong as none.
         expect(current).toHaveLength(1)
@@ -204,19 +227,19 @@ describe('AppShell', () => {
     }
 
     it('lights nothing on a full-screen surface like /new', () => {
-      renderShell('/new')
+      renderProjectShell('/new')
       expect(within(nav()).queryAllByRole('link', { current: 'page' })).toHaveLength(0)
     })
   })
 
   describe('New task button', () => {
     it('links to /new', () => {
-      renderShell()
-      expect(within(sidebar()).getByRole('link', { name: /New task/ }).getAttribute('href')).toBe('/new')
+      renderProjectShell()
+      expect(within(sidebar()).getByRole('link', { name: /New task/ }).getAttribute('href')).toBe('/p/alpha/new')
     })
 
     it('renders the C hint (the browser-usable accelerator; ⌘N only fires in the desktop shell)', () => {
-      renderShell()
+      renderProjectShell()
       const link = within(sidebar()).getByRole('link', { name: /New task/ })
       expect(within(link).getByText('C').tagName).toBe('KBD')
     })
@@ -224,20 +247,20 @@ describe('AppShell', () => {
 
   describe('Add project menu', () => {
     it('is shown by default', () => {
-      renderShell()
+      renderProjectShell()
       expect(within(sidebar()).getByRole('button', { name: 'Add project' })).toBeTruthy()
     })
 
     it('is omitted in single-project mode while normal navigation remains', () => {
-      renderShell('/', { singleProject: true })
+      renderProjectShell('/', { singleProject: true })
       expect(within(sidebar()).queryByRole('button', { name: 'Add project' })).toBeNull()
-      expect(within(nav()).getByRole('link', { name: 'Tasks' })).toBeTruthy()
+      expect(within(nav()).getByRole('link', { name: 'Tasks & Worktrees' })).toBeTruthy()
       expect(within(sidebar()).getByRole('link', { name: /New task/ })).toBeTruthy()
     })
   })
 
   it('puts the theme toggle in the sidebar footer', () => {
-    renderShell()
+    renderProjectShell()
     expect(within(footer()).getByRole('button', { name: /^Theme:/ })).toBeTruthy()
   })
 
@@ -251,13 +274,13 @@ describe('AppShell', () => {
       document.querySelector('[data-slot="sidebar-footer-controls"]') as HTMLElement
 
     it('lays the footer out as a column, never a wrapping row', () => {
-      renderShell()
+      renderProjectShell()
       expect(footer().className).toContain('flex-col')
       expect(footer().className).not.toContain('flex-wrap')
     })
 
     it('has exactly two children without the machine glance: the search bar, then the controls', () => {
-      renderShell('/', { version: '1.2.3' })
+      renderProjectShell('/', { version: '1.2.3' })
       const children = Array.from(footer().children) as HTMLElement[]
       expect(children.map((child) => child.dataset.slot)).toEqual([
         'command-palette-hint',
@@ -266,7 +289,7 @@ describe('AppShell', () => {
     })
 
     it('puts the machine glance above both, as its own row', () => {
-      renderShell('/', { version: '1.2.3', hostWidget: <span data-slot="host-widget-stub" /> })
+      renderProjectShell('/', { version: '1.2.3', hostWidget: <span data-slot="host-widget-stub" /> })
       const children = Array.from(footer().children) as HTMLElement[]
       expect(children.map((child) => child.dataset.slot)).toEqual([
         'host-widget-stub',
@@ -276,7 +299,7 @@ describe('AppShell', () => {
     })
 
     it('keeps every control a sibling inside the one controls row', () => {
-      renderShell('/', { version: '1.2.3', toolsMenu: <button type="button">Tools</button> })
+      renderProjectShell('/', { version: '1.2.3', toolsMenu: <button type="button">Tools</button> })
       // The gear and the toggle are the pair that came apart in #702 — assert they share a parent,
       // and that the row is the whole of the footer's chrome rather than a subset of it.
       const row = controls()
@@ -290,7 +313,7 @@ describe('AppShell', () => {
     })
 
     it('renders search as a full-width launcher that still opens the palette', () => {
-      renderShell()
+      renderProjectShell()
       // Named by its own visible label, not by an aria-label that would diverge from it
       // (WCAG 2.5.3) — jsdom reports no `navigator.platform`, so the chord reads Ctrl+K.
       const search = within(footer()).getByRole('button', { name: 'Search…' })
@@ -307,7 +330,7 @@ describe('AppShell', () => {
     })
 
     it('still shows the version chip update affordance (#368) in the narrower row', () => {
-      renderShell('/', { version: '1.2.3', latestVersion: '1.3.0' })
+      renderProjectShell('/', { version: '1.2.3', latestVersion: '1.3.0' })
       const chip = controls().querySelector('[data-slot="version-chip"]') as HTMLElement
       expect(chip.getAttribute('data-update-available')).toBe('true')
       expect(chip.querySelector('[data-slot="status-dot"]')).not.toBeNull()
@@ -318,7 +341,7 @@ describe('AppShell', () => {
      * the nightly dist-tag of #876 — used to push the gear and the toggle outside the 264px
      * column entirely. jsdom still measures nothing; what it can pin is which item yields. */
     it('makes the version chip the one control that gives, so a nightly version cannot push the row out', () => {
-      renderShell('/', {
+      renderProjectShell('/', {
         version: '0.9.2-nightly.20260813.1',
         toolsMenu: <button type="button">Tools</button>,
       })
@@ -341,7 +364,7 @@ describe('AppShell', () => {
 
   describe('data slots stay empty rather than showing invented data', () => {
     it('renders no repo chip, badge or version chip when unfed', () => {
-      renderShell()
+      renderProjectShell()
       expect(document.querySelector('[data-slot="repo-chip"]')).toBeNull()
       expect(document.querySelector('[data-slot="nav-badge"]')).toBeNull()
       expect(document.querySelector('[data-slot="version-chip"]')).toBeNull()
@@ -349,7 +372,7 @@ describe('AppShell', () => {
     })
 
     it('renders the repo chip and version chip from props', () => {
-      renderShell('/', { repo: { name: 'cezar', branch: 'main' }, version: '1.2.3' })
+      renderProjectShell('/', { repo: { name: 'cezar', branch: 'main' }, version: '1.2.3' })
       expect(screen.getByText('cezar / main')).toBeTruthy()
       // The chip prefixes the raw semver from /api/v1/health — `v1.2.3`, mono, muted.
       expect(within(footer()).getByText('v1.2.3')).toBeTruthy()
@@ -359,7 +382,7 @@ describe('AppShell', () => {
       const chip = () => document.querySelector('[data-slot="star-chip"]') as HTMLAnchorElement | null
 
       it('renders the count beside the version chip, in the one controls row', () => {
-        renderShell('/', { version: '1.2.3', starCount: 1234 })
+        renderProjectShell('/', { version: '1.2.3', starCount: 1234 })
         const row = document.querySelector('[data-slot="sidebar-footer-controls"]') as HTMLElement
         expect(row.querySelector('[data-slot="star-chip"]')).not.toBeNull()
         expect(within(footer()).getByText('1.2k')).toBeTruthy()
@@ -368,18 +391,18 @@ describe('AppShell', () => {
       it('is absent — not empty — when the count is unavailable', () => {
         // Offline, a rate-limited IP, or `CEZ_NO_BANNER=1`. A button advertising a number it
         // cannot produce is worse than no button, and the row has no room to spare either.
-        renderShell('/', { version: '1.2.3', starCount: null })
+        renderProjectShell('/', { version: '1.2.3', starCount: null })
         expect(chip()).toBeNull()
       })
 
       it('still renders at zero — a real count, not a missing one', () => {
-        renderShell('/', { version: '1.2.3', starCount: 0 })
+        renderProjectShell('/', { version: '1.2.3', starCount: 0 })
         expect(chip()).not.toBeNull()
         expect(within(footer()).getByText('0')).toBeTruthy()
       })
 
       it('links to cezar, in a new tab, leaking neither opener nor referrer', () => {
-        renderShell('/', { starCount: 42 })
+        renderProjectShell('/', { starCount: 42 })
         expect(chip()?.getAttribute('href')).toBe('https://github.com/open-mercato/cezar')
         expect(chip()?.getAttribute('target')).toBe('_blank')
         expect(chip()?.getAttribute('rel')).toContain('noopener')
@@ -387,7 +410,7 @@ describe('AppShell', () => {
       })
 
       it('names itself for a screen reader with the exact count, not the abbreviation', () => {
-        renderShell('/', { starCount: 12_345 })
+        renderProjectShell('/', { starCount: 12_345 })
         // The visible chip abbreviates for the 264px column; the accessible name must not —
         // "12.3k stars" is a worse answer to "how many" than the number itself.
         const label = chip()?.getAttribute('aria-label') ?? ''
@@ -401,12 +424,12 @@ describe('AppShell', () => {
       it('is shrink-0, leaving the version chip as the row\'s one elastic item (#876)', () => {
         // Two elastic controls would give the row two ways to lose its width budget. The star
         // chip is six characters at worst, so it can afford to be rigid.
-        renderShell('/', { version: '1.2.3', starCount: 12_345 })
+        renderProjectShell('/', { version: '1.2.3', starCount: 12_345 })
         expect(chip()?.className).toContain('shrink-0')
       })
 
       it('offers no reward and blocks nothing — the chip is a link and only a link', () => {
-        renderShell('/', { starCount: 1000 })
+        renderProjectShell('/', { starCount: 1000 })
         expect(chip()?.tagName).toBe('A')
         expect(chip()?.textContent ?? '').not.toMatch(/\b(unlock|reward|free|upgrade|pro|premium)\b/i)
       })
@@ -416,7 +439,7 @@ describe('AppShell', () => {
       const chip = () => document.querySelector('[data-slot="version-chip"]') as HTMLElement
 
       it('stays plain while the registry has nothing newer', () => {
-        renderShell('/', { version: '1.2.3' })
+        renderProjectShell('/', { version: '1.2.3' })
         expect(chip().getAttribute('data-update-available')).toBeNull()
         // A tooltip, but one that claims nothing: the chip truncates, so the full version has to
         // stay reachable on hover even when there is no update to announce.
@@ -425,13 +448,13 @@ describe('AppShell', () => {
       })
 
       it('stays plain when latestVersion equals the running version', () => {
-        renderShell('/', { version: '1.2.3', latestVersion: '1.2.3' })
+        renderProjectShell('/', { version: '1.2.3', latestVersion: '1.2.3' })
         expect(chip().getAttribute('data-update-available')).toBeNull()
         expect(chip().querySelector('[data-slot="status-dot"]')).toBeNull()
       })
 
       it('pulses and names the newer version when one exists', () => {
-        renderShell('/', { version: '1.2.3', latestVersion: '1.3.0' })
+        renderProjectShell('/', { version: '1.2.3', latestVersion: '1.3.0' })
         expect(chip().getAttribute('data-update-available')).toBe('true')
         expect(chip().getAttribute('title')).toBe('v1.2.3 — update available: v1.3.0')
         const dot = chip().querySelector('[data-slot="status-dot"]') as HTMLElement
@@ -443,17 +466,17 @@ describe('AppShell', () => {
     })
 
     it('renders the Inbox badge only for a non-zero count', () => {
-      renderShell('/', { inboxCount: 2 })
+      renderProjectShell('/', { inboxCount: 2 })
       const inbox = within(nav()).getByRole('link', { name: /Inbox/ })
       expect(within(inbox).getByText('2')).toBeTruthy()
 
       cleanup()
-      renderShell('/', { inboxCount: 0 })
+      renderProjectShell('/', { inboxCount: 0 })
       expect(document.querySelector('[data-slot="nav-badge"]')).toBeNull()
     })
 
     it('renders a quiet accessible Skills update marker in desktop and mobile navigation', () => {
-      renderShell('/', { skillsUpdateAvailable: true })
+      renderProjectShell('/', { skillsUpdateAvailable: true })
       expect(document.querySelectorAll('[data-slot="nav-update-marker"]')).toHaveLength(1)
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
       const markers = document.querySelectorAll('[data-slot="nav-update-marker"]')
@@ -467,12 +490,12 @@ describe('AppShell', () => {
     })
 
     it('renders no Skills marker without an actionable update', () => {
-      renderShell()
+      renderProjectShell()
       expect(document.querySelector('[data-slot="nav-update-marker"]')).toBeNull()
     })
 
     it('reserves the quick-list, tools and composer slots for later Steps', () => {
-      renderShell()
+      renderProjectShell()
       for (const slot of ['task-quick-list', 'tools-menu', 'composer']) {
         expect(document.querySelector(`[data-slot="${slot}"]`)).not.toBeNull()
       }
@@ -480,93 +503,35 @@ describe('AppShell', () => {
   })
 
   /** The global banner slot (#391). */
-  describe('All tasks link (multi-project only)', () => {
-    const allTasks = () => document.querySelector('[data-slot="all-tasks-link"]') as HTMLElement | null
-
-    it('is absent without project groups — one project needs no "all projects" door', () => {
-      renderShell()
-      expect(allTasks()).toBeNull()
+  describe('global navigation', () => {
+    it('stays available inside a project and uses global destinations', () => {
+      renderProjectShell('/git')
+      const links = within(screen.getByRole('navigation', { name: 'Global workspace' })).getAllByRole('link')
+      expect(links.map((link) => link.getAttribute('href'))).toEqual(['/', '/tasks', '/projects', '/settings/global'])
+      expect(links.map((link) => link.textContent)).toEqual(['Workspace', 'All tasks', 'Projects', 'Global settings'])
     })
 
-    it('links out of every project scope', () => {
-      renderShell('/p/shop/git', { projectGroups: <p>groups</p> })
-      // A PLAIN target: the scope-aware Link would prefix it with `/p/shop`, which is no route.
-      expect(allTasks()!.getAttribute('href')).toBe('/tasks')
-    })
-
-    it('stays put while the project groups scroll', () => {
-      // It is about every group rather than a peer of them, and a workspace with enough
-      // projects to want this page is exactly the one that scrolls it out of sight.
-      renderShell('/', { projectGroups: <p>groups</p> })
-      const scroller = document.querySelector('[data-slot="project-groups"]') as HTMLElement
-      expect(scroller.contains(allTasks())).toBe(false)
-      expect(scroller.className).toContain('overflow-y-auto')
-    })
-
-    it('marks itself the current page only on /tasks', () => {
-      renderShell('/tasks', { projectGroups: <p>groups</p> })
-      expect(allTasks()!.getAttribute('aria-current')).toBe('page')
-      cleanup()
-      renderShell('/p/shop/', { projectGroups: <p>groups</p> })
-      expect(allTasks()!.getAttribute('aria-current')).toBeNull()
-    })
-  })
-
-  /**
-   * Dashboard and All tasks stack directly against each other, so they are peers: one row
-   * height, one type scale, one violet icon. Dashboard shipped with its own inline class string
-   * and drifted to a taller row with a grey icon; these pin the pair together.
-   */
-  describe('top-level doors read as peers', () => {
-    const dashboard = () => document.querySelector('[data-slot="dashboard-link"]') as HTMLElement
-    const allTasks = () => document.querySelector('[data-slot="all-tasks-link"]') as HTMLElement
-
-    /** The shared skin, minus the active-state background either row adds on its own page. */
-    const skin = (el: HTMLElement) => [...el.classList].filter(c => c !== 'bg-muted').sort()
-
-    it('paints both rows from the same class string', () => {
-      renderShell('/', { projectGroups: <p>groups</p> })
-      expect(skin(dashboard())).toEqual(skin(allTasks()))
-    })
-
-    it('gives both rows the touch height that relaxes to 36px on desktop', () => {
-      renderShell('/', { projectGroups: <p>groups</p> })
-      for (const row of [dashboard(), allTasks()]) {
-        expect(row.classList.contains('h-11')).toBe(true)
-        expect(row.classList.contains('md:h-9')).toBe(true)
-        // The drifted Dashboard row was `min-h-11` with no desktop override — 8px taller than
-        // the row beneath it at every width above `md`.
-        expect(row.classList.contains('min-h-11')).toBe(false)
+    it('uses the same row skin for every global entry', () => {
+      renderProjectShell('/git')
+      const links = within(screen.getByRole('navigation', { name: 'Global workspace' })).getAllByRole('link')
+      expect(new Set(links.map((link) => link.className)).size).toBe(1)
+      for (const link of links) {
+        expect(link.className).toContain('h-11')
+        expect(link.className).toContain('md:h-9')
       }
-    })
-
-    it('gives both icons the violet accent', () => {
-      renderShell('/', { projectGroups: <p>groups</p> })
-      for (const row of [dashboard(), allTasks()]) {
-        const icon = row.querySelector('svg') as SVGElement
-        expect(icon).not.toBeNull()
-        expect(icon.getAttribute('class')).toContain('text-violet/70')
-      }
-    })
-
-    it('brings its own icon to full strength on its own page', () => {
-      renderShell('/dashboard', { projectGroups: <p>groups</p> })
-      const icon = dashboard().querySelector('svg') as SVGElement
-      expect(icon.getAttribute('class')).toContain('text-violet')
-      expect(icon.getAttribute('class')).not.toContain('text-violet/70')
     })
   })
 
   describe('banner slot', () => {
     it('renders the banner when one is passed', () => {
-      renderShell('/', { banner: <p>banner content</p> })
+      renderProjectShell('/', { banner: <p>banner content</p> })
       const slot = document.querySelector('[data-slot="banner-slot"]') as HTMLElement
       expect(slot).not.toBeNull()
       expect(within(slot).getByText('banner content')).toBeTruthy()
     })
 
     it('renders nothing when absent — no empty slot to push the scroller down', () => {
-      renderShell()
+      renderProjectShell()
       expect(document.querySelector('[data-slot="banner-slot"]')).toBeNull()
     })
 
@@ -575,14 +540,14 @@ describe('AppShell', () => {
     // (opaque, later in DOM, equal-or-higher z-index) and swallowed the clicks on its dismiss X.
     // Its own row instead — so the banner is chrome, above the scroller, not scrolled content.
     it('sits outside the scrolling main region, not inside it', () => {
-      renderShell('/', { banner: <p>banner content</p> })
+      renderProjectShell('/', { banner: <p>banner content</p> })
       const slot = document.querySelector('[data-slot="banner-slot"]') as HTMLElement
       expect(screen.getByRole('main').contains(slot)).toBe(false)
       expect(slot.className).not.toContain('sticky')
     })
 
     it('is its own grid row, above the scroller and below the mobile bar', () => {
-      renderShell('/', { banner: <p>banner content</p> })
+      renderProjectShell('/', { banner: <p>banner content</p> })
       const slot = document.querySelector('[data-slot="banner-slot"]') as HTMLElement
       const main = screen.getByRole('main')
       const column = main.parentElement as HTMLElement
@@ -599,13 +564,13 @@ describe('AppShell', () => {
    *  encode it, and leave "does it actually reflow at 390px" to the e2e iPhone screenshot. */
   describe('responsive skeleton', () => {
     it('hides the sidebar below md and shows it from md up', () => {
-      renderShell()
+      renderProjectShell()
       expect(sidebar().className).toContain('hidden')
       expect(sidebar().className).toContain('md:flex')
     })
 
     it('shows the mobile top bar below md only', () => {
-      renderShell()
+      renderProjectShell()
       const bar = document.querySelector('[data-slot="mobile-top-bar"]') as HTMLElement
       expect(bar).not.toBeNull()
       expect(bar.className).toContain('md:hidden')
@@ -615,7 +580,7 @@ describe('AppShell', () => {
     })
 
     it('titles the mobile bar from the active route', () => {
-      renderShell('/skills')
+      renderProjectShell('/skills')
       const bar = document.querySelector('[data-slot="mobile-top-bar"]') as HTMLElement
       expect(within(bar).getByText('Skills')).toBeTruthy()
     })
@@ -643,7 +608,7 @@ describe('AppShell', () => {
     }
 
     it('starts at the shipped 264px when nothing has been stored', () => {
-      renderShell()
+      renderProjectShell()
       expect(sidebar().style.width).toBe('264px')
       // No Tailwind width class left behind to fight the inline one.
       expect(sidebar().className).not.toContain('w-[264px]')
@@ -651,13 +616,13 @@ describe('AppShell', () => {
 
     it('restores the width the browser remembers', () => {
       localStorage.setItem('cez-sidebar-width', '350')
-      renderShell()
+      renderProjectShell()
       // First paint, not an effect: a jump from 264 to 350 would be visible on every load.
       expect(sidebar().style.width).toBe('350px')
     })
 
     it('is a keyboard-operable separator that reports its range', () => {
-      renderShell()
+      renderProjectShell()
       const el = handle()
       expect(el.getAttribute('role')).toBe('separator')
       expect(el.getAttribute('aria-orientation')).toBe('vertical')
@@ -669,7 +634,7 @@ describe('AppShell', () => {
     })
 
     it('widens on drag and persists what it landed on', () => {
-      renderShell()
+      renderProjectShell()
       drag(264, 344)
       expect(sidebar().style.width).toBe('344px')
       expect(handle().getAttribute('aria-valuenow')).toBe('344')
@@ -677,7 +642,7 @@ describe('AppShell', () => {
     })
 
     it('clamps a drag at both bounds rather than letting the column collapse or take over', () => {
-      renderShell()
+      renderProjectShell()
       drag(264, 3000)
       expect(sidebar().style.width).toBe('420px')
       drag(420, -3000)
@@ -687,7 +652,7 @@ describe('AppShell', () => {
     it('takes focus on grab, so the arrow keys work right after a mouse drag', () => {
       // `preventDefault()` on pointerdown (which stops the drag selecting the sidebar's text)
       // also suppresses the focus a press would otherwise give a tabIndex=0 element.
-      renderShell()
+      renderProjectShell()
       drag(264, 320)
       expect(document.activeElement).toBe(handle())
       fireEvent.keyDown(handle(), { key: 'ArrowRight' })
@@ -695,12 +660,12 @@ describe('AppShell', () => {
     })
 
     it('opts out of browser touch panning, so a touch drag resizes instead of scrolling', () => {
-      renderShell()
+      renderProjectShell()
       expect(handle().className).toContain('touch-none')
     })
 
     it('ignores a non-primary button, so a right-click on the border resizes nothing', () => {
-      renderShell()
+      renderProjectShell()
       const el = handle()
       el.setPointerCapture = vi.fn()
       fireEvent.pointerDown(el, { button: 2, pointerId: 1, clientX: 264 })
@@ -710,7 +675,7 @@ describe('AppShell', () => {
     })
 
     it('steps with the arrow keys and jumps to the bounds with Home/End', () => {
-      renderShell()
+      renderProjectShell()
       fireEvent.keyDown(handle(), { key: 'ArrowRight' })
       expect(sidebar().style.width).toBe('280px')
       fireEvent.keyDown(handle(), { key: 'ArrowLeft' })
@@ -723,7 +688,7 @@ describe('AppShell', () => {
     })
 
     it('leaves every other key to the browser — Tab must still move focus', () => {
-      renderShell()
+      renderProjectShell()
       const event = createEvent.keyDown(handle(), { key: 'Tab' })
       fireEvent(handle(), event)
       expect(event.defaultPrevented).toBe(false)
@@ -732,7 +697,7 @@ describe('AppShell', () => {
 
     it('resets to the default on double-click', () => {
       localStorage.setItem('cez-sidebar-width', '400')
-      renderShell()
+      renderProjectShell()
       expect(sidebar().style.width).toBe('400px')
       fireEvent.doubleClick(handle())
       expect(sidebar().style.width).toBe('264px')
@@ -741,7 +706,7 @@ describe('AppShell', () => {
 
     it('does not follow the drawer: the `<md` overlay keeps its fixed 264px and no handle', () => {
       localStorage.setItem('cez-sidebar-width', '400')
-      renderShell('/', { taskQuickList: <p>list</p> })
+      renderProjectShell('/', { taskQuickList: <p>list</p> })
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
       const drawer = document.querySelector('[data-slot="mobile-nav-drawer"]') as HTMLElement
       expect(drawer.className).toContain('w-[264px]')
@@ -752,7 +717,7 @@ describe('AppShell', () => {
     it('declares the container the rows size their metadata against', () => {
       // The width-priority rule in `task-quick-list.tsx` drops metadata with an
       // `@min-[…]/sidebar:` query; without this container it has nothing to query.
-      renderShell()
+      renderProjectShell()
       const content = sidebar().querySelector('[data-slot="sidebar-content"]') as HTMLElement
       expect(content.className).toContain('@container/sidebar')
     })
@@ -763,7 +728,7 @@ describe('AppShell', () => {
    *  regression no visual test would catch on a desktop viewport. */
   describe('layout contract', () => {
     it('is exactly one viewport tall and never scrolls the document', () => {
-      renderShell()
+      renderProjectShell()
       const shell = document.querySelector('[data-slot="app-shell"]') as HTMLElement
       // h-dvh, not h-screen: 100vh ignores mobile browser chrome.
       expect(shell.className).toContain('h-dvh')
@@ -772,14 +737,14 @@ describe('AppShell', () => {
     })
 
     it('makes the main region the only scroller, and contains its overscroll', () => {
-      renderShell()
+      renderProjectShell()
       const main = screen.getByRole('main')
       expect(main.className).toContain('overflow-y-auto')
       expect(main.className).toContain('overscroll-contain')
     })
 
     it('pads for the safe-area insets', () => {
-      renderShell()
+      renderProjectShell()
       const shell = document.querySelector('[data-slot="app-shell"]') as HTMLElement
       expect(shell.className).toContain('pl-[env(safe-area-inset-left)]')
 
@@ -796,12 +761,12 @@ describe('AppShell', () => {
     const bannerSlot = () => document.querySelector('[data-slot="banner-slot"]')
 
     it('renders nothing when no banner is passed', () => {
-      renderShell()
+      renderProjectShell()
       expect(bannerSlot()).toBeNull()
     })
 
     it('renders the banner above the routed view', () => {
-      renderShell('/', { banner: <p>promo</p> })
+      renderProjectShell('/', { banner: <p>promo</p> })
       expect(screen.getByText('promo')).not.toBeNull()
     })
 
@@ -811,7 +776,7 @@ describe('AppShell', () => {
     // button stopped being clickable on every route. Keeping the slot a sibling of the scroller
     // is what makes that unrepresentable; nesting it back inside `main` fails here.
     it('is a peer of the scroller, not a child of it, so route headers cannot paint over it', () => {
-      renderShell('/', { banner: <p>promo</p> })
+      renderProjectShell('/', { banner: <p>promo</p> })
       const slot = bannerSlot() as HTMLElement
       const main = screen.getByRole('main')
 
@@ -840,14 +805,14 @@ describe('AppShell', () => {
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
     it('is closed until the menu button is pressed', () => {
-      renderShell()
+      renderProjectShell()
       expect(drawer()).toBeNull()
       openMenu()
       expect(drawer()).not.toBeNull()
     })
 
     it('is a dialog with an accessible name', () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
       // A real dialog, not a div styled to look like one — the focus trap and the Escape
       // handling below are only meaningful because the role underneath them is real.
@@ -858,7 +823,7 @@ describe('AppShell', () => {
     })
 
     it('advertises the drawer from the menu button', () => {
-      renderShell()
+      renderProjectShell()
       const menuButton = screen.getByRole('button', { name: 'Open menu' })
       expect(menuButton.getAttribute('aria-haspopup')).toBe('dialog')
       expect(menuButton.getAttribute('aria-expanded')).toBe('false')
@@ -869,7 +834,7 @@ describe('AppShell', () => {
     })
 
     it('hides the rest of the tree from assistive tech while open', () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
 
       // This is the modality, and it is worth asserting precisely because it is NOT spelled
@@ -882,7 +847,7 @@ describe('AppShell', () => {
     })
 
     it('moves focus into the drawer and restores it to the menu button on close', async () => {
-      renderShell()
+      renderProjectShell()
       const menuButton = screen.getByRole('button', { name: 'Open menu' })
       // A real pointer click focuses the button it hits; fireEvent.click does not. Without this
       // the drawer opens while focus is on <body>, and "restore" would restore to <body> — the
@@ -898,14 +863,14 @@ describe('AppShell', () => {
     })
 
     it('closes on Escape', async () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
       fireEvent.keyDown(document, { key: 'Escape' })
       await waitFor(() => expect(drawer()).toBeNull())
     })
 
     it('closes when the backdrop is tapped', async () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
       await settle()
 
@@ -921,17 +886,17 @@ describe('AppShell', () => {
     })
 
     it('renders the same nav as the desktop sidebar', () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
 
       const inDrawer = within(drawer() as HTMLElement)
-        .getByRole('navigation', { name: 'Main' })
+        .getByRole('navigation', { name: 'Project' })
       const links = within(inDrawer).getAllByRole('link')
 
       // Asserted against NAV_ITEMS, not a copy of it: the point of this test is that the drawer
       // reuses the sidebar's content, so adding a nav item must not need a second edit here.
-      const visible = visibleNavItems({ forge: true, inbox: true, automations: true })
-      expect(links.map((a) => a.getAttribute('href'))).toEqual(visible.map((item) => item.to))
+      const visible = projectNavItems({ forge: true, inbox: true, automations: true })
+      expect(links.map((a) => a.getAttribute('href'))).toEqual(visible.map((item) => '/p/alpha' + item.to))
       expect(links.map((a) => a.textContent)).toEqual(visible.map((item) => item.label))
 
       // …and the rest of the sidebar came along, not just the nav.
@@ -940,7 +905,7 @@ describe('AppShell', () => {
     })
 
     it('marks the active nav item inside the drawer too', () => {
-      renderShell('/skills')
+      renderProjectShell('/skills')
       openMenu()
       const current = within(drawer() as HTMLElement).getAllByRole('link', { current: 'page' })
       expect(current).toHaveLength(1)
@@ -948,37 +913,37 @@ describe('AppShell', () => {
     })
 
     it('closes when a nav item inside it navigates', async () => {
-      renderShell('/')
+      renderProjectShell('/')
       openMenu()
 
-      fireEvent.click(within(drawer() as HTMLElement).getByRole('link', { name: 'Git' }))
+      fireEvent.click(within(drawer() as HTMLElement).getByRole('link', { name: 'Git / GitHub' }))
 
       // Both halves matter: an open drawer sitting on top of the newly routed view is the whole
       // bug this guards, and a drawer that closed without navigating would be just as wrong.
       await waitFor(() => expect(drawer()).toBeNull())
-      expect(screen.getByTestId('location').textContent).toBe('/git')
+      expect(screen.getByTestId('location').textContent).toBe('/p/alpha/git')
     })
 
     it('closes when the already-active nav item is re-clicked', async () => {
       // No pathname change, so the route-change effect cannot fire — the link's own onNavigate
       // is what has to close it. Tasks navigating home while already active is a spec behavior.
-      renderShell('/')
+      renderProjectShell('/tasks')
       openMenu()
-      fireEvent.click(within(drawer() as HTMLElement).getByRole('link', { name: 'Tasks' }))
+      fireEvent.click(within(drawer() as HTMLElement).getByRole('link', { name: 'Tasks & Worktrees' }))
       await waitFor(() => expect(drawer()).toBeNull())
-      expect(screen.getByTestId('location').textContent).toBe('/')
+      expect(screen.getByTestId('location').textContent).toBe('/p/alpha/tasks')
     })
 
     it('closes before the New task anchor hands off to the legacy document', async () => {
-      renderShell('/')
+      renderProjectShell('/')
       openMenu()
       const link = within(drawer() as HTMLElement).getByRole('link', { name: /New task/ })
       // jsdom does not implement full document navigation; suppress only that browser default.
       link.addEventListener('click', (event) => event.preventDefault(), { once: true })
       fireEvent.click(link)
       await waitFor(() => expect(drawer()).toBeNull())
-      expect(link.getAttribute('href')).toBe('/new')
-      expect(screen.getByTestId('location').textContent).toBe('/')
+      expect(link.getAttribute('href')).toBe('/p/alpha/new')
+      expect(screen.getByTestId('location').textContent).toBe('/p/alpha/')
     })
 
     it('closes when the viewport widens past md, where the real sidebar takes over', async () => {
@@ -992,7 +957,7 @@ describe('AppShell', () => {
         removeEventListener: (_: string, fn: (event: MediaQueryListEvent) => void) => listeners.delete(fn),
       }))
 
-      renderShell()
+      renderProjectShell()
       openMenu()
       expect(drawer()).not.toBeNull()
 
@@ -1002,10 +967,10 @@ describe('AppShell', () => {
     })
 
     it('pads the drawer for the safe-area insets', () => {
-      renderShell()
+      renderProjectShell()
       openMenu()
       const content = within(drawer() as HTMLElement)
-        .getByRole('navigation', { name: 'Main' })
+        .getByRole('navigation', { name: 'Project' })
         .closest('[data-slot="sidebar-content"]') as HTMLElement
 
       // The drawer is a full-height overlay under the same notch and home indicator as the
@@ -1017,17 +982,15 @@ describe('AppShell', () => {
 })
 
 
-describe('Dashboard active navigation', () => {
-  it.each(['/dashboard', '/dashboard?view=costs', '/dashboard?period=30d'])('highlights %s beyond hover', entry => {
+describe('Workspace active navigation', () => {
+  it.each(['/', '/?view=costs', '/?period=30d'])('highlights %s', entry => {
     renderShell(entry)
-    const link = screen.getByRole('link', { name: 'Dashboard' })
+    const link = screen.getByRole('link', { name: 'Workspace' })
     expect(link.getAttribute('aria-current')).toBe('page')
     expect(link.classList.contains('bg-muted')).toBe(true)
   })
   it('does not remain highlighted on another page', () => {
     renderShell('/tasks')
-    const link = screen.getByRole('link', { name: 'Dashboard' })
-    expect(link.getAttribute('aria-current')).toBeNull()
-    expect(link.classList.contains('bg-muted')).toBe(false)
+    expect(screen.getByRole('link', { name: 'Workspace' }).getAttribute('aria-current')).toBeNull()
   })
 })
