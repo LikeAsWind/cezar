@@ -13,6 +13,7 @@ import {
   useReferenceProjectId,
   useProjectRepoBase,
   queryKeys,
+  projectQueryKeys,
   useProviderStatus,
   useRefreshProviderStatus,
   useRetryProviderAuth,
@@ -454,51 +455,77 @@ describe('provider status workspace query', () => {
 describe('queryKeys', () => {
   // Step 3.2 invalidates by these. Keeping them stable and hierarchical is the whole contract:
   // the runs root has to be a prefix of both the list and every detail key, or one invalidate
-  // call cannot reach them. Since step 3.1 every key leads with the project scope — the
-  // `'default'` sentinel unscoped — so caches never bleed across projects.
+  // call cannot reach them. Every project key leads with ['project', projectId, ...]; there is
+  // no 'default' sentinel and no boot alias.
   it('nests every run key under the list root', () => {
-    expect(queryKeys.runs.all).toEqual(['default', 'runs'])
-    expect(queryKeys.runs.list()).toEqual(['default', 'runs', 'list'])
-    expect(queryKeys.runs.detail('a')).toEqual(['default', 'runs', 'detail', 'a'])
-    expect(queryKeys.runs.diff('a')).toEqual(['default', 'runs', 'diff', 'a'])
-    for (const key of [queryKeys.runs.list(), queryKeys.runs.detail('a'), queryKeys.runs.diff('a')]) {
-      expect(key.slice(0, 2)).toEqual([...queryKeys.runs.all])
+    setApiScope('proj-a')
+    try {
+      expect(queryKeys.runs.all).toEqual(['project', 'proj-a', 'runs'])
+      expect(queryKeys.runs.list()).toEqual(['project', 'proj-a', 'runs', 'list'])
+      expect(queryKeys.runs.detail('a')).toEqual(['project', 'proj-a', 'runs', 'detail', 'a'])
+      expect(queryKeys.runs.diff('a')).toEqual(['project', 'proj-a', 'runs', 'diff', 'a'])
+      for (const key of [queryKeys.runs.list(), queryKeys.runs.detail('a'), queryKeys.runs.diff('a')]) {
+        expect(key.slice(0, 3)).toEqual([...queryKeys.runs.all])
+      }
+    } finally {
+      setApiScope(null)
     }
   })
 
   it('keys github by limit so two page sizes are two caches', () => {
-    expect(queryKeys.github()).toEqual(['default', 'github', null])
-    expect(queryKeys.github({ limit: 5 })).not.toEqual(queryKeys.github({ limit: 50 }))
+    setApiScope('proj-a')
+    try {
+      expect(queryKeys.github()).toEqual(['project', 'proj-a', 'github', null])
+      expect(queryKeys.github({ limit: 5 })).not.toEqual(queryKeys.github({ limit: 50 }))
+    } finally {
+      setApiScope(null)
+    }
   })
 
   it('keys github checks by the sorted PR set so the same window is one cache (#664)', () => {
-    // Order must not matter — a re-sorted visible window would otherwise refetch needlessly.
-    expect(queryKeys.githubChecks([12, 7])).toEqual(queryKeys.githubChecks([7, 12]))
-    expect(queryKeys.githubChecks([7, 12])).toEqual(['default', 'github', 'checks', '7,12'])
-    // Different windows are different caches.
-    expect(queryKeys.githubChecks([7])).not.toEqual(queryKeys.githubChecks([7, 12]))
+    setApiScope('proj-a')
+    try {
+      // Order must not matter — a re-sorted visible window would otherwise refetch needlessly.
+      expect(queryKeys.githubChecks([12, 7])).toEqual(queryKeys.githubChecks([7, 12]))
+      expect(queryKeys.githubChecks([7, 12])).toEqual(['project', 'proj-a', 'github', 'checks', '7,12'])
+      // Different windows are different caches.
+      expect(queryKeys.githubChecks([7])).not.toEqual(queryKeys.githubChecks([7, 12]))
+    } finally {
+      setApiScope(null)
+    }
   })
 
   it('is stable across calls — an unstable key refetches forever', () => {
-    expect(queryKeys.runs.detail('a')).toEqual(queryKeys.runs.detail('a'))
-  })
-
-  it('leads every key with the active project scope, so two projects are two caches', () => {
     setApiScope('proj-a')
     try {
-      expect(queryKeys.runs.list()).toEqual(['proj-a', 'runs', 'list'])
-      expect(queryKeys.health).toEqual(['proj-a', 'health'])
-      expect(queryKeys.todos).toEqual(['proj-a', 'todos'])
-      expect(queryKeys.skills).toEqual(['proj-a', 'skills'])
-      expect(queryKeys.skillsReady).toEqual(['proj-a', 'skills', 'ready'])
-      expect(queryKeys.agentConfig).toEqual(['proj-a', 'agent-config'])
+      expect(queryKeys.runs.detail('a')).toEqual(queryKeys.runs.detail('a'))
+    } finally {
+      setApiScope(null)
+    }
+  })
+
+  it('throws outside a project route — a project key cannot be minted with no project', () => {
+    expect(() => queryKeys.runs.list()).toThrow('projectId is required')
+    expect(() => queryKeys.health).toBeDefined() // health is workspace-led, so it never throws
+  })
+
+  it('leads every key with the explicit project scope, so two projects are two caches', () => {
+    setApiScope('proj-a')
+    try {
+      expect(queryKeys.runs.list()).toEqual(['project', 'proj-a', 'runs', 'list'])
+      expect(queryKeys.health).toEqual(['workspace', 'health'])
+      expect(queryKeys.todos).toEqual(['project', 'proj-a', 'todos'])
+      expect(queryKeys.skills).toEqual(['project', 'proj-a', 'skills'])
+      expect(queryKeys.skillsReady).toEqual(['project', 'proj-a', 'skills', 'ready'])
+      expect(queryKeys.agentConfig).toEqual(['project', 'proj-a', 'agent-config'])
       expect(queryKeys.agentConfigFile('claude.project.settings')).toEqual([
+        'project',
         'proj-a',
         'agent-config',
         'file',
         'claude.project.settings',
       ])
-      expect(queryKeys.github({ limit: 5 })).toEqual(['proj-a', 'github', 5])
+      expect(queryKeys.github({ limit: 5 })).toEqual(['project', 'proj-a', 'github', 5])
       const scoped = queryKeys.runs.detail('a')
       setApiScope('proj-b')
       // The same call under another scope is a DIFFERENT cache entry — the whole point.
@@ -507,16 +534,24 @@ describe('queryKeys', () => {
       setApiScope(null)
     }
   })
+
+  it('exposes the explicit projectQueryKeys spellings', () => {
+    expect(projectQueryKeys.runs.list('alpha')).toEqual(['project', 'alpha', 'runs', 'list'])
+    expect(projectQueryKeys.runs.run('alpha', 'r1')).toEqual(['project', 'alpha', 'runs', 'detail', 'r1'])
+    expect(workspaceQueryKeys.projects).toEqual(['workspace', 'projects'])
+    expect(workspaceQueryKeys.health).toEqual(['workspace', 'health'])
+  })
 })
 
 describe('useSkills', () => {
   it('renders the fast catalog, then converges when the cold team cache is ready', async () => {
+    setApiScope('proj-a')
     let resolveReady!: (response: Response) => void
     fetchMock.mockImplementation(async (input) => {
-      if (String(input) === '/api/v1/skills') {
+      if (String(input) === '/api/v1/p/proj-a/skills') {
         return json([{ name: 'local', source: 'ai', body: '', path: '/repo/local.md' }])
       }
-      if (String(input) === '/api/v1/skills?wait=1') {
+      if (String(input) === '/api/v1/p/proj-a/skills?wait=1') {
         return new Promise<Response>((resolve) => {
           resolveReady = resolve
         })
@@ -538,7 +573,8 @@ describe('useSkills', () => {
     await waitFor(() =>
       expect(result.current.data?.map((skill) => skill.name)).toEqual(['local', 'om-fix']),
     )
-    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/v1/skills', '/api/v1/skills?wait=1'])
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/v1/p/proj-a/skills', '/api/v1/p/proj-a/skills?wait=1'])
+    setApiScope(null)
   })
 })
 
@@ -750,14 +786,15 @@ describe('usePutAgentConfigFile', () => {
     resolveFetch(json(file))
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(client.getQueryData(['proj-a', 'agent-config', 'file', file.id])).toEqual(file)
-    expect(client.getQueryData(['proj-b', 'agent-config', 'file', file.id])).toBeUndefined()
+    expect(client.getQueryData(['project', 'proj-a', 'agent-config', 'file', file.id])).toEqual(file)
+    expect(client.getQueryData(['project', 'proj-b', 'agent-config', 'file', file.id])).toBeUndefined()
     setApiScope(null)
   })
 })
 
 describe('useRuns', () => {
   it('goes loading → data', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(json([{ id: 'run-1', title: 'Fix it', status: 'running' }]))
     const { result } = renderHook(() => useRuns(), { wrapper: wrapper() })
 
@@ -765,25 +802,28 @@ describe('useRuns', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
     expect(result.current.data?.[0]?.title).toBe('Fix it')
-    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/v1/runs')
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/v1/p/proj-a/runs')
+    setApiScope(null)
   })
 })
 
 describe('useRun', () => {
   it('does not fetch until it has an id', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(json({ id: 'run-1' }))
     const { result, rerender } = renderHook(({ id }: { id?: string }) => useRun(id), {
       wrapper: wrapper(),
       initialProps: {},
     })
 
-    // A route param that has not resolved yet must not become `GET /api/v1/runs/undefined`.
+    // A route param that has not resolved yet must not become `GET /api/v1/p/proj-a/runs/undefined`.
     expect(result.current.fetchStatus).toBe('idle')
     expect(fetchMock).not.toHaveBeenCalled()
 
     rerender({ id: 'run-1' })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/v1/runs/run-1')
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/v1/p/proj-a/runs/run-1')
+    setApiScope(null)
   })
 })
 
@@ -800,6 +840,8 @@ describe('useMarkRunSeen', () => {
     archived: false,
     steps: [],
   }
+
+  beforeEach(() => setApiScope('proj-a'))
 
   it('takes only the receipt from the answer, keeping fields the stream advanced meanwhile', async () => {
     // The read receipt fires the instant a run finishes — the busiest moment on the run stream.
@@ -896,6 +938,8 @@ describe('useMarkRunUnseen', () => {
     steps: [],
   }
 
+  beforeEach(() => setApiScope('proj-a'))
+
   it('clears only the receipt, keeping fields the stream advanced meanwhile', async () => {
     // The same trap as the read twin above, and the reason this hook cannot simply write its
     // answer into the cache: `POST /runs/:id/unread` replies with the snapshot the server held
@@ -951,6 +995,7 @@ describe('useMarkRunUnseen', () => {
 
 describe('usePatchRun', () => {
   it('writes the successful title receipt into list/detail caches and invalidates the finder', async () => {
+    setApiScope('proj-a')
     const current = {
       id: 'run-1', title: 'Old name', titleSummary: 'Old name', titleOrigin: 'auto' as const,
       workflow: 'quick-task', task: 'do it', status: 'running' as const, createdAt: '2026-01-01',
@@ -972,7 +1017,7 @@ describe('usePatchRun', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit]
-    expect(path).toBe('/api/v1/runs/run-1')
+    expect(path).toBe('/api/v1/p/proj-a/runs/run-1')
     expect(init.method).toBe('PATCH')
     expect(JSON.parse(init.body as string)).toEqual({ title: 'New name' })
     expect(client.getQueryData<typeof current[]>(queryKeys.runs.list())?.[0]).toMatchObject(updated)
@@ -980,9 +1025,11 @@ describe('usePatchRun', () => {
     // `runs.all` is a prefix of the list, detail and diff keys — one call reaches them all.
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.runs.all })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: workspaceQueryKeys.runsIndex })
+    setApiScope(null)
   })
 
   it('does not invalidate anything on failure', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: 'not found' }), { status: 404, statusText: 'Not Found' }),
     )
@@ -1003,6 +1050,7 @@ describe('usePatchRun', () => {
 
 describe('useRunChanges', () => {
   it('opts out of the no-poll defaults so a finished run’s tab refetches on focus (#488)', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(json({ files: [], stat: { adds: 0, dels: 0, files: 0 } }))
     const client = createQueryClient()
     // live=false: the run is not active, so polling is off — exactly when the global defaults would
@@ -1068,16 +1116,19 @@ describe('query defaults', () => {
  * the old status".
  */
 describe('useReferenceProjectId', () => {
-  /** `useProjectScope` reads React context — the module-level `setApiScope` is a different seam. */
-  const mounted = (scope: string | null, health?: unknown) => {
+  /** `useProjectScope` reads React context; the provider now mounts only under a project route. */
+  const mounted = (scope: string | null) => {
     const client = createQueryClient()
-    if (health !== undefined) client.setQueryData(queryKeys.health, health)
     return function Wrapper({ children }: { children: ReactNode }) {
       return (
         <QueryClientProvider client={client}>
-          <ProjectScopeContext.Provider value={{ projectId: scope, apiBase: '/api/v1' }}>
-            {children}
-          </ProjectScopeContext.Provider>
+          {scope === null ? (
+            children
+          ) : (
+            <ProjectScopeContext.Provider value={{ projectId: scope, apiBase: '/api/v1' }}>
+              {children}
+            </ProjectScopeContext.Provider>
+          )}
         </QueryClientProvider>
       )
     }
@@ -1085,37 +1136,31 @@ describe('useReferenceProjectId', () => {
 
   it('uses the mounted scope when there is one', () => {
     const { result } = renderHook(() => useReferenceProjectId(), {
-      wrapper: mounted('proj-a', { ...HEALTH, bootProject: 'boot-id' }),
+      wrapper: mounted('proj-a'),
     })
     expect(result.current).toBe('proj-a')
   })
 
-  it('names the BOOT project when unscoped — never the `default` alias', () => {
-    // `default` would key the same reference differently from every cross-project surface.
-    const { result } = renderHook(() => useReferenceProjectId(), {
-      wrapper: mounted(null, { ...HEALTH, bootProject: 'boot-id' }),
-    })
-    expect(result.current).toBe('boot-id')
-  })
-
-  it('answers undefined until health says which project that is', () => {
-    // Better a neutral chip for a moment than an entry written under a name nothing else uses.
+  it('answers undefined outside a project route — there is no boot project', () => {
     const { result } = renderHook(() => useReferenceProjectId(), { wrapper: mounted(null) })
     expect(result.current).toBeUndefined()
   })
 })
 
 describe('useProjectRepoBase', () => {
-  const mounted = (scope: string | null, health?: unknown, projects?: unknown) => {
+  const mounted = (scope: string | null, projects?: unknown) => {
     const client = createQueryClient()
-    if (health !== undefined) client.setQueryData(queryKeys.health, health)
     if (projects !== undefined) client.setQueryData(workspaceQueryKeys.projects, { projects })
     return function Wrapper({ children }: { children: ReactNode }) {
       return (
         <QueryClientProvider client={client}>
-          <ProjectScopeContext.Provider value={{ projectId: scope, apiBase: '/api/v1' }}>
-            {children}
-          </ProjectScopeContext.Provider>
+          {scope === null ? (
+            children
+          ) : (
+            <ProjectScopeContext.Provider value={{ projectId: scope, apiBase: '/api/v1' }}>
+              {children}
+            </ProjectScopeContext.Provider>
+          )}
         </QueryClientProvider>
       )
     }
@@ -1128,29 +1173,28 @@ describe('useProjectRepoBase', () => {
   ]
 
   // The defect this was found through: the SAME task showed a linked chip on All tasks (which
-  // reads the registry) and inert text on its own page (which read health, and health only names
-  // the boot project's repo).
-  it('answers a NON-boot project from the registry, where All tasks reads it', () => {
+  // reads the registry) and inert text on its own page (which read health). The registry is the
+  // only per-project repo authority now.
+  it('answers a project from the registry, where All tasks reads it', () => {
     const { result } = renderHook(() => useProjectRepoBase(), {
-      wrapper: mounted('proj-a', { ...HEALTH, bootProject: 'boot-id', repo: { remote: 'git@github.com:o/boot.git' } }, REGISTRY),
+      wrapper: mounted('proj-a', REGISTRY),
     })
     expect(result.current).toBe('https://github.com/o/a')
   })
 
-  it('never hands a project the boot repo — #526', () => {
-    // `proj-b` has no forge remote of its own; health's is the boot project's and would be a link
-    // into a completely different repository.
+  it('never hands a project another repo — #526', () => {
+    // `proj-b` has no forge remote of its own; the registry simply has no repoUrl for it.
     const { result } = renderHook(() => useProjectRepoBase(), {
-      wrapper: mounted('proj-b', { ...HEALTH, bootProject: 'boot-id', repo: { remote: 'git@github.com:o/boot.git' } }, REGISTRY),
+      wrapper: mounted('proj-b', REGISTRY),
     })
     expect(result.current).toBeUndefined()
   })
 
-  it('falls back to health for the boot project — an unregistered boot folder still links', () => {
+  it('answers undefined outside a project route', () => {
     const { result } = renderHook(() => useProjectRepoBase(), {
-      wrapper: mounted(null, { ...HEALTH, bootProject: 'boot-id', repo: { remote: 'git@github.com:o/boot.git' } }, []),
+      wrapper: mounted(null, []),
     })
-    expect(result.current).toBe('https://github.com/o/boot')
+    expect(result.current).toBeUndefined()
   })
 })
 

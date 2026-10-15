@@ -142,12 +142,10 @@ import type {
 } from '@open-mercato/cezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
 import {
-  API_PREFIX,
   apiPath,
   createCezarClient,
   getApiBaseUrl,
-  getApiScope,
-  queryScope,
+  requireProjectScope,
   runHistoryContextSchema,
   runHistoryPageSchema,
   githubOwnersResponseSchema,
@@ -164,10 +162,10 @@ import type { AppType } from '@open-mercato/cezar/app-type'
  * Vite dev server proxies `/api` to it. So every URL here is root-relative — there is no base
  * URL to configure and no cross-origin case to get wrong.
  *
- * Calls name a ROUTE (`/runs/:id/diff`), never a URL: `apiPath` (api-client) adds the version
- * and, when a project scope is active, the `/p/<id>` segment. That is why the version appears
- * once in this repo rather than at every call site. `runFileRawUrl` is the one URL this module
- * hands out instead of fetching itself, so it resolves the route at build time.
+ * Calls name a ROUTE (`/runs/:id/diff`), never a URL: workspace calls keep the version in one
+ * place, and every project call goes through `requireProjectScope()` (which throws before
+ * fetching when no project is mounted) or an explicit project id. `runFileRawUrl` is the one URL
+ * this module hands out instead of fetching itself, so it resolves the route at build time.
  *
  * This module is the boundary. It parses responses, turns every non-2xx into an `ApiError`
  * carrying the server's own words, and does nothing else: no caching, no retries, no
@@ -283,31 +281,8 @@ export const cez = createCezarClient<AppType>({
  * the path they see.
  */
 function withApiBase(url: string): string {
-  const path = unscoped(url.endsWith('?') ? url.slice(0, -1) : url)
+  const path = url.endsWith('?') ? url.slice(0, -1) : url
   return path.startsWith('/') ? `${getApiBaseUrl()}${path}` : path
-}
-
-/** The scoped spelling `hc` always builds for a project-scoped route, with no project mounted. */
-const DEFAULT_SCOPE = `${API_PREFIX}/p/default`
-
-/**
- * Drop the `/p/default` segment when no project scope is active.
- *
- * `hc` paths are static: a project-scoped route is spelled `p[':projectId']` at every call site
- * and the active scope goes in as `queryScope()`, which answers `'default'` when there is none.
- * That keeps ONE code path per call (the alternative was a branch per call), and the server
- * reserves `default` as the alias for the boot project, so both spellings reach the same handler.
- *
- * They are not the same URL, though, and this module's other half (`apiPath`) emits the
- * unprefixed one when unscoped. Normalising here — the single point every typed-client request
- * passes through — is what keeps an unscoped request byte-identical whichever half sent it, so
- * migrating a route never moves it on the wire.
- */
-function unscoped(url: string): string {
-  if (getApiScope() !== null || !url.startsWith(DEFAULT_SCOPE)) return url
-  const rest = url.slice(DEFAULT_SCOPE.length)
-  // Only a whole segment: a project genuinely called `default-ish` must keep its own prefix.
-  return rest === '' || rest.startsWith('/') || rest.startsWith('?') ? `${API_PREFIX}${rest}` : url
 }
 
 /**
@@ -475,7 +450,7 @@ export async function getProviderStatus(
 export async function getLaunchKey(opts?: ReadOptions): Promise<LaunchKeyResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId']['launch-key'].$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/launch-key',
@@ -524,7 +499,7 @@ export async function browseFs(
 /** The authoritative run list — sorted newest-first by the server. */
 export async function getRuns(opts?: ReadOptions): Promise<ApiRun[]> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].runs.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].runs.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/runs',
   )
 }
@@ -539,7 +514,7 @@ export async function getProjectRuns(projectId: string, opts?: ReadOptions): Pro
 
 /** The cross-project task index (`GET /api/v1/workspace/runs-index`) — what lets ⌘K find a task
  *  without knowing which project it lives in. Workspace-level like the registry, so it has no
- *  project-scoped spelling and never takes `queryScope()`. */
+ *  project-scoped spelling and never takes `requireProjectScope()`. */
 export async function getRunsIndex(opts?: ReadOptions): Promise<RunsIndexResponse> {
   return unwrap(await cez.api.v1.workspace['runs-index'].$get({}, init(opts)), '/workspace/runs-index')
 }
@@ -547,7 +522,7 @@ export async function getRunsIndex(opts?: ReadOptions): Promise<RunsIndexRespons
 export async function getRun(id: string, opts?: ReadOptions): Promise<ApiRun> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     runPath(id),
@@ -556,7 +531,7 @@ export async function getRun(id: string, opts?: ReadOptions): Promise<ApiRun> {
 
 /**
  * The same read by EXPLICIT project — the twin of `getRun`, for the reason `archiveProjectRun`
- * spells out: the global Tasks page stands outside every `/p/:projectId`, so `queryScope()` would
+ * spells out: the global Tasks page stands outside every `/p/:projectId`, so `requireProjectScope()` would
  * name the BOOT project for a row that belongs to another one. It is also the only way that page
  * can learn a run's steps: its own index ships a deliberately slim entry (no `steps`, no
  * `runner`), and whether a finished task can be reopened is a question only the full record
@@ -582,7 +557,7 @@ export async function getRunHistory(
   return unwrapValidated(
     await cez.api.v1.p[':projectId'].runs[':id'].history.$get(
       {
-        param: { projectId: queryScope(), id: encodeURIComponent(id) },
+        param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
         query: { ...(cursor !== undefined ? { cursor } : {}) },
       },
       init(opts),
@@ -596,7 +571,7 @@ export async function getRunHistory(
 export async function getRunHistoryContext(id: string, opts?: ReadOptions): Promise<RunHistoryContext> {
   return unwrapValidated(
     await cez.api.v1.p[':projectId'].runs[':id']['history-context'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     `${runPath(id)}/history-context`,
@@ -607,7 +582,7 @@ export async function getRunHistoryContext(id: string, opts?: ReadOptions): Prom
 export async function getUiState(opts?: ReadOptions): Promise<UiState> {
   return unwrap(
     await cez.api.v1.p[':projectId']['ui-state'].$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/ui-state',
@@ -617,7 +592,7 @@ export async function getUiState(opts?: ReadOptions): Promise<UiState> {
 export async function getWorkflows(opts?: ReadOptions): Promise<WorkflowsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/workflows',
@@ -629,7 +604,7 @@ export async function getSkills(opts?: ReadOptions): Promise<Skill[]> {
     await cez.api.v1.p[':projectId'].skills.$get(
       // `query` is required once the route declares one, even when every key in it is optional
       // — `hc` drops the empty search string, so the URL is the one this call always sent.
-      { param: { projectId: queryScope() }, query: {} },
+      { param: { projectId: requireProjectScope() }, query: {} },
       init(opts),
     ),
     '/skills',
@@ -641,7 +616,7 @@ export async function getSkills(opts?: ReadOptions): Promise<Skill[]> {
 export async function getSkillsWhenReady(opts?: ReadOptions): Promise<Skill[]> {
   return unwrap(
     await cez.api.v1.p[':projectId'].skills.$get(
-      { param: { projectId: queryScope() }, query: { wait: '1' } },
+      { param: { projectId: requireProjectScope() }, query: { wait: '1' } },
       init(opts),
     ),
     '/skills',
@@ -652,7 +627,7 @@ export async function getSkillsWhenReady(opts?: ReadOptions): Promise<Skill[]> {
  *  the merged catalog — the Settings → Skills "Refresh" button. */
 export async function refreshSkills(): Promise<Skill[]> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].skills.refresh.$post({ param: { projectId: queryScope() } }),
+    await cez.api.v1.p[':projectId'].skills.refresh.$post({ param: { projectId: requireProjectScope() } }),
     '/skills/refresh',
   )
 }
@@ -662,7 +637,7 @@ export async function refreshSkills(): Promise<Skill[]> {
 export async function getImportableSkills(opts?: ReadOptions): Promise<ImportableSkill[]> {
   return unwrap(
     await cez.api.v1.p[':projectId'].skills.importable.$get(
-      { param: { projectId: queryScope() }, query: {} },
+      { param: { projectId: requireProjectScope() }, query: {} },
       init(opts),
     ),
     '/skills/importable',
@@ -674,7 +649,7 @@ export async function getImportableSkills(opts?: ReadOptions): Promise<Importabl
 export async function getImportableSkillsWhenReady(opts?: ReadOptions): Promise<ImportableSkill[]> {
   return unwrap(
     await cez.api.v1.p[':projectId'].skills.importable.$get(
-      { param: { projectId: queryScope() }, query: { wait: '1' } },
+      { param: { projectId: requireProjectScope() }, query: { wait: '1' } },
       init(opts),
     ),
     '/skills/importable',
@@ -683,14 +658,14 @@ export async function getImportableSkillsWhenReady(opts?: ReadOptions): Promise<
 
 export async function getTodos(opts?: ReadOptions): Promise<TodoItem[]> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].todos.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].todos.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/todos',
   )
 }
 
 export async function getRepo(opts?: ReadOptions): Promise<RepoResponse> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].repo.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].repo.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/repo',
   )
 }
@@ -698,7 +673,7 @@ export async function getRepo(opts?: ReadOptions): Promise<RepoResponse> {
 /** The Settings → Agents knobs in one read (`GET /api/config`, additive R6 route). */
 export async function getConfig(opts?: ReadOptions): Promise<ConfigResponse> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].config.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].config.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/config',
   )
 }
@@ -707,7 +682,7 @@ export async function getConfig(opts?: ReadOptions): Promise<ConfigResponse> {
 export async function getAgentConfig(opts: ReadOptions = {}): Promise<AgentConfigListing> {
   return unwrap(
     await cez.api.v1.p[':projectId']['agent-config'].$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/agent-config',
@@ -721,7 +696,7 @@ export async function getAgentConfigFile(
 ): Promise<AgentConfigFileContent> {
   return unwrap(
     await cez.api.v1.p[':projectId']['agent-config'][':id'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     `/agent-config/${encodeURIComponent(id)}`,
@@ -735,7 +710,7 @@ export async function putAgentConfigFile(
 ): Promise<AgentConfigFileContent> {
   return unwrap(
     await cez.api.v1.p[':projectId']['agent-config'][':id'].$put({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: body,
     }),
     `/agent-config/${encodeURIComponent(id)}`,
@@ -747,7 +722,7 @@ export async function putAgentConfigFile(
 export async function getRepoChanges(opts?: ReadOptions): Promise<ChangesPayload> {
   return unwrap(
     await cez.api.v1.p[':projectId'].repo.changes.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/repo/changes',
@@ -760,7 +735,7 @@ export async function getRepoChanges(opts?: ReadOptions): Promise<ChangesPayload
  *  cost nothing. 409 (as an ApiError) outside a git repository. */
 export async function getRepoTree(opts?: ReadOptions): Promise<RepoTree> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].repo.tree.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].repo.tree.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/repo/tree',
   )
 }
@@ -771,7 +746,7 @@ export async function getRepoTree(opts?: ReadOptions): Promise<RepoTree> {
 export async function getRepoFile(path: string, opts?: ReadOptions): Promise<WorktreeEntry> {
   return unwrap(
     await cez.api.v1.p[':projectId'].repo.files.$get(
-      { param: { projectId: queryScope() }, query: { path } },
+      { param: { projectId: requireProjectScope() }, query: { path } },
       init(opts),
     ),
     '/repo/files',
@@ -795,7 +770,7 @@ export function repoFileRawUrl(path: string): string {
 export async function getRepoCommit(sha: string, opts?: ReadOptions): Promise<RepoCommitPayload> {
   return unwrap(
     await cez.api.v1.p[':projectId'].repo.commit[':sha'].$get(
-      { param: { projectId: queryScope(), sha: encodeURIComponent(sha) }, query: { structured: '1' } },
+      { param: { projectId: requireProjectScope(), sha: encodeURIComponent(sha) }, query: { structured: '1' } },
       init(opts),
     ),
     '/repo/commit/:sha',
@@ -806,7 +781,7 @@ export async function getRepoCommit(sha: string, opts?: ReadOptions): Promise<Re
 export async function getRunCommits(id: string, opts?: ReadOptions): Promise<RunCommitsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].commits.$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     runPath(id, '/commits'),
@@ -821,7 +796,7 @@ export async function getRunCommit(
 ): Promise<RepoCommitPayload> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].commit[':sha'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id), sha: encodeURIComponent(sha) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id), sha: encodeURIComponent(sha) } },
       init(opts),
     ),
     runPath(id, `/commit/${encodeURIComponent(sha)}`),
@@ -837,7 +812,7 @@ export async function getGithub(
   return unwrap(
     await cez.api.v1.p[':projectId'].github.$get(
       {
-        param: { projectId: queryScope() },
+        param: { projectId: requireProjectScope() },
         // `refresh: false` sends nothing at all — the server tests `=== '1'`, and a parameter we
         // do not mean is how a "false" ends up read as truthy somewhere downstream.
         query: {
@@ -857,27 +832,27 @@ export async function getGithub(
 
 export async function getTrackerAutomationOptions(query: { search?: string; cursor?: string; itemType?: 'story' | 'bug' } = {}, opts?: ReadOptions): Promise<TrackerAutomationOptions> {
   return unwrap(await cez.api.v1.p[':projectId'].tracker['automation-options'].$get(
-    { param: { projectId: queryScope() }, query }, init(opts)), '/tracker/automation-options')
+    { param: { projectId: requireProjectScope() }, query }, init(opts)), '/tracker/automation-options')
 }
 
 export async function getTrackerConnection(opts?: ReadOptions): Promise<TrackerConnectionResponse> {
   return unwrap(await cez.api.v1.p[':projectId'].tracker.connection.$get(
-    { param: { projectId: queryScope() } }, init(opts)), '/tracker/connection')
+    { param: { projectId: requireProjectScope() } }, init(opts)), '/tracker/connection')
 }
 export async function saveTrackerConnection(input: TrackerCredentials): Promise<TrackerConnectionResponse> {
   return unwrap(await cez.api.v1.p[':projectId'].tracker.connection.$put(
-    { param: { projectId: queryScope() }, json: input }), '/tracker/connection')
+    { param: { projectId: requireProjectScope() }, json: input }), '/tracker/connection')
 }
 export async function removeTrackerConnection(): Promise<TrackerClearedResponse> {
   return unwrap(await cez.api.v1.p[':projectId'].tracker.connection.$delete(
-    { param: { projectId: queryScope() } }), '/tracker/connection')
+    { param: { projectId: requireProjectScope() } }), '/tracker/connection')
 }
 
 // ---- project and workspace secrets (metadata only; a value goes in once and never comes back) ----
 
 export async function getProjectSecrets(opts?: ReadOptions): Promise<SecretsList> {
   return unwrap(await cez.api.v1.p[':projectId'].secrets.$get(
-    { param: { projectId: queryScope() } }, init(opts)), '/secrets')
+    { param: { projectId: requireProjectScope() } }, init(opts)), '/secrets')
 }
 export async function getWorkspaceSecrets(opts?: ReadOptions): Promise<SecretsList> {
   return unwrap(await cez.api.v1.workspace.secrets.$get({}, init(opts)), '/workspace/secrets')
@@ -888,11 +863,11 @@ async function expectNoContent(res: Response): Promise<void> {
 }
 export async function saveProjectSecret(name: string, input: SecretValueInput): Promise<void> {
   await expectNoContent(await cez.api.v1.p[':projectId'].secrets[':name'].$put(
-    { param: { projectId: queryScope(), name }, json: input }))
+    { param: { projectId: requireProjectScope(), name }, json: input }))
 }
 export async function removeProjectSecret(name: string): Promise<void> {
   await expectNoContent(await cez.api.v1.p[':projectId'].secrets[':name'].$delete(
-    { param: { projectId: queryScope(), name } }))
+    { param: { projectId: requireProjectScope(), name } }))
 }
 export async function saveWorkspaceSecret(name: string, input: SecretValueInput): Promise<void> {
   await expectNoContent(await cez.api.v1.workspace.secrets[':name'].$put({ param: { name }, json: input }))
@@ -905,17 +880,17 @@ export async function removeWorkspaceSecret(name: string): Promise<void> {
 
 export async function getE2eStatus(opts?: ReadOptions): Promise<E2eStatus> {
   return unwrap(await cez.api.v1.p[':projectId'].e2e.$get(
-    { param: { projectId: queryScope() } }, init(opts)), '/e2e')
+    { param: { projectId: requireProjectScope() } }, init(opts)), '/e2e')
 }
 export async function startE2eSetup(input: E2eSetupInput): Promise<E2eSetupResponse> {
   return unwrap(await cez.api.v1.p[':projectId'].e2e.setup.$post(
-    { param: { projectId: queryScope() }, json: input }), '/e2e/setup')
+    { param: { projectId: requireProjectScope() }, json: input }), '/e2e/setup')
 }
 
 export async function getTrackerAssociation(opts?: ReadOptions): Promise<TrackerAssociationResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.association.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/tracker/association',
@@ -929,7 +904,7 @@ export async function getTrackerCandidates(
 ): Promise<TrackerCandidatesResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.candidates.$get(
-      { param: { projectId: queryScope() }, query: { kind, q: params.q, cursor: params.cursor, limit: params.limit === undefined ? undefined : String(params.limit) } },
+      { param: { projectId: requireProjectScope() }, query: { kind, q: params.q, cursor: params.cursor, limit: params.limit === undefined ? undefined : String(params.limit) } },
       init(opts),
     ),
     '/tracker/candidates',
@@ -941,7 +916,7 @@ export async function saveTrackerAssociation(
 ): Promise<TrackerAssociationSavedResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.association.$put({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: input,
     }),
     '/tracker/association',
@@ -951,7 +926,7 @@ export async function saveTrackerAssociation(
 export async function clearTrackerAssociation(): Promise<TrackerClearedResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.association.$delete({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
     }),
     '/tracker/association',
   )
@@ -987,7 +962,7 @@ export async function getTrackerItems(
 ): Promise<TrackerItemsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.$get(
-      { param: { projectId: queryScope() }, query: trackerBrowseQuery(params) },
+      { param: { projectId: requireProjectScope() }, query: trackerBrowseQuery(params) },
       init(opts),
     ),
     '/tracker',
@@ -1001,7 +976,7 @@ export async function searchTrackerItems(
 ): Promise<TrackerItemsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.search.$get(
-      { param: { projectId: queryScope() }, query: { ...trackerBrowseQuery(params), q } },
+      { param: { projectId: requireProjectScope() }, query: { ...trackerBrowseQuery(params), q } },
       init(opts),
     ),
     '/tracker/search',
@@ -1011,7 +986,7 @@ export async function searchTrackerItems(
 export async function getTrackerItem(id: string, opts?: ReadOptions & { association?: TrackerAssociation }): Promise<TrackerItemResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker[':id'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) }, query: { expectedScope: opts?.association ? trackerReadScope(opts.association) : undefined } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) }, query: { expectedScope: opts?.association ? trackerReadScope(opts.association) : undefined } },
       init(opts),
     ),
     `/tracker/${encodeURIComponent(id)}`,
@@ -1021,7 +996,7 @@ export async function getTrackerItem(id: string, opts?: ReadOptions & { associat
 export async function getTrackerIterations(opts?: ReadOptions): Promise<TrackerIterationsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].tracker.iterations.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/tracker/iterations',
@@ -1037,7 +1012,7 @@ export async function getGithubChecks(
 ): Promise<GithubChecksData> {
   return unwrap(
     await cez.api.v1.p[':projectId'].github.checks.$get(
-      { param: { projectId: queryScope() }, query: { prs: prNumbers.join(',') } },
+      { param: { projectId: requireProjectScope() }, query: { prs: prNumbers.join(',') } },
       init(opts),
     ),
     '/github/checks',
@@ -1056,7 +1031,7 @@ export async function getGithubSearch(
   return unwrap(
     await cez.api.v1.p[':projectId'].github.search.$get(
       {
-        param: { projectId: queryScope() },
+        param: { projectId: requireProjectScope() },
         // The search route validates `limit` with `z.coerce.number()`, so the typed client's
         // query input is `number | undefined` — pass the number, not a stringified copy (the
         // `/github` list route below coerces from a bare string, hence the difference).
@@ -1071,7 +1046,7 @@ export async function getGithubSearch(
 /**
  * Batched status for the PR/issue chips on screen. Takes its project EXPLICITLY, like
  * `getProjectRuns` and `archiveProjectRun` and for the same reason: the global Tasks page stands
- * outside every `/p/:projectId`, and its rows belong to different projects — `queryScope()` would
+ * outside every `/p/:projectId`, and its rows belong to different projects — `requireProjectScope()` would
  * ask the boot project about another project's PR number and get a confident wrong answer.
  * Callers standing in one project pass their own id.
  *
@@ -1111,7 +1086,7 @@ export async function getGithubComments(
   return unwrap(
     await cez.api.v1.p[':projectId'].github.comments[':kind'][':number'].$get(
       {
-        param: { projectId: queryScope(), kind, number: String(number) },
+        param: { projectId: requireProjectScope(), kind, number: String(number) },
         // `refresh=1` is what busts the route's 60 s `commentsCache` (server.ts). Without it a
         // manual refresh re-requests and is handed the same cached object — the caller must be
         // able to say "actually go and ask gh", exactly as `getGithub` can.
@@ -1131,7 +1106,7 @@ export async function getGithubPrMergeState(
   return unwrap(
     await cez.api.v1.p[':projectId'].github.prs[':number']['merge-state'].$get(
       {
-        param: { projectId: queryScope(), number: String(number) },
+        param: { projectId: requireProjectScope(), number: String(number) },
         query: { refresh: params.refresh ? '1' : undefined },
       },
       init(opts),
@@ -1146,7 +1121,7 @@ export async function mergeGithubPr(
 ): Promise<GithubMergeResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].github.prs[':number'].merge.$post({
-      param: { projectId: queryScope(), number: String(number) },
+      param: { projectId: requireProjectScope(), number: String(number) },
       json: input,
     }),
     '/github/prs/:number/merge',
@@ -1161,7 +1136,7 @@ export async function getGithubPrChanges(
   return unwrap(
     await cez.api.v1.p[':projectId'].github.prs[':number'].changes.$get(
       {
-        param: { projectId: queryScope(), number: String(number) },
+        param: { projectId: requireProjectScope(), number: String(number) },
         query: { refresh: params.refresh ? '1' : undefined },
       },
       init(opts),
@@ -1187,7 +1162,7 @@ export function getRunHandoff(id: string, opts?: ReadOptions): Promise<string> {
 export async function getRunChanges(id: string, opts?: ReadOptions): Promise<ChangesPayload> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].changes.$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     runPath(id, '/changes'),
@@ -1199,7 +1174,7 @@ export async function getRunChanges(id: string, opts?: ReadOptions): Promise<Cha
 export async function getRunFile(id: string, path: string, opts?: ReadOptions): Promise<WorktreeEntry> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].files.$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) }, query: { path } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) }, query: { path } },
       init(opts),
     ),
     '/runs/:id/files',
@@ -1218,7 +1193,7 @@ export function runFileRawUrl(id: string, path: string): string {
 export async function getGroup(groupId: string, opts?: ReadOptions): Promise<GroupResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].groups[':groupId'].$get(
-      { param: { projectId: queryScope(), groupId: encodeURIComponent(groupId) } },
+      { param: { projectId: requireProjectScope(), groupId: encodeURIComponent(groupId) } },
       init(opts),
     ),
     `/groups/${encodeURIComponent(groupId)}`,
@@ -1385,7 +1360,7 @@ export async function updateProject(
 /** ×1 answers the run record; ×2/×3 answers `{ runs }` — narrow on `'runs' in result`. */
 export async function createRun(input: CreateRunInput): Promise<CreateRunResponse> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].runs.$post({ param: { projectId: queryScope() }, json: input }),
+    await cez.api.v1.p[':projectId'].runs.$post({ param: { projectId: requireProjectScope() }, json: input }),
     '/runs',
   )
 }
@@ -1393,7 +1368,7 @@ export async function createRun(input: CreateRunInput): Promise<CreateRunRespons
 export async function cancelRun(id: string): Promise<CancelResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].cancel.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/cancel'),
   )
@@ -1403,7 +1378,7 @@ export async function cancelRun(id: string): Promise<CancelResponse> {
 export async function archiveRun(id: string, archived = true): Promise<RunRecord> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].archive.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { archived },
     }),
     runPath(id, '/archive'),
@@ -1414,7 +1389,7 @@ export async function archiveRun(id: string, archived = true): Promise<RunRecord
 export async function pinRun(id: string, pinned = true): Promise<RunRecord> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].pin.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { pinned },
     }),
     runPath(id, '/pin'),
@@ -1439,7 +1414,7 @@ export async function pinProjectRun(projectId: string, id: string, pinned = true
 
 /**
  * The same route by EXPLICIT project — the twin of `getProjectRuns`, and for the same reason:
- * the global Tasks page stands outside every `/p/:projectId`, so `queryScope()` would send the
+ * the global Tasks page stands outside every `/p/:projectId`, so `requireProjectScope()` would send the
  * BOOT project's id for a row that belongs to another project, and the archive would either 404
  * or (with a colliding id) land on the wrong task. Every caller that is already standing in the
  * run's own project keeps using `archiveRun`.
@@ -1460,7 +1435,7 @@ export async function archiveProjectRun(
 
 /**
  * The read receipt by EXPLICIT project — the twin of `archiveProjectRun`, and for the same
- * reason: the global Tasks page stands outside every `/p/:projectId`, so `queryScope()` would
+ * reason: the global Tasks page stands outside every `/p/:projectId`, so `requireProjectScope()` would
  * stamp the receipt on the boot project. `read: false` is the inverse route (#775).
  */
 export async function setProjectRunRead(
@@ -1487,7 +1462,7 @@ export async function setProjectRunRead(
 export async function cancelAutoResume(id: string): Promise<CancelAutoResumeResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['auto-resume'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/auto-resume'),
   )
@@ -1498,7 +1473,7 @@ export async function cancelAutoResume(id: string): Promise<CancelAutoResumeResp
 export async function archiveFinished(): Promise<ArchiveFinishedResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs['archive-finished'].$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
     }),
     '/runs/archive-finished',
   )
@@ -1509,7 +1484,7 @@ export async function archiveFinished(): Promise<ArchiveFinishedResponse> {
 export async function markRunSeen(id: string): Promise<RunRecord> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].read.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/read'),
   )
@@ -1521,7 +1496,7 @@ export async function markRunSeen(id: string): Promise<RunRecord> {
 export async function markRunUnseen(id: string): Promise<RunRecord> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].unread.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/unread'),
   )
@@ -1531,7 +1506,7 @@ export async function markRunUnseen(id: string): Promise<RunRecord> {
 export async function markAllRunsSeen(): Promise<MarkAllReadResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs['read-all'].$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
     }),
     '/runs/read-all',
   )
@@ -1541,7 +1516,7 @@ export async function markAllRunsSeen(): Promise<MarkAllReadResponse> {
 export async function finishRun(id: string): Promise<FinishResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].finish.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/finish'),
   )
@@ -1574,7 +1549,7 @@ export async function continueRun(id: string, opts: ContinueOptions = {}): Promi
   }
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].continue.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: body,
     }),
     runPath(id, '/continue'),
@@ -1609,7 +1584,7 @@ export async function continueProjectRun(
 export async function createRunPr(id: string, opts: { draft?: boolean } = {}): Promise<CreatePrResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].pr.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: opts,
     }),
     runPath(id, '/pr'),
@@ -1620,7 +1595,7 @@ export async function createRunPr(id: string, opts: { draft?: boolean } = {}): P
 export async function patchRun(id: string, patch: PatchRunInput): Promise<RunRecord> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].$patch({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: patch,
     }),
     runPath(id),
@@ -1631,7 +1606,7 @@ export async function patchRun(id: string, patch: PatchRunInput): Promise<RunRec
 export async function deleteRun(id: string): Promise<DeleteRunResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id),
   )
@@ -1641,7 +1616,7 @@ export async function deleteRun(id: string): Promise<DeleteRunResponse> {
 export async function removeTodo(id: string): Promise<RemoveTodoResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].todos[':id'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     `/todos/${encodeURIComponent(id)}`,
   )
@@ -1677,7 +1652,7 @@ export async function startTodo(
   // request `mutate(…, undefined)` used to build.
   return unwrap(
     await cez.api.v1.p[':projectId'].todos[':id'].start.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: Object.keys(body).length > 0 ? body : undefined,
     }),
     `/todos/${encodeURIComponent(id)}/start`,
@@ -1690,7 +1665,7 @@ export async function startTodo(
 export async function pickVariant(groupId: string, runId: string): Promise<PickVariantResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].groups[':groupId'].pick.$post({
-      param: { projectId: queryScope(), groupId: encodeURIComponent(groupId) },
+      param: { projectId: requireProjectScope(), groupId: encodeURIComponent(groupId) },
       json: { runId },
     }),
     `/groups/${encodeURIComponent(groupId)}/pick`,
@@ -1702,7 +1677,7 @@ export async function pickVariant(groupId: string, runId: string): Promise<PickV
 export async function openRunInCli(id: string): Promise<OpenInCliResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['open-in-cli'].$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/open-in-cli'),
   )
@@ -1713,7 +1688,7 @@ export async function openRunInCli(id: string): Promise<OpenInCliResponse> {
 export async function getOpenTargets(opts?: ReadOptions): Promise<OpenTargetsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId']['open-targets'].$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/open-targets',
@@ -1726,7 +1701,7 @@ export async function getOpenTargets(opts?: ReadOptions): Promise<OpenTargetsRes
 export async function openProjectIn(target: string): Promise<OpenProjectInResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId']['open-in'].$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: { target },
     }),
     '/open-in',
@@ -1740,7 +1715,7 @@ export async function openRunIn(
 ): Promise<{ opened: boolean; path: string }> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['open-in'].$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { target },
     }),
     runPath(id, '/open-in'),
@@ -1756,7 +1731,7 @@ export async function openRunFileInApp(
 ): Promise<{ opened: boolean; path: string }> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['open-in'].$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { target: 'default', path },
     }),
     runPath(id, '/open-in'),
@@ -1768,7 +1743,7 @@ export async function openRunFileInApp(
 export async function commitRun(id: string, message: string): Promise<GitCommitResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].git.commit.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { message },
     }),
     runPath(id, '/git/commit'),
@@ -1779,7 +1754,7 @@ export async function commitRun(id: string, message: string): Promise<GitCommitR
 export async function getRunGitStatus(id: string, opts?: ReadOptions): Promise<GitStatusResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].git.status.$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     runPath(id, '/git/status'),
@@ -1791,7 +1766,7 @@ export async function getRunGitStatus(id: string, opts?: ReadOptions): Promise<G
 export async function pushRun(id: string): Promise<GitPushResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].git.push.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/git/push'),
   )
@@ -1801,7 +1776,7 @@ export async function pushRun(id: string): Promise<GitPushResponse> {
 export async function sendMessage(id: string, message: MessageInput): Promise<MessageResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].messages.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { text: message.text ?? '', images: message.images ?? [] },
     }),
     runPath(id, '/messages'),
@@ -1833,7 +1808,7 @@ export async function editQueuedMessage(
 ): Promise<EditQueuedMessageResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['queued-messages'][':msgId'].$patch({
-      param: { projectId: queryScope(), id: encodeURIComponent(id), msgId: encodeURIComponent(msgId) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id), msgId: encodeURIComponent(msgId) },
       json: message,
     }),
     runPath(id, `/queued-messages/${encodeURIComponent(msgId)}`),
@@ -1847,7 +1822,7 @@ export async function removeQueuedMessage(
 ): Promise<RemoveQueuedMessageResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['queued-messages'][':msgId'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id), msgId: encodeURIComponent(msgId) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id), msgId: encodeURIComponent(msgId) },
     }),
     runPath(id, `/queued-messages/${encodeURIComponent(msgId)}`),
   )
@@ -1864,7 +1839,7 @@ export async function removeQueuedMessage(
 export async function getRunDrafts(id: string, opts?: ReadOptions): Promise<RunDraftsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts.$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id) } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id) } },
       init(opts),
     ),
     runPath(id, '/drafts'),
@@ -1897,7 +1872,7 @@ export async function putRunDraft(
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts[':surface'].$put(
       {
-        param: { projectId: queryScope(), id: encodeURIComponent(id), surface },
+        param: { projectId: requireProjectScope(), id: encodeURIComponent(id), surface },
         json: body,
       },
       { init: { keepalive } },
@@ -1909,7 +1884,7 @@ export async function putRunDraft(
 export async function deleteRunDraft(id: string, surface: string): Promise<DeleteDraftResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts[':surface'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id), surface },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id), surface },
     }),
     runPath(id, `/drafts/${surface}`),
   )
@@ -1924,7 +1899,7 @@ export async function postRunDraftImage(
 ): Promise<DraftImage> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts[':surface'].images.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id), surface },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id), surface },
       json: image,
     }),
     runPath(id, `/drafts/${surface}/images`),
@@ -1940,7 +1915,7 @@ export async function getRunDraftImage(
 ): Promise<DraftImageContent> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts[':surface'].images[':imageId'].$get(
-      { param: { projectId: queryScope(), id: encodeURIComponent(id), surface, imageId } },
+      { param: { projectId: requireProjectScope(), id: encodeURIComponent(id), surface, imageId } },
       init(opts),
     ),
     runPath(id, `/drafts/${surface}/images/${imageId}`),
@@ -1954,7 +1929,7 @@ export async function deleteRunDraftImage(
 ): Promise<DeleteDraftResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id'].drafts[':surface'].images[':imageId'].$delete({
-      param: { projectId: queryScope(), id: encodeURIComponent(id), surface, imageId },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id), surface, imageId },
     }),
     runPath(id, `/drafts/${surface}/images/${imageId}`),
   )
@@ -1966,7 +1941,7 @@ export async function deleteRunDraftImage(
 export async function createRepoBranch(input: { name: string; from?: string }): Promise<RepoBranchResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].repo.branch.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: input,
     }),
     '/repo/branch',
@@ -1980,7 +1955,7 @@ export async function createRepoBranch(input: { name: string; from?: string }): 
 export async function postPlan(task: string): Promise<PlanResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].plan.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: { task },
     }),
     '/plan',
@@ -1998,7 +1973,7 @@ export async function postPlan(task: string): Promise<PlanResponse> {
 export async function getAutomations(opts?: ReadOptions): Promise<AutomationsResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].automations.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/automations',
@@ -2009,7 +1984,7 @@ export async function getAutomations(opts?: ReadOptions): Promise<AutomationsRes
 export async function createAutomation(input: CreateAutomationInput): Promise<AutomationResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].automations.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: input,
     }),
     '/automations',
@@ -2025,7 +2000,7 @@ export async function updateAutomation(
   return unwrap(
     await cez.api.v1.p[':projectId'].automations[':id'].$put({
       // `hc` does not percent-encode a path param, so ids are pre-encoded at every call site.
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: input,
     }),
     `/automations/${encodeURIComponent(id)}`,
@@ -2035,7 +2010,7 @@ export async function updateAutomation(
 /** Enable (from a current-time baseline — existing records never launch) or pause. Two routes,
  *  because they are two acts: only one of them establishes a baseline. */
 export async function setAutomationEnabled(id: string, enabled: boolean): Promise<AutomationResponse> {
-  const param = { projectId: queryScope(), id: encodeURIComponent(id) }
+  const param = { projectId: requireProjectScope(), id: encodeURIComponent(id) }
   const label = `/automations/${encodeURIComponent(id)}/${enabled ? 'enable' : 'pause'}`
   return unwrap(
     enabled
@@ -2053,7 +2028,7 @@ export async function checkAutomation(
 ): Promise<AutomationCheckQueuedResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].automations[':id'].check.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
       json: { mode },
     }),
     `/automations/${encodeURIComponent(id)}/check`,
@@ -2079,7 +2054,7 @@ export async function getAutomationLog(
 ): Promise<AutomationLogResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId']['automation-log'].$get(
-      { param: { projectId: queryScope() }, query: { automationId: id } },
+      { param: { projectId: requireProjectScope() }, query: { automationId: id } },
       init(opts),
     ),
     `/automation-log?automationId=${encodeURIComponent(id)}`,
@@ -2092,7 +2067,7 @@ export async function getAutomationLog(
 export async function retryAutomationReceipt(receiptId: string): Promise<AutomationRetryResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId']['automation-log'][':receiptId'].retry.$post({
-      param: { projectId: queryScope(), receiptId: encodeURIComponent(receiptId) },
+      param: { projectId: requireProjectScope(), receiptId: encodeURIComponent(receiptId) },
     }),
     `/automation-log/${encodeURIComponent(receiptId)}/retry`,
   )
@@ -2103,7 +2078,7 @@ export async function retryAutomationReceipt(receiptId: string): Promise<Automat
 export async function runAutomationNow(id: string): Promise<AutomationRunResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].automations[':id'].run.$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     `/automations/${encodeURIComponent(id)}/run`,
   )
@@ -2112,7 +2087,7 @@ export async function runAutomationNow(id: string): Promise<AutomationRunRespons
 /** Delete a definition. Its runs, receipts and log rows stay; the id is tombstoned. */
 export async function deleteAutomation(id: string): Promise<void> {
   const res = await cez.api.v1.p[':projectId'].automations[':id'].$delete({
-    param: { projectId: queryScope(), id: encodeURIComponent(id) },
+    param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
   })
   if (!res.ok) throw errorFor(res.status, res.statusText, await res.text())
 }
@@ -2134,7 +2109,7 @@ export async function getAutomationTemplates(exclude: string | null, opts?: Read
 export async function createWorkflow(input: SaveWorkflowInput): Promise<SaveWorkflowResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: input,
     }),
     '/workflows',
@@ -2144,7 +2119,7 @@ export async function createWorkflow(input: SaveWorkflowInput): Promise<SaveWork
 /** Graph workflows (spec 2026-09-30-workflow-node-editor): the palette's node catalog. */
 export async function getWorkflowNodes(opts?: ReadOptions): Promise<WorkflowNodeCatalogResponse> {
   return unwrap(
-    await cez.api.v1.p[':projectId'].workflows.nodes.$get({ param: { projectId: queryScope() } }, init(opts)),
+    await cez.api.v1.p[':projectId'].workflows.nodes.$get({ param: { projectId: requireProjectScope() } }, init(opts)),
     '/workflows/nodes',
   )
 }
@@ -2153,7 +2128,7 @@ export async function getWorkflowNodes(opts?: ReadOptions): Promise<WorkflowNode
 export async function validateWorkflowGraph(graph: WorkflowGraph): Promise<ValidateWorkflowGraphResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows.validate.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: { graph },
     }),
     '/workflows/validate',
@@ -2164,7 +2139,7 @@ export async function validateWorkflowGraph(graph: WorkflowGraph): Promise<Valid
 export async function saveWorkflowGraph(input: SaveWorkflowGraphInput): Promise<SaveWorkflowResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows.graph.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: input,
     }),
     '/workflows/graph',
@@ -2176,7 +2151,7 @@ export async function saveWorkflowGraph(input: SaveWorkflowGraphInput): Promise<
 export async function parseWorkflow(yaml: string): Promise<ParsedWorkflow> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows.parse.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: { yaml },
     }),
     '/workflows/parse',
@@ -2188,7 +2163,7 @@ export async function parseWorkflow(yaml: string): Promise<ParsedWorkflow> {
 export async function deleteWorkflow(name: string): Promise<DeleteWorkflowResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].workflows[':name'].$delete({
-      param: { projectId: queryScope(), name: encodeURIComponent(name) },
+      param: { projectId: requireProjectScope(), name: encodeURIComponent(name) },
     }),
     `/workflows/${encodeURIComponent(name)}`,
   )
@@ -2197,7 +2172,7 @@ export async function deleteWorkflow(name: string): Promise<DeleteWorkflowRespon
 // ---- prefs ---------------------------------------------------------------------------------
 
 /** Merges server-side (the stored object spread under the patch) and answers the merged state. */
-export async function putUiState(patch: UiState, projectId = queryScope()): Promise<UiState> {
+export async function putUiState(patch: UiState, projectId = requireProjectScope()): Promise<UiState> {
   return unwrap(
     await cez.api.v1.p[':projectId']['ui-state'].$put({
       param: { projectId },
@@ -2500,7 +2475,7 @@ export async function putWorkspaceConfig(
 export async function putConfig(patch: SetConfigInput): Promise<SetConfigResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].config.$put({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: patch,
     }),
     '/config',
@@ -2512,7 +2487,7 @@ export async function putConfig(patch: SetConfigInput): Promise<SetConfigRespons
 export async function getWorktrees(opts?: ReadOptions): Promise<WorktreesResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].worktrees.$get(
-      { param: { projectId: queryScope() } },
+      { param: { projectId: requireProjectScope() } },
       init(opts),
     ),
     '/worktrees',
@@ -2524,7 +2499,7 @@ export async function getWorktrees(opts?: ReadOptions): Promise<WorktreesRespons
 export async function reclaimWorktrees(): Promise<ReclaimWorktreesResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].worktrees.reclaim.$post({
-      param: { projectId: queryScope() },
+      param: { projectId: requireProjectScope() },
       json: {},
     }),
     '/worktrees/reclaim',
@@ -2536,7 +2511,7 @@ export async function reclaimWorktrees(): Promise<ReclaimWorktreesResponse> {
 export async function removeRunWorktree(id: string): Promise<RemoveWorktreeResponse> {
   return unwrap(
     await cez.api.v1.p[':projectId'].runs[':id']['remove-worktree'].$post({
-      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+      param: { projectId: requireProjectScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/remove-worktree'),
   )

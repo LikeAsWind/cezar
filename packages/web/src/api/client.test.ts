@@ -139,50 +139,49 @@ describe('request shapes', () => {
     { name: 'getRunnerModels(claude)', call: () => getRunnerModels('claude'), path: '/api/v1/models?runner=claude', method: 'GET' },
     { name: 'getRunnerModels(opencode)', call: () => getRunnerModels('opencode'), path: '/api/v1/models?runner=opencode', method: 'GET' },
     { name: 'getRunnerModels(cursor)', call: () => getRunnerModels('cursor'), path: '/api/v1/models?runner=cursor', method: 'GET' },
-    { name: 'getRuns', call: () => getRuns(), path: '/api/v1/runs', method: 'GET' },
-    { name: 'getRun', call: () => getRun('run-1'), path: '/api/v1/runs/run-1', method: 'GET' },
-    { name: 'getRunDiff', call: () => getRunDiff('run-1'), path: '/api/v1/runs/run-1/diff', method: 'GET' },
-    { name: 'getRunHandoff', call: () => getRunHandoff('run-1'), path: '/api/v1/runs/run-1/handoff', method: 'GET' },
-    { name: 'getUiState', call: () => getUiState(), path: '/api/v1/ui-state', method: 'GET' },
-    { name: 'getWorkflows', call: () => getWorkflows(), path: '/api/v1/workflows', method: 'GET' },
-    { name: 'getSkills', call: () => getSkills(), path: '/api/v1/skills', method: 'GET' },
+    { name: 'getRuns', call: () => getRuns(), path: '/api/v1/p/proj-a/runs', method: 'GET' },
+    { name: 'getRun', call: () => getRun('run-1'), path: '/api/v1/p/proj-a/runs/run-1', method: 'GET' },
+    { name: 'getRunDiff', call: () => getRunDiff('run-1'), path: '/api/v1/p/proj-a/runs/run-1/diff', method: 'GET' },
+    { name: 'getRunHandoff', call: () => getRunHandoff('run-1'), path: '/api/v1/p/proj-a/runs/run-1/handoff', method: 'GET' },
+    { name: 'getUiState', call: () => getUiState(), path: '/api/v1/p/proj-a/ui-state', method: 'GET' },
+    { name: 'getWorkflows', call: () => getWorkflows(), path: '/api/v1/p/proj-a/workflows', method: 'GET' },
+    { name: 'getSkills', call: () => getSkills(), path: '/api/v1/p/proj-a/skills', method: 'GET' },
     {
       name: 'getSkillsWhenReady',
       call: () => getSkillsWhenReady(),
-      path: '/api/v1/skills?wait=1',
+      path: '/api/v1/p/proj-a/skills?wait=1',
       method: 'GET',
     },
-    { name: 'refreshSkills', call: () => refreshSkills(), path: '/api/v1/skills/refresh', method: 'POST' },
-    { name: 'getTodos', call: () => getTodos(), path: '/api/v1/todos', method: 'GET' },
-    { name: 'getRepo', call: () => getRepo(), path: '/api/v1/repo', method: 'GET' },
-    { name: 'getGroup', call: () => getGroup('grp-1'), path: '/api/v1/groups/grp-1', method: 'GET' },
+    { name: 'refreshSkills', call: () => refreshSkills(), path: '/api/v1/p/proj-a/skills/refresh', method: 'POST' },
+    { name: 'getTodos', call: () => getTodos(), path: '/api/v1/p/proj-a/todos', method: 'GET' },
+    { name: 'getRepo', call: () => getRepo(), path: '/api/v1/p/proj-a/repo', method: 'GET' },
+    { name: 'getGroup', call: () => getGroup('grp-1'), path: '/api/v1/p/proj-a/groups/grp-1', method: 'GET' },
     {
       name: 'pickVariant',
       call: () => pickVariant('grp-1', 'run-a'),
-      path: '/api/v1/groups/grp-1/pick',
+      path: '/api/v1/p/proj-a/groups/grp-1/pick',
       method: 'POST',
       body: { runId: 'run-a' },
     },
-    { name: 'getGithub (no params)', call: () => getGithub(), path: '/api/v1/github', method: 'GET' },
+    { name: 'getGithub (no params)', call: () => getGithub(), path: '/api/v1/p/proj-a/github', method: 'GET' },
     {
       name: 'getGithub (limit + refresh)',
       call: () => getGithub({ limit: 5, refresh: true }),
-      path: '/api/v1/github?limit=5&refresh=1',
+      path: '/api/v1/p/proj-a/github?limit=5&refresh=1',
       method: 'GET',
     },
     {
       name: 'getGithub (cursor page)',
       call: () => getGithub({ limit: 50, issuesCursor: 'i-cursor', prsCursor: 'p-cursor' }),
-      path: '/api/v1/github?limit=50&issuesCursor=i-cursor&prsCursor=p-cursor',
+      path: '/api/v1/p/proj-a/github?limit=50&issuesCursor=i-cursor&prsCursor=p-cursor',
       method: 'GET',
     },
-    // `refresh: false` must not become `refresh=0` — the server tests `=== '1'`, but sending a
-    // parameter we do not mean is how a "false" ends up read as truthy somewhere downstream.
-    { name: 'getGithub (refresh false)', call: () => getGithub({ refresh: false }), path: '/api/v1/github', method: 'GET' },
+    // `refresh: false` must not become `refresh=0` — the server tests `=== '1'`.
+    { name: 'getGithub (refresh false)', call: () => getGithub({ refresh: false }), path: '/api/v1/p/proj-a/github', method: 'GET' },
     {
       name: 'getGithubChecks (#664)',
       call: () => getGithubChecks([7, 12]),
-      path: '/api/v1/github/checks?prs=7%2C12',
+      path: '/api/v1/p/proj-a/github/checks?prs=7%2C12',
       method: 'GET',
     },
     {
@@ -195,8 +194,6 @@ describe('request shapes', () => {
     },
     {
       name: 'getGithubRefStatus (one kind — the empty list is not sent)',
-      // An empty `prs=` is a malformed list to the route (a 400), where an ABSENT key means
-      // "not asked for". The difference has to survive the client.
       call: () => getGithubRefStatus('api', { issues: [3] }),
       path: '/api/v1/p/api/github/ref-status?issues=3',
       method: 'GET',
@@ -204,122 +201,115 @@ describe('request shapes', () => {
     {
       name: 'putUiState',
       call: () => putUiState({ runsView: 'table' }),
-      path: '/api/v1/ui-state',
+      path: '/api/v1/p/proj-a/ui-state',
       method: 'PUT',
       body: { runsView: 'table' },
     },
     {
       name: 'createRun',
       call: () => createRun({ task: 'do it', workflow: 'quick-task', variants: 2 }),
-      path: '/api/v1/runs',
+      path: '/api/v1/p/proj-a/runs',
       method: 'POST',
       body: { task: 'do it', workflow: 'quick-task', variants: 2 },
     },
-    { name: 'cancelRun', call: () => cancelRun('run-1'), path: '/api/v1/runs/run-1/cancel', method: 'POST' },
+    { name: 'cancelRun', call: () => cancelRun('run-1'), path: '/api/v1/p/proj-a/runs/run-1/cancel', method: 'POST' },
     {
       name: 'archiveRun (default)',
       call: () => archiveRun('run-1'),
-      path: '/api/v1/runs/run-1/archive',
+      path: '/api/v1/p/proj-a/runs/run-1/archive',
       method: 'POST',
       body: { archived: true },
     },
     {
       name: 'archiveRun (unarchive)',
       call: () => archiveRun('run-1', false),
-      path: '/api/v1/runs/run-1/archive',
+      path: '/api/v1/p/proj-a/runs/run-1/archive',
       method: 'POST',
       body: { archived: false },
     },
     {
       name: 'archiveFinished',
       call: () => archiveFinished(),
-      path: '/api/v1/runs/archive-finished',
+      path: '/api/v1/p/proj-a/runs/archive-finished',
       method: 'POST',
     },
-    { name: 'finishRun', call: () => finishRun('run-1'), path: '/api/v1/runs/run-1/finish', method: 'POST' },
+    { name: 'finishRun', call: () => finishRun('run-1'), path: '/api/v1/p/proj-a/runs/run-1/finish', method: 'POST' },
     {
       name: 'continueRun (no text)',
       call: () => continueRun('run-1'),
-      path: '/api/v1/runs/run-1/continue',
+      path: '/api/v1/p/proj-a/runs/run-1/continue',
       method: 'POST',
       body: {},
     },
     {
       name: 'continueRun (with text)',
       call: () => continueRun('run-1', { text: 'keep going' }),
-      path: '/api/v1/runs/run-1/continue',
+      path: '/api/v1/p/proj-a/runs/run-1/continue',
       method: 'POST',
       body: { text: 'keep going' },
     },
     {
       name: 'continueRun (runner + model override, #401)',
       call: () => continueRun('run-1', { runner: 'codex', model: 'gpt-5.1-codex' }),
-      path: '/api/v1/runs/run-1/continue',
+      path: '/api/v1/p/proj-a/runs/run-1/continue',
       method: 'POST',
       body: { runner: 'codex', model: 'gpt-5.1-codex' },
     },
-    { name: 'deleteRun', call: () => deleteRun('run-1'), path: '/api/v1/runs/run-1', method: 'DELETE' },
-    // Inbox actions (R6 1.2): the exact legacy endpoints, ids URL-encoded like every other path.
-    { name: 'removeTodo', call: () => removeTodo('todo/1'), path: '/api/v1/todos/todo%2F1', method: 'DELETE' },
-    { name: 'startTodo', call: () => startTodo('todo/1'), path: '/api/v1/todos/todo%2F1/start', method: 'POST' },
-    // #413: extra instructions (e.g. an inserted prompt template) ride an optional body;
-    // omitted (the case above) sends none at all — the pre-#413 call shape.
+    { name: 'deleteRun', call: () => deleteRun('run-1'), path: '/api/v1/p/proj-a/runs/run-1', method: 'DELETE' },
+    { name: 'removeTodo', call: () => removeTodo('todo/1'), path: '/api/v1/p/proj-a/todos/todo%2F1', method: 'DELETE' },
+    { name: 'startTodo', call: () => startTodo('todo/1'), path: '/api/v1/p/proj-a/todos/todo%2F1/start', method: 'POST' },
     {
       name: 'startTodo (with prompt)',
       call: () => startTodo('todo/1', { prompt: 'Also add tests.' }),
-      path: '/api/v1/todos/todo%2F1/start',
+      path: '/api/v1/p/proj-a/todos/todo%2F1/start',
       method: 'POST',
       body: { prompt: 'Also add tests.' },
     },
     {
-      // #401: an Inbox card that picked a backend. No pick → the bodyless POST above, unchanged.
       name: 'startTodo (runner + model override, #401)',
       call: () => startTodo('todo/1', { runner: 'codex', model: 'gpt-5.1-codex' }),
-      path: '/api/v1/todos/todo%2F1/start',
+      path: '/api/v1/p/proj-a/todos/todo%2F1/start',
       method: 'POST',
       body: { runner: 'codex', model: 'gpt-5.1-codex' },
     },
     {
-      // Auto ('') and a single-backend host are filtered out by the caller, so a body that
-      // reaches the wire never carries an empty model or a redundant runner.
       name: 'startTodo (model only, #401)',
       call: () => startTodo('todo/1', { model: 'opus' }),
-      path: '/api/v1/todos/todo%2F1/start',
+      path: '/api/v1/p/proj-a/todos/todo%2F1/start',
       method: 'POST',
       body: { model: 'opus' },
     },
     {
       name: 'openRunInCli',
       call: () => openRunInCli('run-1'),
-      path: '/api/v1/runs/run-1/open-in-cli',
+      path: '/api/v1/p/proj-a/runs/run-1/open-in-cli',
       method: 'POST',
     },
     {
       name: 'patchRun',
       call: () => patchRun('run-1', { title: 'New name' }),
-      path: '/api/v1/runs/run-1',
+      path: '/api/v1/p/proj-a/runs/run-1',
       method: 'PATCH',
       body: { title: 'New name' },
     },
     {
       name: 'sendMessage',
       call: () => sendMessage('run-1', { text: 'hi' }),
-      path: '/api/v1/runs/run-1/messages',
+      path: '/api/v1/p/proj-a/runs/run-1/messages',
       method: 'POST',
-      // The server's schema defaults both, but an absent `images` and `[]` are the same
-      // request — send the shape the endpoint documents rather than half of it.
       body: { text: 'hi', images: [] },
     },
     {
       name: 'sendMessage (images only)',
       call: () => sendMessage('run-1', { images: [{ mediaType: 'image/png', data: 'AAA' }] }),
-      path: '/api/v1/runs/run-1/messages',
+      path: '/api/v1/p/proj-a/runs/run-1/messages',
       method: 'POST',
       body: { text: '', images: [{ mediaType: 'image/png', data: 'AAA' }] },
     },
   ]
 
   it.each(cases)('$name hits $method $path', async ({ call, path, method, body }) => {
+    setApiScope('proj-a')
     reply(path.startsWith('/api/v1/providers/') ? VALID_PROVIDER_STATUS : { ok: true })
     await call()
 
@@ -331,19 +321,31 @@ describe('request shapes', () => {
     if (body !== undefined) expect(sent.headers.get('content-type')).toBe('application/json')
   })
 
+  it('workspace-level calls stay unscoped even under a project scope', async () => {
+    setApiScope('proj-a')
+    reply({ version: '0.0.0' })
+    await getHealth()
+    expect(lastCall().path).toBe('/api/v1/health')
+  })
+
+  it('project calls throw before fetching when no project is mounted', async () => {
+    await expect(getRuns()).rejects.toThrow('projectId is required')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('escapes run ids into the path', async () => {
+    setApiScope('proj-a')
     reply({ cancelled: true })
     await cancelRun('a b/../c')
-    expect(lastCall().path).toBe('/api/v1/runs/a%20b%2F..%2Fc/cancel')
+    expect(lastCall().path).toBe('/api/v1/p/proj-a/runs/a%20b%2F..%2Fc/cancel')
   })
 
   it('hands out the byte-identical legacy raw-image URL when unscoped', () => {
-    // The one URL this module builds without fetching it (an <img> loads it) — same invariant
-    // as every case above: unscoped means exactly the pre-multi-project path.
     expect(runFileRawUrl('run-1', 'shots/final.png')).toBe('/api/v1/runs/run-1/files?path=shots%2Ffinal.png&raw=1')
   })
 
   it('forwards an abort signal to fetch', async () => {
+    setApiScope('proj-a')
     reply([])
     const controller = new AbortController()
     await getRuns({ signal: controller.signal })
@@ -393,15 +395,12 @@ describe('workspace branding logo client', () => {
   })
 })
 
-describe('project scope (multi-project spec, step 3.1)', () => {
-  // NB the WHOLE unscoped table above is this feature's other half: the critical assertion is
-  // that with no scope set, every path stays byte-identical — those cases prove it by never
-  // touching the scope at all.
+describe('project scope (explicit)', () => {
   afterEach(() => {
     setApiScope(null)
   })
 
-  it('prefixes every request path with /api/v1/p/<id> once a scope is active', async () => {
+  it('prefixes every project request path with /api/v1/p/<id> once a scope is active', async () => {
     setApiScope('proj-a')
 
     reply({ ok: true })
@@ -426,6 +425,12 @@ describe('project scope (multi-project spec, step 3.1)', () => {
     reply({ version: '0.0.0' })
     await getHealth()
     expect(lastCall().path).toBe('/api/v1/health')
+  })
+
+  it('throws on a project call with no scope — there is no boot project to default to', async () => {
+    await expect(getRuns()).rejects.toThrow('projectId is required')
+    await expect(getRun('r1')).rejects.toThrow('projectId is required')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
@@ -543,6 +548,7 @@ describe('response parsing', () => {
   })
 
   it('returns the run list', async () => {
+    setApiScope('proj-a')
     reply([{ id: 'run-1', title: 'Fix it', status: 'running' }])
     const runs = await getRuns()
     expect(runs).toHaveLength(1)
@@ -550,6 +556,7 @@ describe('response parsing', () => {
   })
 
   it('reads a diff as text, not JSON', async () => {
+    setApiScope('proj-a')
     const diff = 'diff --git a/x b/x\n+added\n'
     fetchMock.mockResolvedValue(
       new Response(diff, { status: 200, headers: { 'content-type': 'text/plain' } }),
@@ -558,6 +565,7 @@ describe('response parsing', () => {
   })
 
   it('reads the handoff journal as markdown text — an empty file is an empty string, not an error', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(
       new Response('', { status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' } }),
     )
@@ -565,6 +573,7 @@ describe('response parsing', () => {
   })
 
   it('passes an unavailable GitHub through as data — it is a hint, not a failure', async () => {
+    setApiScope('proj-a')
     reply({ available: false, reason: 'gh is not installed', issues: [], prs: [] })
     const data = await getGithub()
     expect(data.available).toBe(false)
@@ -584,6 +593,7 @@ describe('errors', () => {
   }
 
   it('surfaces the server error message verbatim', async () => {
+    setApiScope('proj-a')
     fail(409, JSON.stringify({ error: 'run is active — cancel it first' }))
     const error = await deleteRun('run-1').catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ApiError)
@@ -592,11 +602,11 @@ describe('errors', () => {
   })
 
   it('carries the 409 extras the server pairs with the reason', async () => {
+    setApiScope('proj-a')
     fail(409, JSON.stringify({ error: 'push failed: no upstream', manual: 'git merge cez/abc' }))
     const error = (await createRun({ task: 't', workflow: 'quick-task' }).catch((e: unknown) => e)) as ApiError
     expect(error.status).toBe(409)
     expect(error.message).toBe('push failed: no upstream')
-    // The manual way out has to reach the UI — a 409 the user cannot act on is a dead end.
     expect(error.manual).toBe('git merge cez/abc')
     expect(error.command).toBeUndefined()
     expect(error.exists).toBeUndefined()
@@ -606,6 +616,7 @@ describe('errors', () => {
     { name: 'command (open-in-cli)', body: { error: 'no terminal emulator found', command: "cd '/r' && claude --resume x" } },
     { name: 'exists (save workflow)', body: { error: 'workflow file already exists: /r/x.yaml', exists: true } },
   ])('carries $name', async ({ body }) => {
+    setApiScope('proj-a')
     fail(409, JSON.stringify(body))
     const error = (await cancelRun('run-1').catch((e: unknown) => e)) as ApiError
     expect(error.message).toBe(body.error)
@@ -614,16 +625,17 @@ describe('errors', () => {
   })
 
   it('turns a non-JSON 500 into a sane ApiError rather than a parse error', async () => {
+    setApiScope('proj-a')
     fail(500, '<html><body>502 Bad Gateway</body></html>', 'text/html')
     const error = await getRuns().catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).status).toBe(500)
-    // Says what we know; does not paste a page of HTML into a toast.
     expect((error as ApiError).message).toBe('500 Internal Server Error')
     expect((error as Error).name).toBe('ApiError')
   })
 
   it('survives an empty error body', async () => {
+    setApiScope('proj-a')
     fail(404, '')
     const error = (await getRun('nope').catch((e: unknown) => e)) as ApiError
     expect(error.status).toBe(404)
@@ -631,9 +643,9 @@ describe('errors', () => {
   })
 
   it('ignores a non-string error field instead of stringifying junk', async () => {
+    setApiScope('proj-a')
     fail(400, JSON.stringify({ error: { issues: ['bad'] } }))
     const error = (await getRuns().catch((e: unknown) => e)) as ApiError
-    // No statusText either — the fallback still has to read as a sentence.
     expect(error.message).toBe('400 request failed')
   })
 
@@ -648,14 +660,15 @@ describe('errors', () => {
   })
 
   it('lets an abort through as an AbortError, not an ApiError', async () => {
+    setApiScope('proj-a')
     fetchMock.mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
     const error = await getRuns().catch((e: unknown) => e)
-    // Query cancellation is not a server failure and must not be reported as one.
     expect(error).not.toBeInstanceOf(ApiError)
     expect((error as DOMException).name).toBe('AbortError')
   })
 
   it('rejects a 200 that is not JSON on a JSON endpoint', async () => {
+    setApiScope('proj-a')
     fetchMock.mockResolvedValue(new Response('not json', { status: 200 }))
     const error = (await getRuns().catch((e: unknown) => e)) as ApiError
     expect(error).toBeInstanceOf(ApiError)
@@ -663,6 +676,7 @@ describe('errors', () => {
   })
 
   it('reports a diff endpoint failure too', async () => {
+    setApiScope('proj-a')
     fail(404, JSON.stringify({ error: 'not found' }))
     const error = (await getRunDiff('nope').catch((e: unknown) => e)) as ApiError
     expect(error.status).toBe(404)
@@ -670,14 +684,6 @@ describe('errors', () => {
   })
 })
 
-/**
- * The history routes are the two whose 200 is VALIDATED, not merely cast (#827).
- *
- * `useRunHistory` iterates `page.events`, so a body that is not a page would throw a `TypeError`
- * mid-render instead of rejecting the query — and the hook's full-replay fallback only triggers
- * on a rejection. These pin that a malformed 200 becomes an `ApiError`, which is what routes it
- * into that fallback.
- */
 describe('history responses are validated at the boundary (#827)', () => {
   const PAGE = {
     events: [{ seq: 1, ts: '2026-01-01T00:00:00.000Z', type: 'assistant', text: 'hi' }],
@@ -691,13 +697,16 @@ describe('history responses are validated at the boundary (#827)', () => {
     asOfSeq: 1,
   }
 
+  beforeEach(() => {
+    setApiScope('proj-a')
+  })
+
   it('passes a well-formed page through unchanged, additive event keys included', async () => {
     reply({ ...PAGE, olderCursor: 'cursor-older' })
     const page = await getRunHistory('run-1')
     expect(page.itemCount).toBe(1)
     expect(page.olderCursor).toBe('cursor-older')
     expect(page.newerCursor).toBeUndefined()
-    // The event schema is open (append-only vocabulary) — payload keys must survive validation.
     expect(page.events[0]).toMatchObject({ seq: 1, type: 'assistant', text: 'hi' })
   })
 

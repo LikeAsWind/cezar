@@ -167,13 +167,21 @@ export function SkillDetailBody({
 function SkillBookmarklet({ skill }: { skill: Skill }) {
   useLocale()
 
+  // The URL's `/p/:projectId` is the project the bookmarklet must land in. Outside a project
+  // route (the global workspace) there is no project to target, so the generator is inert — and
+  // the scope-reading hooks below are never mounted without one.
+  const projectId = useActiveProjectId()
+  if (projectId === null) return null
+  return <SkillBookmarkletInner skill={skill} projectId={projectId} />
+}
+
+function SkillBookmarkletInner({ skill, projectId }: { skill: Skill; projectId: string }) {
   const launchKey = useLaunchKey()
   const health = useHealth()
   const projects = useProjects()
   const [auto, setAuto] = useState(false)
   const key = launchKey.data?.key ?? ''
   const origin = window.location.origin
-  const projectId = useActiveProjectId() ?? health.data?.bootProject ?? null
   const repoName =
     projects.data?.projects.find((project) => project.id === projectId)?.name ??
     repoChipOf(health.data)?.name ??

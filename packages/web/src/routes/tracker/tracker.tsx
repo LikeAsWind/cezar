@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
 import { getTrackerItem, getTrackerIterations } from '@/api/client'
 import { useTrackerWatch } from '@/api/tracker-watch'
-import { useProjectScope } from '@/api/project-scope-context'
+import { useActiveProjectId } from '@/lib/project-router'
 import { queryKeys, TRACKER_STALE_TIME, TrackerRefreshError, useSkills, useTrackerConnection, useTrackerAssociation, useTrackerItem, useTrackerItems, useWorkflows } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
@@ -29,10 +29,11 @@ export function TrackerRoute() {
   useLocale()
 
   const { id } = useParams()
-  const { projectId } = useProjectScope()
+  const projectId = useActiveProjectId()
+  if (projectId === null) return null
   const association = useTrackerAssociation()
   const connection = useTrackerConnection()
-  const associationKey = `${projectId ?? 'default'}:${association.data?.association ? trackerAssociationKey(association.data.association) : 'none'}`
+  const associationKey = `${projectId}:${association.data?.association ? trackerAssociationKey(association.data.association) : 'none'}`
   // Retain drafts across connection request failures, but never across project/source changes.
   const drafts = useMemo<TrackerDraftCache>(() => new Map(), [associationKey])
   const [savedSelection, setSavedSelection] = useState<{ key: string; value: TrackerHandoffSelection } | null>(null)

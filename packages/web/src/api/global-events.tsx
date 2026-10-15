@@ -20,12 +20,11 @@ import {
   type GlobalEvent,
   type UsageStore,
 } from './events'
-import { apiPath, getApiScope, queryScope } from '@open-mercato/cezar-api-client'
-import { queryKeys, useHealthSubscription, workspaceQueryKeys } from './queries'
+import { apiPath, getApiScope } from '@open-mercato/cezar-api-client'
+import { projectQueryKeys, useHealthSubscription, workspaceQueryKeys } from './queries'
 import { RUN_EVENT_BATCH_MS } from './run-events'
 import type {
   ApiRun,
-  HealthResponse,
   ProcessUsage,
   ProviderStatusResponse,
 } from '@open-mercato/cezar-api-client'
@@ -142,19 +141,8 @@ function createRunsIndexRefresher(queryClient: QueryClient): {
   }
 }
 
-function projectCacheScopes(queryClient: QueryClient, project: string): string[] {
-  let bootProject: string | undefined
-  for (const query of queryClient.getQueryCache().getAll()) {
-    if (query.queryKey[1] !== 'health') continue
-    const candidate = (query.state.data as HealthResponse | undefined)?.bootProject
-    if (typeof candidate === 'string') {
-      bootProject = candidate
-      break
-    }
-  }
-  const scopes = new Set([project])
-  if (bootProject === project) scopes.add('default')
-  return [...scopes]
+function scopesForProject(project: string): readonly string[] {
+  return [project]
 }
 
 function historyQueryKeys(scope: string): readonly (readonly unknown[])[] {
@@ -167,9 +155,9 @@ function historyQueryKeys(scope: string): readonly (readonly unknown[])[] {
 
 function eventQueryKeys(scope: string): readonly (readonly unknown[])[] {
   return [
-    [scope, 'runs'],
-    [scope, 'todos'],
-    [scope, 'worktrees'],
+    projectQueryKeys.runs.all(scope),
+    projectQueryKeys.todos(scope),
+    projectQueryKeys.worktrees(scope),
     ...historyQueryKeys(scope),
   ]
 }
@@ -183,6 +171,10 @@ function projectQueryScope(queryKey: readonly unknown[]): string | undefined {
     || queryKey[0] === 'run-history-context'
     || queryKey[0] === 'run-history-tail'
   ) {
+    return typeof queryKey[1] === 'string' ? queryKey[1] : undefined
+  }
+  // Project keys are ['project', projectId, ...].
+  if (queryKey[0] === 'project') {
     return typeof queryKey[1] === 'string' ? queryKey[1] : undefined
   }
   return typeof queryKey[0] === 'string' ? queryKey[0] : undefined
@@ -204,13 +196,13 @@ function createInactiveProjectRefresher(queryClient: QueryClient): {
   return {
     onEvent(project) {
       if (pending !== undefined && scopes.has(project)) return
-      for (const scope of projectCacheScopes(queryClient, project)) scopes.add(scope)
+      for (const scope of scopesForProject(project)) scopes.add(scope)
       if (pending !== undefined) return
       pending = setTimeout(() => {
         pending = undefined
         const queued = scopes
         scopes = new Set()
-        const activeScope = queryScope()
+        const activeScope = getApiScope()
         for (const scope of queued) {
           for (const queryKey of eventQueryKeys(scope)) {
             void queryClient.invalidateQueries({
@@ -254,13 +246,13 @@ function createRunEventBatcher(
     clearTimeout(timer)
     timer = undefined
     if (reconciliationDepth > 0) return
-    const project = activeProject(queryClient)
+    const project = activeProject()
     const events = pending
     pending = new Map()
     for (const queued of events.values()) {
       // The route can change while the 50 ms window is open. Never resolve the cache keys from
       // the new scope for an event that arrived under the old one.
-      if (queued.project === project) applyGlobalEvent(queryClient, usage, queued.event)
+      if (queued.project === project) applyGlobalEvent(queryClient, usage, queued.project, queued.event)
       else onDroppedProject(queued.project)
     }
   }
@@ -315,24 +307,27 @@ function createRunEventBatcher(
  * fetch fifty runs to come back.
  */
 async function reconcile(queryClient: QueryClient): Promise<void> {
-  const activeScope = queryScope()
+  const activeScope = getApiScope()
   const keys = [
-    queryKeys.runs.all,
+    // Events happened while we were disconnected. The active project's caches reconcile against
+    // the authoritative endpoints; inactive projects are marked stale in the batch below.
+    ...(activeScope === null
+      ? []
+      : [projectQueryKeys.runs.all(activeScope), projectQueryKeys.todos(activeScope), projectQueryKeys.worktrees(activeScope)]),
     // Events happened while we were disconnected, and the index is cross-project — nothing else
     // here covers it.
     workspaceQueryKeys.runsIndex,
     workspaceQueryKeys.dashboard,
-    queryKeys.todos,
-    queryKeys.health,
-    // The worktree panel's list/total (#483) — a run finishing or a reclaim changes it.
-    queryKeys.worktrees,
+    workspaceQueryKeys.health,
     workspaceQueryKeys.providerStatus,
     // Host totals (spec 2026-09-20-host-resource-telemetry): a remote cockpit's only refresh is
     // this reconcile, so the Machine card must be in the list — the local cockpit ignores it
     // because its frames arrive over the `host` topic.
     workspaceQueryKeys.hostUsage,
-    ['run-history', activeScope] as const,
-    ['run-history-context', activeScope] as const,
+    ...(activeScope === null ? [] : [
+      ['run-history', activeScope] as const,
+      ['run-history-context', activeScope] as const,
+    ]),
   ] as const
   const invalidations = Promise.allSettled(
     [
@@ -371,26 +366,25 @@ async function reconcile(queryClient: QueryClient): Promise<void> {
 }
 
 /**
- * The project whose events this cockpit currently applies: the mounted scope, or — unscoped —
- * the boot project `GET /api/health` names (`bootProject`, additive field). Undefined only in
- * the unscoped moments before health's first answer; stamped events are dropped then, which is
- * harmless by the doctrine — the authoritative queries are fetching right at that moment, and
- * the reducers refuse to invent caches from stream messages anyway.
+ * The project whose events this cockpit currently applies: the mounted scope. Undefined in the
+ * global workspace, where stamped events are dropped — harmless by the doctrine: the authoritative
+ * queries are fetching right at that moment, and the reducers refuse to invent caches from stream
+ * messages anyway.
  */
-function activeProject(queryClient: QueryClient): string | undefined {
-  return getApiScope() ?? (queryClient.getQueryData(queryKeys.health) as HealthResponse | undefined)?.bootProject
+function activeProject(): string | undefined {
+  return getApiScope() ?? undefined
 }
 
-/** Fold one stream message into the cache. The reducers it calls are pure and table-tested in
- *  events.ts; this is only the wiring from an event to the cache it belongs in. */
-function applyGlobalEvent(queryClient: QueryClient, usage: UsageStore, event: GlobalEvent): void {
+/** Fold one stream message into the cache it belongs in, routed by its stamped project id. The
+ *  reducers it calls are pure and table-tested in events.ts; this is only the wiring. */
+function applyGlobalEvent(queryClient: QueryClient, usage: UsageStore, project: string, event: GlobalEvent): void {
   switch (event.type) {
     case 'run': {
-      queryClient.setQueryData<ApiRun[]>(queryKeys.runs.list(), (list) => applyRunEvent(list, event.run))
+      queryClient.setQueryData<ApiRun[]>(projectQueryKeys.runs.list(project), (list) => applyRunEvent(list, event.run))
       // Only a detail cache that exists: `setQueryData` would happily create one, leaving an entry
       // for a run nobody opened — and, worse, one built from a summary rather than from
       // `GET /api/runs/:id`, which the next reader would then be served as if it were fetched.
-      const key = queryKeys.runs.detail(event.run.id)
+      const key = projectQueryKeys.runs.run(project, event.run.id)
       if (queryClient.getQueryData(key) !== undefined) {
         queryClient.setQueryData<ApiRun>(key, (previous) => mergeRun(previous, event.run))
       }
@@ -399,30 +393,30 @@ function applyGlobalEvent(queryClient: QueryClient, usage: UsageStore, event: Gl
       // for the next SSE reconnect's reconcile(). Invalidate the changes cache on the run event
       // itself — but only when one already exists, so a background tab that never opened the
       // Changes view doesn't fetch a diff nobody is looking at (same stance as the detail guard).
-      const changesKey = queryKeys.runs.changes(event.run.id)
+      const changesKey = projectQueryKeys.runs.changes(project, event.run.id)
       if (queryClient.getQueryData(changesKey) !== undefined) {
         void queryClient.invalidateQueries({ queryKey: changesKey })
       }
       // A terminal transition can reclaim (or re-materialize) a worktree (#483); keep the
       // panel live. invalidateQueries only refetches while the panel is actually mounted.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
+      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.worktrees(project) })
       return
     }
     case 'run-deleted': {
-      queryClient.setQueryData<ApiRun[]>(queryKeys.runs.list(), (list) => applyRunDeleted(list, event.id))
+      queryClient.setQueryData<ApiRun[]>(projectQueryKeys.runs.list(project), (list) => applyRunDeleted(list, event.id))
       // Removed, not set to undefined: the run is gone server-side, so its detail and diff caches
       // are garbage. Anything still mounted on them refetches and gets the server's 404 — the
       // truth — instead of rendering a record that no longer exists.
-      queryClient.removeQueries({ queryKey: queryKeys.runs.detail(event.id) })
-      queryClient.removeQueries({ queryKey: queryKeys.runs.diff(event.id) })
+      queryClient.removeQueries({ queryKey: projectQueryKeys.runs.run(project, event.id) })
+      queryClient.removeQueries({ queryKey: projectQueryKeys.runs.diff(project, event.id) })
       // Its worktree goes with it — refresh the panel (#483).
-      void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
+      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.worktrees(project) })
       return
     }
     case 'todos':
       // A complete array every time (the server re-reads the file), so it replaces outright and
       // may seed a cache no one fetched yet — unlike `run`, this payload *is* the whole answer.
-      queryClient.setQueryData(queryKeys.todos, event.items)
+      queryClient.setQueryData(projectQueryKeys.todos(project), event.items)
       return
     case 'usage':
       usage.set(event.usage)
@@ -552,10 +546,10 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
       pendingProviderRows = []
       // The payload has no version. The reconnect's REST response is authoritative; refetch once
       // more instead of allowing an older queued snapshot to overwrite it.
-      const active = activeProject(queryClient)
+      const active = activeProject()
       for (const project of todosQueued) {
         if (project === active) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.todos })
+          void queryClient.invalidateQueries({ queryKey: projectQueryKeys.todos(project) })
         } else {
           inactiveProjectRefresher.onEvent(project)
         }
@@ -621,7 +615,7 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
           // Another project's news never patches the active scope. Its own cache is marked stale
           // in a debounced batch so a later project switch refetches truth without cross-project
           // bleed. `ping` (project null) always passes — liveness is not project-owned.
-          if (parsed.project !== null && parsed.project !== activeProject(queryClient)) {
+          if (parsed.project !== null && parsed.project !== activeProject()) {
             inactiveProjectRefresher.onEvent(parsed.project)
             return
           }
@@ -629,8 +623,8 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
             if (parsed.project !== null) runEventBatcher.onEvent(parsed.event, parsed.project)
           } else if (parsed.event.type === 'todos' && reconciliationDepth > 0) {
             if (parsed.project !== null) pendingTodos.add(parsed.project)
-          } else {
-            applyGlobalEvent(queryClient, usage, parsed.event)
+          } else if (parsed.project !== null) {
+            applyGlobalEvent(queryClient, usage, parsed.project, parsed.event)
           }
         })
       }

@@ -96,12 +96,12 @@ import {
   retryProviderAuth,
   searchTrackerItems,
 } from './client'
-import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { requireProjectScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
-import { githubRepoBase } from '@/lib/tasks-table'
 import { normalizeTagsForDisplay } from '@/lib/project-tags'
 import type { ContinueOptions } from './client'
+import type { GlobalTaskFilters } from '@/lib/global-tasks'
 import type {
   CheckoutProjectInput,
   CreateProjectInput,
@@ -131,158 +131,161 @@ import type {
 import { subscribeTopic } from './ws'
 
 /**
- * Query keys, in one place and exported, because they are a contract rather than an
- * implementation detail: Step 3.2's stream handlers invalidate and reconcile *these* keys when
- * an event says the data behind them moved. A key spelled inline at a call site is a key
- * nothing can invalidate.
+ * Project query keys, in one place and exported, because they are a contract rather than an
+ * implementation detail: the stream handlers invalidate and reconcile *these* keys when an event
+ * says the data behind them moved. A key spelled inline at a call site is a key nothing can
+ * invalidate.
  *
- * Hierarchical on purpose — `queryKeys.runs.all` invalidates the list and every single-run
- * query under it in one call.
+ * Every project key leads with [project, projectId, ...] — an EXPLICIT project id, never a
+ * 'default' sentinel or a health-derived boot alias. The queryKeys object below is the
+ * "active project" convenience: it reads the mounted scope via requireProjectScope() (and
+ * throws outside a project route), so a project view can keep spelling queryKeys.runs.list()
+ * while the explicit projectQueryKeys spell the same key for surfaces that name a project
+ * (the global Tasks page, the sidebar's cross-project rows).
  *
- * Every key leads with the ACTIVE project scope (multi-project spec, step 3.1): the registered
- * project id, or the stable `'default'` sentinel when unscoped — read at access time via
- * `queryScope()`, which is why the constant keys are getters. One cache, never bleeding across
- * projects: project A's `['a','runs','list']` and project B's `['b','runs','list']` are simply
- * different entries, and a scoped invalidation (`queryKeys.runs.all` under scope A) can only
- * ever reach A's data. Call sites are unchanged — they keep writing `queryKeys.runs.list()`.
+ * Workspace keys (one registry, one health, one host — no project owns them) live in
+ * workspaceQueryKeys and lead with ['workspace', ...].
  */
-export const queryKeys = {
+export const projectQueryKeys = {
   secrets: {
-    allFor: (projectId: string) => ['secrets', projectId] as const,
-    list: () => ['secrets', queryScope()] as const,
+    allFor: (projectId: string) => ['project', projectId, 'secrets'] as const,
   },
   e2e: {
-    allFor: (projectId: string) => ['e2e', projectId] as const,
-    status: () => ['e2e', queryScope()] as const,
+    allFor: (projectId: string) => ['project', projectId, 'e2e'] as const,
   },
   tracker: {
-    allFor: (projectId: string) => ['tracker', projectId] as const,
-    all: () => ['tracker', queryScope()] as const,
-    associationFor: (projectId: string) => ['tracker', projectId, 'association'] as const,
-    association: () => ['tracker', queryScope(), 'association'] as const,
-    candidates: (kind: TrackerKind, query = '') => ['tracker', queryScope(), 'candidates', kind, query] as const,
-    connection: () => ['tracker', queryScope(), 'connection'] as const,
+    allFor: (projectId: string) => ['project', projectId, 'tracker'] as const,
+    associationFor: (projectId: string) => ['project', projectId, 'tracker', 'association'] as const,
+  },
+  runs: {
+    all: (projectId: string) => ['project', projectId, 'runs'] as const,
+    list: (projectId: string) => ['project', projectId, 'runs', 'list'] as const,
+    run: (projectId: string, runId: string) => ['project', projectId, 'runs', 'detail', runId] as const,
+    diff: (projectId: string, runId: string) => ['project', projectId, 'runs', 'diff', runId] as const,
+    changes: (projectId: string, runId: string) => ['project', projectId, 'runs', 'changes', runId] as const,
+  },
+  todos: (projectId: string) => ['project', projectId, 'todos'] as const,
+  worktrees: (projectId: string) => ['project', projectId, 'worktrees'] as const,
+}
+export const queryKeys = {
+  secrets: {
+    allFor: projectQueryKeys.secrets.allFor,
+    list: () => projectQueryKeys.secrets.allFor(requireProjectScope()),
+  },
+  e2e: {
+    allFor: projectQueryKeys.e2e.allFor,
+    status: () => projectQueryKeys.e2e.allFor(requireProjectScope()),
+  },
+  tracker: {
+    allFor: projectQueryKeys.tracker.allFor,
+    all: () => projectQueryKeys.tracker.allFor(requireProjectScope()),
+    associationFor: projectQueryKeys.tracker.associationFor,
+    association: () => projectQueryKeys.tracker.associationFor(requireProjectScope()),
+    candidates: (kind: TrackerKind, query = '') => ['project', requireProjectScope(), 'tracker', 'candidates', kind, query] as const,
+    connection: () => ['project', requireProjectScope(), 'tracker', 'connection'] as const,
     items: (
       association: TrackerAssociation,
       params: { state: 'active' | 'all'; labels: readonly string[]; query?: string; itemType?: 'story' | 'bug'; iterationId?: string },
     ) => [
-      'tracker', queryScope(), 'items', association.kind, association.source.id,
+      'project', requireProjectScope(), 'tracker', 'items', association.kind, association.source.id,
       association.source.webUrl, association.externalId, association.connectionId ?? null, params.itemType ?? null, params.iterationId ?? null, params.state, [...params.labels], params.query ?? '',
     ] as const,
     iterations: (association: TrackerAssociation) => [
-      'tracker', queryScope(), 'iterations', association.kind, association.source.id,
+      'project', requireProjectScope(), 'tracker', 'iterations', association.kind, association.source.id,
       association.source.webUrl, association.externalId, association.connectionId ?? null,
     ] as const,
     detail: (association: TrackerAssociation, id: string) => [
-      'tracker', queryScope(), 'detail', association.kind, association.source.id,
+      'project', requireProjectScope(), 'tracker', 'detail', association.kind, association.source.id,
       association.source.webUrl, association.externalId, association.connectionId ?? null, id,
     ] as const,
   },
   get health() {
-    return [queryScope(), 'health'] as const
+    return workspaceQueryKeys.health
   },
   runs: {
     get all() {
-      return [queryScope(), 'runs'] as const
+      return ['project', requireProjectScope(), 'runs'] as const
     },
-    list: () => [queryScope(), 'runs', 'list'] as const,
-    detail: (id: string) => [queryScope(), 'runs', 'detail', id] as const,
-    diff: (id: string) => [queryScope(), 'runs', 'diff', id] as const,
-    changes: (id: string) => [queryScope(), 'runs', 'changes', id] as const,
-    gitStatus: (id: string) => [queryScope(), 'runs', 'git-status', id] as const,
-    file: (id: string, path: string) => [queryScope(), 'runs', 'files', id, path] as const,
-    handoff: (id: string) => [queryScope(), 'runs', 'handoff', id] as const,
-    /** Unsent drafts for one task (#939). Read once per visit and never refetched in the
-     *  background — see `useRunDrafts`. */
-    drafts: (id: string) => [queryScope(), 'runs', 'drafts', id] as const,
-    commits: (id: string) => [queryScope(), 'runs', 'commits', id] as const,
-    commit: (id: string, sha: string) => [queryScope(), 'runs', 'commit', id, sha] as const,
+    list: () => ['project', requireProjectScope(), 'runs', 'list'] as const,
+    detail: (id: string) => ['project', requireProjectScope(), 'runs', 'detail', id] as const,
+    diff: (id: string) => ['project', requireProjectScope(), 'runs', 'diff', id] as const,
+    changes: (id: string) => ['project', requireProjectScope(), 'runs', 'changes', id] as const,
+    gitStatus: (id: string) => ['project', requireProjectScope(), 'runs', 'git-status', id] as const,
+    file: (id: string, path: string) => ['project', requireProjectScope(), 'runs', 'files', id, path] as const,
+    handoff: (id: string) => ['project', requireProjectScope(), 'runs', 'handoff', id] as const,
+    drafts: (id: string) => ['project', requireProjectScope(), 'runs', 'drafts', id] as const,
+    commits: (id: string) => ['project', requireProjectScope(), 'runs', 'commits', id] as const,
+    commit: (id: string, sha: string) => ['project', requireProjectScope(), 'runs', 'commit', id, sha] as const,
   },
   groups: {
-    detail: (groupId: string) => [queryScope(), 'groups', groupId] as const,
+    detail: (groupId: string) => ['project', requireProjectScope(), 'groups', groupId] as const,
   },
   get todos() {
-    return [queryScope(), 'todos'] as const
+    return ['project', requireProjectScope(), 'todos'] as const
   },
   get workflows() {
-    return [queryScope(), 'workflows'] as const
+    return ['project', requireProjectScope(), 'workflows'] as const
   },
   get workflowNodes() {
-    return [queryScope(), 'workflow-nodes'] as const
+    return ['project', requireProjectScope(), 'workflow-nodes'] as const
   },
   get skills() {
-    return [queryScope(), 'skills'] as const
+    return ['project', requireProjectScope(), 'skills'] as const
   },
   get skillsReady() {
-    return [queryScope(), 'skills', 'ready'] as const
+    return ['project', requireProjectScope(), 'skills', 'ready'] as const
   },
-  /** Children of `skills`: the "Import skills" panel's opt-in catalog. Sharing the `skills`
-   *  prefix means a refresh that invalidates the catalog re-reads the importable list too. */
   get importableSkills() {
-    return [queryScope(), 'skills', 'importable'] as const
+    return ['project', requireProjectScope(), 'skills', 'importable'] as const
   },
   get importableSkillsReady() {
-    return [queryScope(), 'skills', 'importable', 'ready'] as const
+    return ['project', requireProjectScope(), 'skills', 'importable', 'ready'] as const
   },
   get launchKey() {
-    return [queryScope(), 'launch-key'] as const
+    return ['project', requireProjectScope(), 'launch-key'] as const
   },
   get repo() {
-    return [queryScope(), 'repo'] as const
+    return ['project', requireProjectScope(), 'repo'] as const
   },
-  /** Children of `repo` on purpose: invalidating `queryKeys.repo` (a branch switch, a new
-   *  commit) prefix-matches the working-tree diff and every cached commit diff too. */
   get repoChanges() {
-    return [queryScope(), 'repo', 'changes'] as const
+    return ['project', requireProjectScope(), 'repo', 'changes'] as const
   },
-  repoCommit: (sha: string) => [queryScope(), 'repo', 'commit', sha] as const,
-  /** The Files sub-tab's path index (#1279) — also under `repo`, so a branch switch invalidates
-   *  the tree along with the diff. */
+  repoCommit: (sha: string) => ['project', requireProjectScope(), 'repo', 'commit', sha] as const,
   get repoTree() {
-    return [queryScope(), 'repo', 'tree'] as const
+    return ['project', requireProjectScope(), 'repo', 'tree'] as const
   },
-  repoFile: (path: string) => [queryScope(), 'repo', 'file', path] as const,
+  repoFile: (path: string) => ['project', requireProjectScope(), 'repo', 'file', path] as const,
   get uiState() {
-    return [queryScope(), 'ui-state'] as const
+    return ['project', requireProjectScope(), 'ui-state'] as const
   },
-  /** The Settings → Agents knobs (`GET /api/config`, R6 1.5). */
   get config() {
-    return [queryScope(), 'config'] as const
+    return ['project', requireProjectScope(), 'config'] as const
   },
   get agentConfig() {
-    return [queryScope(), 'agent-config'] as const
+    return ['project', requireProjectScope(), 'agent-config'] as const
   },
-  agentConfigFile: (id: string) => [queryScope(), 'agent-config', 'file', id] as const,
-  /** The worktree management panel (`GET /api/worktrees`, #483). */
+  agentConfigFile: (id: string) => ['project', requireProjectScope(), 'agent-config', 'file', id] as const,
   get worktrees() {
-    return [queryScope(), 'worktrees'] as const
+    return ['project', requireProjectScope(), 'worktrees'] as const
   },
-  github: (params: { limit?: number } = {}) => [queryScope(), 'github', params.limit ?? null] as const,
-  githubPages: (limit = 50) => [queryScope(), 'github', 'pages', limit] as const,
-  /** Lazy PR checks glyphs (`GET /api/github/checks`, #664), keyed by the sorted PR numbers so the
-   *  same visible window de-dupes to one cache entry. */
+  github: (params: { limit?: number } = {}) => ['project', requireProjectScope(), 'github', params.limit ?? null] as const,
+  githubPages: (limit = 50) => ['project', requireProjectScope(), 'github', 'pages', limit] as const,
   githubChecks: (prNumbers: readonly number[]) =>
-    [queryScope(), 'github', 'checks', [...prNumbers].sort((a, b) => a - b).join(',')] as const,
-  /** Cross-state search (`GET /api/github/search`, #730), keyed by kind + the exact query so each
-   *  distinct search caches on its own and re-typing a previous query is instant. */
+    ['project', requireProjectScope(), 'github', 'checks', [...prNumbers].sort((a, b) => a - b).join(',')] as const,
   githubSearch: (kind: 'issue' | 'pr', query: string) =>
-    [queryScope(), 'github', 'search', kind, query] as const,
-  /** Batched PR/issue chip status. Led by the EXPLICIT project rather than `queryScope()` —
-   *  the global Tasks page asks about several projects at once, and two of them may each have a
-   *  PR #42. Keyed by the sorted numbers, so the same window de-dupes to one cache entry. */
+    ['project', requireProjectScope(), 'github', 'search', kind, query] as const,
   githubRefStatus: (projectId: string, prNumbers: readonly number[], issueNumbers: readonly number[]) =>
     [
-      projectId,
-      'github',
-      'ref-status',
+      'project', projectId,
+      'github', 'ref-status',
       [...prNumbers].sort((a, b) => a - b).join(','),
       [...issueNumbers].sort((a, b) => a - b).join(','),
     ] as const,
   githubComments: (kind: 'issue' | 'pr', number: number) =>
-    [queryScope(), 'github', 'comments', kind, number] as const,
-  githubMergeState: (number: number) => [queryScope(), 'github', 'merge-state', number] as const,
+    ['project', requireProjectScope(), 'github', 'comments', kind, number] as const,
+  githubMergeState: (number: number) => ['project', requireProjectScope(), 'github', 'merge-state', number] as const,
   get openTargets() {
-    return [queryScope(), 'open-targets'] as const
+    return ['project', requireProjectScope(), 'open-targets'] as const
   },
 }
 
@@ -346,7 +349,7 @@ export function useTrackerItems(
   const queryClient = useQueryClient()
   const queryKey = association
     ? queryKeys.tracker.items(association, { ...params, query })
-    : ['tracker', queryScope(), 'items', 'unassociated']
+    : ['project', requireProjectScope(), 'tracker', 'items', 'unassociated']
   const result = useInfiniteQuery({
     queryKey,
     // Watch owns automatic updates and preserves loaded pages until Show changes.
@@ -396,7 +399,7 @@ export function useTrackerItem(association: TrackerAssociation | null | undefine
     staleTime: TRACKER_STALE_TIME,
     queryKey: association && id
       ? queryKeys.tracker.detail(association, id)
-      : ['tracker', queryScope(), 'detail', 'disabled'],
+      : ['project', requireProjectScope(), 'tracker', 'detail', 'disabled'],
     queryFn: ({ signal }) => getTrackerItem(id as string, { signal, association: association ?? undefined }),
     enabled: association != null && id != null && id !== '',
   })
@@ -413,6 +416,10 @@ export const workspaceQueryKeys = {
   models: (runner: string) => ['workspace', 'models', runner] as const,
   providerStatus: ['workspace', 'providers', 'status'] as const,
   projects: ['workspace', 'projects'] as const,
+  /** Version, repo/branch and tool probes — workspace-level, no project owns the machine's boot. */
+  health: ['workspace', 'health'] as const,
+  /** The cross-project task index — keyed by filters so a change of filter is a different cache. */
+  tasks: (filters: GlobalTaskFilters) => ['workspace', 'tasks', filters] as const,
   /** `GET /api/projects/github-owners` — the new-project dialog's owner picker. */
   githubOwners: ['workspace', 'github-owners'] as const,
   /** The cross-project task index behind ⌘K. Workspace-led for the same reason the registry is:
@@ -903,8 +910,8 @@ export function useGithubOwners() {
  * WebSocket cannot carry proxy credentials explicitly. The `useHealth` readers below just read
  * the cache either transport fills.
  *
- * The cache key is read inside the callback (`queryKeys.health` is a scope-aware getter), so a
- * project switch routes each pushed snapshot to the active scope's cache without re-subscribing.
+ * The cache key is `workspaceQueryKeys.health` — one entry for the whole workspace, not one per
+ * project — so a pushed snapshot always lands in the single cache the readers share.
  */
 export function useHealthSubscription(): void {
   const queryClient = useQueryClient()
@@ -957,29 +964,16 @@ export function useHealth() {
  * undefined when it cannot be proven — the only authority `taskIssueUrl` may synthesize a link
  * against (#526).
  *
- * The boot-project guard is the load-bearing part. `/health` is WORKSPACE-level (project-scope.ts
- * `WORKSPACE_LEVEL`): the server always builds it from `bootRoot`, so its `repo.remote` names the
- * project cezar launched in, whichever project the URL is scoped to. Handing a non-boot project's
- * task a link built from the boot project's repo would point at a completely different repository
- * — the same wrong-link defect #526 exists to kill.
- *
- * The per-project remote that guard was waiting for already exists: the registry serves each
- * project's own `repoUrl` (rebuilt server-side from the parsed remote, credentials stripped), and
- * it is what All tasks builds every cross-project chip from. Reading it here is what stops the
- * SAME task from showing a linked chip on `/tasks` and inert text on its own page — which is how
- * this was found: a declared PR was a dead `#901` in the task view and a working link one screen
- * over. Health stays the fallback, and stays boot-only, so an unregistered boot folder (or a
- * registry that has not loaded yet) keeps answering exactly as before.
+ * The registry serves each project's own `repoUrl` (rebuilt server-side from the parsed remote,
+ * credentials stripped), and it is what All tasks builds every cross-project chip from. Reading
+ * it here is what stops the SAME task from showing a linked chip on `/tasks` and inert text on
+ * its own page. There is no boot project, so an unregistered project simply has no repo base.
  */
 export function useProjectRepoBase(): string | undefined {
-  const health = useHealth().data
   const projects = useProjects().data?.projects
-  const { projectId } = useProjectScope()
-  const scopedId = projectId ?? health?.bootProject
-  const registered = scopedId === undefined ? undefined : projects?.find((project) => project.id === scopedId)
-  if (registered?.repoUrl) return registered.repoUrl
-  const isBootProject = projectId === null || projectId === health?.bootProject
-  return isBootProject ? githubRepoBase(health?.repo?.remote) : undefined
+  const scope = useProjectScope()
+  if (scope.projectId === null) return undefined
+  return projects?.find((project) => project.id === scope.projectId)?.repoUrl
 }
 
 /** The local "Open in…" targets (#open-in). Machine-level and stable, so it caches broadly;
@@ -1038,29 +1032,21 @@ export function useRunsIndex(enabled = true, refetchIntervalMs?: number) {
 
 /**
  * One project's run list by EXPLICIT id — the sidebar's per-group task lists (step 3.3), which
- * must read projects the mounted scope cannot reach. Keyed `[projectId, 'runs', 'list']`: for
- * the ACTIVE project that is the very entry `useRuns()` fills and the stream patches, so the
+ * must read projects the mounted scope cannot reach. Keyed `['project', projectId, 'runs', 'list']`:
+ * for the ACTIVE project that is the very entry `useRuns()` fills and the stream patches, so the
  * two views share one cache; for any other project it is that project's own entry, kept fresh
  * by refetch-on-expand rather than by the stream (the stream filter applies only the active
  * scope's events). `enabled: false` parks the fetch — a COLLAPSED group costs one registry
  * row, never a runs request (spec, "40 registered projects" row) — while still reading any
  * cached answer, which is what lets a collapsed group keep its attention badge.
- *
- * `boot: true` aliases the key scope to `'default'`: the boot project mounts UNSCOPED
- * (routes.tsx keeps its legacy `/api/*` surface), so its main view and the SSE patcher both
- * live under the `'default'`-led keys — the boot group must read that SAME entry, or its list
- * and needs-you badge freeze at whatever the expand-time fetch answered. The fetch itself
- * still goes to `/api/p/<bootId>/runs`, which the server answers byte-identically (the
- * route-parity contract).
  */
 export function useProjectRuns<TData = ApiRun[]>(
   projectId: string,
   enabled = true,
-  boot = false,
   select?: (runs: ApiRun[]) => TData,
 ) {
   return useQuery({
-    queryKey: [boot ? 'default' : projectId, 'runs', 'list'] as const,
+    queryKey: projectQueryKeys.runs.list(projectId),
     queryFn: ({ signal }) => getProjectRuns(projectId, { signal }),
     enabled,
     select,
@@ -1068,19 +1054,19 @@ export function useProjectRuns<TData = ApiRun[]>(
 }
 
 /**
- * A run list for a project chosen OUTSIDE `ProjectScopeProvider` (the app shell and command
- * palette live above the routed provider). Do not use `useRuns()` there: its key is read during
- * the shell render, while its fetch runs after the route provider has written the module scope,
- * which can cache project B's response under project A's key.
+ * One run of a NAMED project — what a surface outside `/p/:projectId` has to use.
+ *
+ * `enabled` is the point as much as the project: the only caller is a panel that opens on hover
+ * (the conflict chip's "Resolve conflicts"), and a table must not fetch a record per row for
+ * panels nobody has opened. Keyed by the project, so the global page and that project's own page
+ * share one cache entry rather than two spellings of the same run.
  */
-export function useRunsForProject<TData = ApiRun[]>(
-  projectId: string | null,
-  bootProjectId: string | null | undefined,
-  select?: (runs: ApiRun[]) => TData,
-) {
-  const selected = projectId === 'default' ? null : projectId
-  const boot = selected === null || (bootProjectId != null && selected === bootProjectId)
-  return useProjectRuns(boot ? 'default' : selected ?? 'default', true, boot, select)
+export function useProjectRun(projectId: string | undefined, id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['project', projectId ?? '', 'runs', 'detail', id ?? ''] as const,
+    queryFn: ({ signal }) => getProjectRun(projectId as string, id as string, { signal }),
+    enabled: enabled && Boolean(projectId) && Boolean(id),
+  })
 }
 
 /**
@@ -1101,22 +1087,6 @@ export function useRun(id: string | undefined) {
   return useQuery({
     ...runQueryOptions(id ?? ''),
     enabled: Boolean(id),
-  })
-}
-
-/**
- * One run of a NAMED project — what a surface outside `/p/:projectId` has to use.
- *
- * `enabled` is the point as much as the project: the only caller is a panel that opens on hover
- * (the conflict chip's "Resolve conflicts"), and a table must not fetch a record per row for
- * panels nobody has opened. Keyed by the project, so the global page and that project's own page
- * share one cache entry rather than two spellings of the same run.
- */
-export function useProjectRun(projectId: string | undefined, id: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: [projectId ?? 'default', 'runs', 'detail', id ?? ''] as const,
-    queryFn: ({ signal }) => getProjectRun(projectId as string, id as string, { signal }),
-    enabled: enabled && Boolean(projectId) && Boolean(id),
   })
 }
 
@@ -1280,7 +1250,6 @@ export function useWorkflows(opts: { enabled?: boolean } = {}) {
 export function useSkills(enabled = true) {
   const queryClient = useQueryClient()
   const skillsKey = queryKeys.skills
-  const skillsScope = skillsKey[0]
   const skills = useQuery({
     queryKey: skillsKey,
     queryFn: ({ signal }) => getSkills({ signal }),
@@ -1297,8 +1266,8 @@ export function useSkills(enabled = true) {
   useEffect(() => {
     // Treat the follow-up as best-effort. The fast catalog remains authoritative
     // if an older server/proxy answers this additive request unexpectedly.
-    if (Array.isArray(ready.data)) queryClient.setQueryData([skillsScope, 'skills'], ready.data)
-  }, [queryClient, ready.data, skillsScope])
+    if (Array.isArray(ready.data)) queryClient.setQueryData(skillsKey, ready.data)
+  }, [queryClient, ready.data, skillsKey])
 
   return skills
 }
@@ -1309,7 +1278,6 @@ export function useSkills(enabled = true) {
 export function useImportableSkills(enabled = true) {
   const queryClient = useQueryClient()
   const importableKey = queryKeys.importableSkills
-  const scope = importableKey[0]
   const importable = useQuery({
     queryKey: importableKey,
     queryFn: ({ signal }) => getImportableSkills({ signal }),
@@ -1325,8 +1293,8 @@ export function useImportableSkills(enabled = true) {
 
   useEffect(() => {
     // Best-effort, like useSkills: seed the fast list from the converged one.
-    if (Array.isArray(ready.data)) queryClient.setQueryData([scope, 'skills', 'importable'], ready.data)
-  }, [queryClient, ready.data, scope])
+    if (Array.isArray(ready.data)) queryClient.setQueryData(importableKey, ready.data)
+  }, [queryClient, ready.data, importableKey])
 
   return importable
 }
@@ -1411,7 +1379,7 @@ export function useRepoCommit(sha: string | undefined) {
 
 /** The Settings → Agents knobs (R6 1.5): base branch, default runner, system prompt, per-runner
  *  model presets. Task-start surfaces read this project-scoped query for both runner and model
- *  defaults; `/api/health` is workspace-level and intentionally describes only the boot repo. */
+ *  defaults; `/api/health` is workspace-level and describes the machine, not a project. */
 export function useConfig() {
   return useQuery({
     queryKey: queryKeys.config,
@@ -1781,13 +1749,10 @@ function withoutReceipt(run: RunRecord): RunRecord {
  *
  * Both parameters exist for the multi-project sidebar, which paints a quick-list per REGISTERED
  * project and therefore acts on rows outside the scope the URL names:
- *  - `projectId` sends the request to the run's OWN project (`queryScope()` would name whichever
+ *  - `projectId` sends the request to the run's OWN project (the active scope would name whichever
  *    project the page is standing in, which 404s — or, with a colliding run id, pins the wrong
  *    task). Absent is the ordinary case: the caller is already inside the run's project.
- *  - `cacheScope` is the key that project's run list is cached under. It is NOT always the
- *    project id: `useProjectRuns` caches the boot project under `'default'`, because that is the
- *    scope it mounts unscoped under, and invalidating `[<bootId>, 'runs']` would leave the
- *    sidebar's boot group showing the pre-pin order.
+ *  - `cacheScope` is the key that project's run list is cached under — the explicit project id.
  */
 export function usePinRun(projectId?: string, cacheScope?: string) {
   const queryClient = useQueryClient()
@@ -1813,7 +1778,7 @@ export function useSendMessage(id: string, projectId?: string) {
   const queryClient = useQueryClient()
   return useMutation({
     // `projectId` only where the caller stands OUTSIDE the run's project — the global Tasks page,
-    // whose rows span the registry and where `queryScope()` would name the boot project. Absent
+    // whose rows span the registry and where the active scope would name a single project. Absent
     // is the ordinary case and keeps the scoped-by-context spelling.
     mutationFn: (message: MessageInput) =>
       projectId === undefined ? sendMessage(id, message) : sendProjectRunMessage(projectId, id, message),
@@ -2140,19 +2105,13 @@ function scheduleRememberedSave(): void {
 /**
  * The project a surface's references belong to, named the way the REST of the cockpit names it.
  *
- * `useProjectScope()` answers `null` when unscoped, and the obvious fallback — the `'default'`
- * alias every project-scoped route accepts — is a trap HERE specifically. The global Tasks page
- * keys each chip by its run's real `projectId`, because its rows span the registry. A surface
- * keying the same pull request as `default` remembers it under a second name: the two never see
- * each other's answer, they fetch it twice, and a status updated on one stays stale on the other.
- *
- * Health knows which project `default` actually is. Undefined until it answers, which leaves
- * chips neutral for that moment rather than writing an entry under a name nothing else uses.
+ * The mounted project scope, or undefined outside a project route. The global Tasks page keys
+ * each chip by its run's real `projectId` (its rows span the registry), so a project-scoped
+ * surface must name the same id — one name per reference, never a second spelling.
  */
 export function useReferenceProjectId(): string | undefined {
   const scope = useProjectScope()
-  const health = useHealth()
-  return scope.projectId ?? health.data?.bootProject
+  return scope.projectId ?? undefined
 }
 
 /**

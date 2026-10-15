@@ -2,9 +2,9 @@
  * Where a request goes: which API version, and which project's copy of it.
  *
  * Callers name a ROUTE (`/runs/123/diff`), never a URL. This module turns that into the real
- * path — `/api/v1/runs/123/diff`, or `/api/v1/p/<id>/runs/123/diff` when a project scope is
- * active — which is what makes the version a single fact in the codebase rather than a prefix
- * spelled at sixty call sites. A `v2` is one edit here.
+ * path — `/api/v1/runs/123/diff` for a workspace route, or `/api/v1/p/<id>/runs/123/diff` when a
+ * project scope is active — which is what makes the version a single fact in the codebase rather
+ * than a prefix spelled at sixty call sites. A `v2` is one edit here.
  *
  * The scope itself is module-level rather than context-threaded on purpose: the API client
  * (client.ts) is a module of plain functions and its private `send()` is the single choke point
@@ -12,6 +12,10 @@
  * every exported call into a hook. Instead the ProjectScopeProvider (project-scope-context.tsx)
  * writes the scope here as it mounts/changes, and the client reads it per request. One provider
  * per app (it wraps the routed tree), so there is exactly one writer.
+ *
+ * There is NO boot project and NO `'default'` sentinel. When nothing has written a scope, the
+ * active scope is simply `null` — and a project call that cannot name a project throws before it
+ * fetches (see {@link requireProjectScope}), rather than silently targeting a made-up default.
  */
 
 /**
@@ -55,26 +59,33 @@ export function setApiScope(projectId: string | null): void {
   activeProjectId = projectId === '' ? null : projectId
 }
 
+/** The active project id, or null when the app is in the global workspace (no project). */
 export function getApiScope(): string | null {
   return activeProjectId
 }
 
-/** The scoped API base — what the context carries and what deep links embed. */
-export function apiBase(): string {
-  const scoped =
-    activeProjectId === null ? '' : `/p/${encodeURIComponent(activeProjectId)}`
-  return `${baseUrl}${API_PREFIX}${scoped}`
+/**
+ * The active project id for project cache keys and project requests. Throws when there is no
+ * active project — a project call that cannot name a project must fail before fetching, not
+ * target a `'default'` sentinel or a made-up boot project.
+ */
+export function queryScope(): string {
+  if (activeProjectId === null) throw new Error('projectId is required')
+  return activeProjectId
+}
+
+/** The active project id for a PROJECT request — the named spelling of {@link queryScope}. */
+export function requireProjectScope(): string {
+  return queryScope()
 }
 
 /**
- * The leading TanStack Query key segment (queries.ts prepends this to every key so caches never
- * bleed across projects). `'default'` when unscoped — a stable sentinel, and also the server's
- * reserved alias for the boot project, so the segment always *names* the project the data
- * belongs to. A registered project id can never collide with it: `'default'` is a reserved slug
- * server-side.
+ * The scoped API base for an explicit project id — `/api/v1/p/<id>` (plus the configured base
+ * when one is set). Throws on an empty id: there is no boot project to fall back to.
  */
-export function queryScope(): string {
-  return activeProjectId ?? 'default'
+export function projectApiBase(projectId: string): string {
+  if (projectId === '') throw new Error('projectId is required')
+  return `${baseUrl}${API_PREFIX}/p/${encodeURIComponent(projectId)}`
 }
 
 /**

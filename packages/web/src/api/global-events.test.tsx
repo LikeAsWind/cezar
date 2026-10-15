@@ -11,7 +11,7 @@ import { createUsageStore, type UsageStore } from './events'
 import { GlobalEventsProvider, useGlobalEvents, useRunUsage, useUsage } from './global-events'
 import { setApiScope } from '@open-mercato/cezar-api-client'
 import { createQueryClient } from './query-client'
-import { queryKeys, useProviderStatus, useRuns, useTodos, workspaceQueryKeys } from './queries'
+import { projectQueryKeys, queryKeys, useProviderStatus, useRuns, useTodos, workspaceQueryKeys } from './queries'
 import { RUN_EVENT_BATCH_MS } from './run-events'
 import type { ApiRun, ProviderStatusResponse, RunRecord } from '@open-mercato/cezar-api-client'
 
@@ -174,9 +174,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn())
   client = createQueryClient()
   usage = createUsageStore()
-  // What the app's first health fetch establishes: which project this unscoped cockpit IS.
-  // Without it every stamped frame is dropped (see the scoping describe below).
-  client.setQueryData(queryKeys.health, { bootProject: BOOT })
+  // A project is mounted (the boot project under the new explicit-id model). Stamped events
+  // for it apply; events for other projects are marked stale, and an unscoped mount drops all.
+  setApiScope(BOOT)
   setVisibility('visible')
 })
 
@@ -328,6 +328,21 @@ describe('useGlobalEvents — run events', () => {
     ])
     // The whole point: a live run emits constantly, and none of it may become HTTP traffic.
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('updates alpha without writing beta or a default cache', async () => {
+    setApiScope('alpha')
+    client.setQueryData<ApiRun[]>(projectQueryKeys.runs.list('alpha'), [])
+    const { source } = mount()
+
+    source.emit('run', stampedRun(runRecord('r1', { status: 'queued' }), 'alpha'))
+    await flushRunEvents()
+
+    expect(client.getQueryData<ApiRun[]>(projectQueryKeys.runs.list('alpha'))).toContainEqual(
+      expect.objectContaining({ id: 'r1' }),
+    )
+    expect(client.getQueryData(projectQueryKeys.runs.list('beta'))).toBeUndefined()
+    expect(client.getQueryData(['default', 'runs', 'list'])).toBeUndefined()
   })
 
   it('updates in place on a second event for the same run — no duplicate row', async () => {
@@ -856,14 +871,14 @@ describe('useGlobalEvents — project scoping (multi-project spec, step 3.1)', (
     expect(client.getQueryData<ApiRun[]>(projectAKey)).toEqual([])
     expect(client.getQueryData<ApiRun[]>(projectBKey)).toEqual([])
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ['project-a', 'runs'],
+      queryKey: ['project', 'project-a', 'runs'],
       refetchType: 'none',
     })
   })
 
   it('marks an inactive project cache stale without applying its event to the active scope', async () => {
     setApiScope('project-b')
-    const projectAKey = ['project-a', 'runs', 'list'] as const
+    const projectAKey = ['project', 'project-a', 'runs', 'list'] as const
     client.setQueryData<ApiRun[]>(projectAKey, [runRecord('r1')])
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const { source } = mount()
@@ -873,9 +888,9 @@ describe('useGlobalEvents — project scoping (multi-project spec, step 3.1)', (
       await new Promise<void>((resolve) => setTimeout(resolve, 450))
     })
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-a', 'runs'], refetchType: 'none' })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-a', 'todos'], refetchType: 'none' })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-a', 'worktrees'], refetchType: 'none' })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'project-a', 'runs'], refetchType: 'none' })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'project-a', 'todos'], refetchType: 'none' })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'project-a', 'worktrees'], refetchType: 'none' })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['run-history', 'project-a'], refetchType: 'none' })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['run-history-context', 'project-a'], refetchType: 'none' })
     expect(client.getQueryData<ApiRun[]>(projectAKey)?.[0]?.status).toBe('running')
@@ -885,7 +900,7 @@ describe('useGlobalEvents — project scoping (multi-project spec, step 3.1)', (
   it('refetches an inactive cache if that project becomes active before the debounce flushes', async () => {
     vi.useFakeTimers()
     setApiScope('project-b')
-    client.setQueryData<ApiRun[]>(['project-a', 'runs', 'list'], [runRecord('r1')])
+    client.setQueryData<ApiRun[]>(['project', 'project-a', 'runs', 'list'], [runRecord('r1')])
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const { source } = mount()
 
@@ -896,7 +911,7 @@ describe('useGlobalEvents — project scoping (multi-project spec, step 3.1)', (
     })
 
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ['project-a', 'runs'],
+      queryKey: ['project', 'project-a', 'runs'],
       refetchType: 'active',
     })
   })
@@ -928,22 +943,22 @@ describe('useGlobalEvents — reconcile doctrine', () => {
     source.open()
 
     expect(invalidatedKeys(invalidate)).toEqual(expect.arrayContaining([
-      queryKeys.runs.all, // covers the list and every detail under it
+      ['project', BOOT, 'runs'], // covers the list and every detail under it
       // The cross-project index behind the global Tasks page. Nothing else here covers it: the
       // scoped caches hold one project, and this spans the workspace.
       workspaceQueryKeys.runsIndex,
-      queryKeys.todos,
-      queryKeys.health, // the repo/branch chip — health is not on the stream (#369)
-      queryKeys.worktrees, // the Resources panel's list/total (#483)
+      ['project', BOOT, 'todos'],
+      workspaceQueryKeys.health, // the repo/branch chip — health is not on the stream (#369)
+      ['project', BOOT, 'worktrees'], // the Resources panel's list/total (#483)
       workspaceQueryKeys.providerStatus,
-      ['run-history', 'default'],
-      ['run-history-context', 'default'],
+      ['run-history', BOOT],
+      ['run-history-context', BOOT],
     ]))
   })
 
   it('marks cached inactive project and transcript queries stale on reconnect', async () => {
     setApiScope('project-b')
-    const projectAListKey = ['project-a', 'runs', 'list'] as const
+    const projectAListKey = ['project', 'project-a', 'runs', 'list'] as const
     const projectAHistoryKey = ['run-history', 'project-a', 'run-1'] as const
     client.setQueryData(projectAListKey, [])
     client.setQueryData(projectAHistoryKey, { pages: [], pageParams: [] })
@@ -1055,15 +1070,15 @@ describe('useGlobalEvents — reconcile doctrine', () => {
     // been dead for an hour. What is on screen is about to be read as true.
     setVisibility('visible')
     expect(invalidatedKeys(invalidate)).toEqual(expect.arrayContaining([
-      queryKeys.runs.all,
+      ['project', BOOT, 'runs'],
       // The cross-project index behind the global Tasks page — nothing else here covers it.
       workspaceQueryKeys.runsIndex,
-      queryKeys.todos,
-      queryKeys.health,
-      queryKeys.worktrees,
+      ['project', BOOT, 'todos'],
+      workspaceQueryKeys.health,
+      ['project', BOOT, 'worktrees'],
       workspaceQueryKeys.providerStatus,
-      ['run-history', 'default'],
-      ['run-history-context', 'default'],
+      ['run-history', BOOT],
+      ['run-history-context', BOOT],
     ]))
   })
 

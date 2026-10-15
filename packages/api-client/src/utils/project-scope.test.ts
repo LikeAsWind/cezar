@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   API_PREFIX,
-  apiBase,
   apiPath,
   getApiBaseUrl,
   getApiScope,
+  projectApiBase,
   queryScope,
+  requireProjectScope,
   resolveApiUrl,
   setApiBaseUrl,
   setApiScope,
@@ -31,17 +32,17 @@ describe('apiPath — unscoped', () => {
     expect(apiPath(route)).toBe(expected)
   })
 
-  it('reports the unscoped state', () => {
+  it('reports the unscoped state as null — queryScope throws, never returns a default', () => {
     expect(getApiScope()).toBeNull()
-    expect(apiBase()).toBe('/api/v1')
-    expect(queryScope()).toBe('default')
+    expect(() => queryScope()).toThrow('projectId is required')
+    expect(apiPath('/runs')).toBe('/api/v1/runs')
   })
 
   it('keeps the version in exactly one place', () => {
     // The point of the constant: a v2 is one edit here, not sixty at the call sites.
     expect(API_PREFIX).toBe('/api/v1')
     expect(apiPath('/runs').startsWith(API_PREFIX)).toBe(true)
-    expect(apiBase().startsWith(API_PREFIX)).toBe(true)
+    expect(projectApiBase('cezar').startsWith(API_PREFIX)).toBe(true)
   })
 })
 
@@ -53,7 +54,6 @@ describe('apiPath — scoped', () => {
       '/api/v1/p/cezar/runs/run-1/files?path=x.png&raw=1',
     )
     expect(apiPath('/runs/run-1/events')).toBe('/api/v1/p/cezar/runs/run-1/events')
-    expect(apiBase()).toBe('/api/v1/p/cezar')
     expect(queryScope()).toBe('cezar')
   })
 
@@ -61,7 +61,7 @@ describe('apiPath — scoped', () => {
     // Registered slugs are tame, but the id rides into a URL — encode like every path segment.
     setApiScope('a b/c')
     expect(apiPath('/runs')).toBe('/api/v1/p/a%20b%2Fc/runs')
-    expect(apiBase()).toBe('/api/v1/p/a%20b%2Fc')
+    expect(projectApiBase('a b/c')).toBe('/api/v1/p/a%20b%2Fc')
   })
 
   it('leaves workspace-level routes unscoped — they are single-mount, scoping would 404', () => {
@@ -70,14 +70,8 @@ describe('apiPath — scoped', () => {
     expect(apiPath('/models?runner=codex')).toBe('/api/v1/models?runner=codex')
     expect(apiPath('/projects')).toBe('/api/v1/projects')
     expect(apiPath('/workspace/events')).toBe('/api/v1/workspace/events')
-    expect(apiPath('/workspace/config')).toBe('/api/v1/workspace/config')
-    expect(apiPath('/workspace/ui-state')).toBe('/api/v1/workspace/ui-state')
     expect(apiPath('/providers/status')).toBe('/api/v1/providers/status')
-    expect(apiPath('/providers/status?refresh=1')).toBe('/api/v1/providers/status?refresh=1')
-    expect(apiPath('/providers/connect')).toBe('/api/v1/providers/connect')
-    // The folder picker (step 4.2): one filesystem behind the workspace, not one per project.
     expect(apiPath('/fs/browse')).toBe('/api/v1/fs/browse')
-    expect(apiPath('/fs/browse?path=%2Fhome%2Fme')).toBe('/api/v1/fs/browse?path=%2Fhome%2Fme')
   })
 
   it('does not treat a lookalike route as workspace-level', () => {
@@ -86,17 +80,37 @@ describe('apiPath — scoped', () => {
     expect(apiPath('/healthcheck')).toBe('/api/v1/p/cezar/healthcheck')
   })
 
-  it('versions whatever route it is given — callers pass routes, never URLs', () => {
-    // The contract is one-way on purpose: a URL that came FROM the server goes through
-    // `resolveApiUrl`, which is the only function that inspects an existing prefix.
-    setApiScope('cezar')
-    expect(apiPath('/new')).toBe('/api/v1/p/cezar/new')
-  })
-
   it('treats the empty string as unscoped — there is no project ""', () => {
     setApiScope('')
     expect(getApiScope()).toBeNull()
     expect(apiPath('/runs')).toBe('/api/v1/runs')
+  })
+})
+
+describe('projectApiBase', () => {
+  it('builds the scoped base for a named project', () => {
+    expect(projectApiBase('alpha')).toBe('/api/v1/p/alpha')
+    expect(projectApiBase('cezar')).toBe('/api/v1/p/cezar')
+  })
+
+  it('throws on an empty id — there is no boot project to fall back to', () => {
+    expect(() => projectApiBase('')).toThrow('projectId is required')
+  })
+
+  it('composes with a configured service base', () => {
+    setApiBaseUrl('https://cezar.example.com')
+    expect(projectApiBase('cezar')).toBe('https://cezar.example.com/api/v1/p/cezar')
+  })
+})
+
+describe('requireProjectScope', () => {
+  it('returns the active project when one is mounted', () => {
+    setApiScope('cezar')
+    expect(requireProjectScope()).toBe('cezar')
+  })
+
+  it('throws when no project is active — a project call must fail before fetching', () => {
+    expect(() => requireProjectScope()).toThrow('projectId is required')
   })
 })
 
@@ -176,14 +190,14 @@ describe('setApiBaseUrl — the service on another origin', () => {
   it('prefixes every route once the base is set', () => {
     setApiBaseUrl('https://cezar.example.com')
     expect(apiPath('/runs')).toBe('https://cezar.example.com/api/v1/runs')
-    expect(apiBase()).toBe('https://cezar.example.com/api/v1')
+    expect(projectApiBase('cezar')).toBe('https://cezar.example.com/api/v1/p/cezar')
   })
 
   it('composes with the project scope', () => {
     setApiBaseUrl('https://cezar.example.com')
     setApiScope('cezar')
     expect(apiPath('/runs')).toBe('https://cezar.example.com/api/v1/p/cezar/runs')
-    expect(apiBase()).toBe('https://cezar.example.com/api/v1/p/cezar')
+    expect(projectApiBase('cezar')).toBe('https://cezar.example.com/api/v1/p/cezar')
   })
 
   it('tolerates a trailing slash — it would otherwise double against the route', () => {

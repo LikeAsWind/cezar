@@ -10,10 +10,9 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 
-import { Link, useNavigate } from '@/lib/project-router'
+import { Link, useActiveProjectId, useNavigate } from '@/lib/project-router'
 
 import { createRun, getLaunchKey, putConfig, putUiState } from '@/api/client'
-import { useProjectScope } from '@/api/project-scope-context'
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import {
   queryKeys,
@@ -111,16 +110,12 @@ export function NewTaskRoute() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // The composer's project (multi-project spec, step 3.4). TWO ids, deliberately:
-  //  - `urlProjectId` is what the URL names — always a real project, boot included. It is the
-  //    pill's selected value and what a swap navigates away from.
-  //  - `scope.projectId` is the API/cache scope, which is NULL for the boot project (the
-  //    step-3.1 invariant). It keys the draft, so the boot project keeps the bare legacy
-  //    storage key and a draft typed before this upgrade survives it.
-  // Both are absent when this route renders outside a `/p/:projectId` prefix (a component
-  // test), and everything below degrades to exactly the single-project behavior.
+  // The composer's project (multi-project spec, step 3.4). The URL's `/p/:projectId` is the
+  // single source of truth: `urlProjectId` names the project, and `useActiveProjectId()` (the
+  // context, or the URL prefix for the shell) keys the draft. Absent outside a project route,
+  // everything below degrades to the single-project behavior.
   const { projectId: urlProjectId } = useParams()
-  const draftProjectId = useProjectScope().projectId
+  const draftProjectId = useActiveProjectId()
   const projects = useProjects()
 
   // The deep-link params, captured ONCE: the mount effect below strips them from the URL
@@ -182,16 +177,8 @@ export function NewTaskRoute() {
   // The registry the project pill offers. Empty while it loads or when it errors — the pill
   // simply does not render, which is the honest state: there is no second project to offer.
   const projectList = projects.data?.projects ?? []
-  /**
-   * A URL project id → the id the draft and attachment stores are keyed by.
-   *
-   * The boot project mounts UNSCOPED (the step-3.1 invariant), so its key is `null` — the same
-   * rule `ProjectScopeRoute` applies on the way in. Resolved from the same `bootProject` field
-   * both sides read, so the hand-off below cannot write the departing composition under a key
-   * the arriving mount will not look at.
-   */
-  const scopeKeyOf = (id: string): string | null =>
-    projects.data?.bootProject === id ? null : id
+  /** A URL project id is also the draft/attachment store key — one project, one name. */
+  const scopeKeyOf = (id: string): string | null => id
   const sourcesReady =
     skills.data !== undefined && workflows.data !== undefined && !uiState.isPending
   // The draft's pick alone — a fresh `/new` selects nothing (see `resolveSource` for what the
@@ -610,7 +597,7 @@ export function NewTaskRoute() {
                       // their composition remains as well as which destination was occupied.
                       const departingName =
                         projectList.find(
-                          (project) => project.id === (draftProjectId ?? projects.data?.bootProject),
+                          (project) => project.id === draftProjectId,
                         )?.name ?? urlProjectId
                       const destinationName = projectList.find((project) => project.id === next)?.name ?? next
                       toast(

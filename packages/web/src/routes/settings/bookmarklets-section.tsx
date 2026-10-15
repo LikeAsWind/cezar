@@ -61,6 +61,15 @@ export function BookmarkletsSection() {
 export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
   useLocale()
 
+  // The project the URL names, from the `/p/<id>` prefix. Outside a project route there is no
+  // project to target, so the generator renders nothing (and issues no request) — the hooks that
+  // read the project scope below are never mounted without one.
+  const projectId = useActiveProjectId()
+  if (projectId === null) return null
+  return <BookmarkletPanelInner projectId={projectId} skills={skills} />
+}
+
+function BookmarkletPanelInner({ projectId, skills }: { projectId: string; skills: readonly Skill[] }) {
   const launchKey = useLaunchKey()
   const health = useHealth()
   const projects = useProjects()
@@ -73,19 +82,10 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
   // Bake THIS cockpit's origin into the bookmarklets so a click opens the very instance that
   // generated them — no localhost port-scan (GitHub's CSP blocks that fetch). See bookmarklet.ts.
   const origin = window.location.origin
-  // …and the project the URL should land in. The boot project mounts UNSCOPED, so the context
-  // says null and the URL's own `/p/<id>` prefix is what answers (see `useActiveProjectId`);
-  // `bootProject` covers the sliver of time a legacy flat URL is still mid-redirect. Null all
-  // the way down degrades to the legacy flat `/new`, which redirects to the boot project — so
-  // the generator never emits a URL that fails to land.
-  const projectId = useActiveProjectId() ?? health.data?.bootProject ?? null
   // The project name stamped into the bookmark's visible label, so a person with several
   // projects (or several cockpits) open can tell their bookmarks apart in the bar (#422). The
-  // REGISTRY answers per project: `/api/health` is workspace-level (never scoped) and always
-  // describes the boot repo, so reading the name from it would stamp the boot project's name
-  // onto every other project's launchers. It stays the fallback for the registry-unavailable
-  // case. Null (outside a git repo, nothing known): the label drops the stamp rather than
-  // guessing a name.
+  // REGISTRY answers per project; `/api/health` is workspace-level and never names a project's
+  // repo, so it is only the fallback for the registry-unavailable case.
   const repoName =
     projects.data?.projects.find((project) => project.id === projectId)?.name ??
     repoChipOf(health.data)?.name ??
