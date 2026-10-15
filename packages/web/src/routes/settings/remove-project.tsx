@@ -25,9 +25,9 @@ import { toast } from '@/components/ui/toaster'
  * back on its own: boot registration is seed-once (`shouldAutoRegisterProject`), so serving the
  * folder again never re-registers it.
  *
- * The refusals stay the server's: a project with running tasks and the boot project both answer
- * 409, whose message is toasted verbatim. Callers that can know about the boot project up front
- * (both of them) disable the trigger instead, so the explanation arrives before the click.
+ * The refusals stay the server's: `DELETE /api/v1/projects/:id` 409s only on running tasks, whose
+ * message is toasted verbatim. There is no boot-project refusal — every registered project is
+ * removable — so no caller disables a boot trigger; the explanation arrives as an error toast.
  */
 
 /** The deregistration itself, with the wording every caller shares. `onRemoved` runs only after

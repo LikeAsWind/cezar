@@ -19,9 +19,9 @@ import { SETTINGS_SECTIONS, visibleSettingsSections } from './registry'
  *
  * The scope split is what most of this file now pins, and it is pinned where it is observable:
  * WHICH STORE a section writes. Appearance and Notifications must reach
- * `/api/v1/workspace/ui-state` (global), Agents must reach `/api/v1/config` (project) — the stub
- * below answers both and records every request, so a section writing the wrong one shows up as
- * a wrong URL rather than as a passing test.
+ * `/api/v1/workspace/ui-state` (global), Agents must reach the project-scoped
+ * `/api/v1/p/boot/config` — the stub below answers both and records every request, so a section
+ * writing the wrong one shows up as a wrong URL rather than as a passing test.
  */
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
