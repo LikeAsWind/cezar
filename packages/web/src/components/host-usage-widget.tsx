@@ -2,7 +2,7 @@ import { t, useLocale } from '@/lib/i18n'
 import { useEffect, useState } from 'react'
 
 import { useHostHistory, useHostLastFrameAt, useHostTransport, useHostUsage } from '@/api/host-usage'
-import { Link } from '@/lib/project-router'
+import { Link } from 'react-router'
 import { effectiveHostView, formatCpuCores, formatMemPair } from '@/lib/host-effective'
 import { useIsDesktop } from '@/lib/use-desktop'
 import { cn } from '@/lib/utils'
@@ -121,7 +121,7 @@ function HostUsageWidgetRow() {
 
   return (
     <Link
-      to="/settings/resources"
+      to="/settings/global/resources"
       data-slot="host-usage-widget"
       data-state={stale ? 'stale' : 'live'}
       // How many frames the store holds - the e2e proof that the root writer keeps feeding it.

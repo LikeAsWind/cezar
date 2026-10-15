@@ -167,7 +167,7 @@ describe('HostUsageWidget', () => {
     expect(cpuBar?.getAttribute('data-level')).toBe('ok')
     const row = document.querySelector('[data-slot="host-usage-widget"]')
     expect(row?.getAttribute('data-frames')).toBe('2')
-    expect(row?.closest('a')?.getAttribute('href')).toBe('/settings/resources')
+    expect(row?.closest('a')?.getAttribute('href')).toBe('/settings/global/resources')
     expect(row?.getAttribute('aria-label')).toContain('CPU 41%')
     expect(row?.getAttribute('aria-label')).toContain('RAM 38% (12.0/32.0 GB)')
   })
