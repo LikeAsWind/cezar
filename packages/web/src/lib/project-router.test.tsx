@@ -49,8 +49,10 @@ describe('scopeTo', () => {
     })
   })
 
-  it('is the identity when unscoped', () => {
-    expect(scopeTo(null, '/new')).toBe('/new')
+  it('requires a project id instead of generating an unscoped project link', () => {
+    // @ts-expect-error Project navigation must name its owner.
+    expect(() => scopeTo(null, '/new')).toThrow('projectId is required')
+    expect(() => scopeTo('', '/new')).toThrow('projectId is required')
   })
 
   it('leaves relative and already-scoped targets alone', () => {

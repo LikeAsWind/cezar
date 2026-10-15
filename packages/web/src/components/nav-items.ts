@@ -47,7 +47,7 @@ export type NavItem = {
  *  compare (`/compare/:groupId`) is open.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { to: '/', get label() { return t('Tasks') }, icon: ListChecksIcon, match: ['/', '/tasks', '/compare'], badge: 'tasks-unread' },
+  { to: '/tasks', get label() { return t('Tasks') }, icon: ListChecksIcon, match: ['/tasks', '/compare'], badge: 'tasks-unread' },
   { to: '/inbox', get label() { return t('Inbox') }, icon: InboxIcon, match: ['/inbox'], badge: 'inbox-count', inbox: true },
   { to: '/git', get label() { return t('Git') }, icon: GitBranchIcon, match: ['/git'] },
   { to: '/github', get label() { return t('GitHub') }, icon: GithubIcon, match: ['/github'], forge: true },

@@ -155,7 +155,7 @@ export function TaskThreadRoute() {
           }
           actions={
             <Button asChild variant="outline">
-              <Link to="/">{t('Back to tasks')}</Link>
+              <Link to="/tasks">{t('Back to tasks')}</Link>
             </Button>
           }
         />

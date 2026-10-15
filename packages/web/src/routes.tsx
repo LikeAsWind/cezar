@@ -1,6 +1,8 @@
 import { t, useLocale } from '@/lib/i18n'
 import { lazy, memo, Suspense } from 'react'
+import { FolderSearchIcon } from 'lucide-react'
 import {
+  Link,
   matchPath,
   Navigate,
   Outlet,
@@ -12,8 +14,8 @@ import {
 
 import { useHealth, useProjects } from './api/queries'
 import { ProjectScopeProvider } from './api/project-scope-context'
-import { bareRootLanding, locationToRestore, readStoredLastLocation } from './lib/last-location'
-import { Navigate as ScopedNavigate, stripProjectPrefix } from './lib/project-router'
+import { Button } from './components/ui/button'
+import { Navigate as ScopedNavigate, resolveLegacyProjectId, stripProjectPrefix } from './lib/project-router'
 import { AutomationsLoading } from './routes/automations/automations-loading'
 import { CompareLoading } from './routes/compare-loading'
 import { GithubLoading } from './routes/github/github-loading'
@@ -22,7 +24,8 @@ import { NewTaskRoute } from './routes/new-task'
 import { NotFoundRoute } from './routes/not-found'
 import { RepoGitLoading } from './routes/repo-git/repo-git-loading'
 import { SkillsLoading } from './routes/skills-loading'
-import { UnknownProjectRoute } from './routes/unknown-project'
+import { MissingProjectRoute, UnknownProjectRoute } from './routes/unknown-project'
+import { WorkspaceHomeRoute } from './routes/workspace-home'
 import { WorkflowsLoading } from './routes/workflows/workflows-loading'
 import { GitTabLoading } from './routes/task-git/git-tab-loading'
 import { ThreadLoading } from './routes/task-thread/thread-loading'
@@ -34,6 +37,9 @@ import {
 } from './routes/settings/settings-shell'
 import { TasksOverviewRoute } from './routes/tasks-overview'
 import { GlobalTasksRoute } from './routes/global-tasks'
+import { ProjectsRoute } from './routes/projects'
+import { ProjectOverviewRoute } from './routes/project-overview'
+import { CenteredState } from './components/centered-state'
 
 // Dashboard charts, drag controls and exports are paid for only on this route.
 const DashboardRoute = lazy(() =>
@@ -148,9 +154,9 @@ function MovedSettingsSectionRedirect({ sectionId }: { sectionId: SettingsSectio
   )
 }
 
-/** What renders while a redirect target is still being resolved (the boot id from `/api/health`,
- *  the registry from `/api/projects`). Deliberately quiet: the answer arrives in one local round
- *  trip, and any real screen here would flash the WRONG screen (spec, "URL scheme"). */
+/** What renders while a project's registry row is still being resolved. Deliberately quiet: the
+ *  answer arrives in one local round trip, and any real screen here would flash the WRONG screen
+ *  (spec, "URL scheme"). */
 function ScopeResolving() {
   useLocale()
 
@@ -161,69 +167,47 @@ function ScopeResolving() {
   )
 }
 
-/**
- * The `/p/:projectId` layout gate (multi-project spec, step 3.2) — the ONE place the URL's
- * project id becomes the app's project scope:
- *
- *  - `/p/default/…` is the reserved alias for the boot project (never an allocated slug):
- *    normalized to the real slug with a `replace` navigation, so the address bar always names
- *    the project. Params, query and hash survive byte-for-byte.
- *  - an id the registry doesn't know renders the "not registered here" screen — the cockpit
- *    twin of the API's 404;
- *  - a known id mounts `ProjectScopeProvider`, which scopes the API client and the query
- *    cache for the whole routed subtree (`<Outlet />`).
- *
- * When `/api/projects` itself errors (server unreachable), the gate mounts the scope anyway:
- * known-ness cannot be verified, and the routed views' own error states are the honest surface
- * for an unreachable server — a permanent "Loading…" here would not be.
- */
+function ProjectRegistryError({ retry }: { retry: () => void }) {
+  return (
+    <CenteredState
+      icon={<FolderSearchIcon />}
+      title={t('Could not load projects')}
+      actions={
+        <>
+          <Button onClick={retry}>{t('Retry')}</Button>
+          <Button asChild variant="outline"><Link to="/">{t('Back to global workspace')}</Link></Button>
+        </>
+      }
+    />
+  )
+}
+
+/** Only a registered, available project may mount project queries and page state. */
 function ProjectScopeRoute() {
   useLocale()
 
   const { projectId = '' } = useParams()
   const location = useLocation()
   const projects = useProjects()
-  const health = useHealth()
 
-  if (projectId === 'default') {
-    // The registry names the boot slug; health's additive `bootProject` (the same slug) is the
-    // fallback when the registry query ERRORED. With neither and the registry still fetching,
-    // stay quiet; with the registry errored and no fallback either, fall through — the
-    // server-side `default` alias answers every `/api/p/default/*` route as the boot project,
-    // so mounting the scope (whose routed views own the honest error states) beats a permanent
-    // "Loading…" (the same doctrine as the projects-error path below).
-    const boot =
-      projects.data?.bootProject ?? (projects.isError ? health.data?.bootProject : undefined)
-    if (boot !== undefined) {
-      const rest = location.pathname.replace(/^\/p\/default(?=\/|$)/, '')
-      return (
-        <Navigate
-          to={`/p/${encodeURIComponent(boot)}${rest || '/'}${location.search}${location.hash}`}
-          replace
-        />
-      )
-    }
-    if (!projects.isError) return <ScopeResolving />
-  }
-
-  if (projects.data) {
-    const known =
-      projects.data.bootProject === projectId ||
-      projects.data.projects.some((project) => project.id === projectId)
-    if (!known) return <UnknownProjectRoute projectId={projectId} registry={projects.data} />
-  } else if (!projects.isError) {
+  if (!projects.data) {
+    if (projects.isError) return <ProjectRegistryError retry={() => void projects.refetch()} />
     return <ScopeResolving />
   }
 
-  // The BOOT project mounts UNSCOPED (projectId null): the step-3.1 invariant keeps its API
-  // requests byte-identical to the single-project cockpit — the protected legacy `/api/*`
-  // surface — and its cache under the same `'default'`-led keys the shell chrome (which
-  // renders outside this provider) already uses. Only non-boot projects pay the `/api/p/<id>`
-  // prefix. Links carry the URL prefix either way (project-router falls back to the URL).
-  const scopeId = projects.data?.bootProject === projectId ? null : projectId
+  if (projectId === 'default') {
+    const resolved = resolveLegacyProjectId(projects.data)
+    if (resolved === null) return <UnknownProjectRoute registry={projects.data} />
+    const rest = stripProjectPrefix(location.pathname)
+    return <Navigate to={`/p/${encodeURIComponent(resolved)}${rest}${location.search}${location.hash}`} replace />
+  }
+
+  const project = projects.data.projects.find((entry) => entry.id === projectId)
+  if (!project) return <UnknownProjectRoute projectId={projectId} registry={projects.data} />
+  if (project.status === 'missing') return <MissingProjectRoute project={project} />
 
   return (
-    <ProjectScopeProvider projectId={scopeId}>
+    <ProjectScopeProvider projectId={projectId}>
       {/* React Router keeps the matched child mounted when only this parent param changes.
           Project-local queries and mount-time state must instead start from the project the URL
           now names. Key the child boundary (not the provider, whose unmount resets API scope). */}
@@ -250,60 +234,27 @@ function NewTaskProjectRoute() {
   return <NewTaskRoute key={projectId} />
 }
 
-/**
- * Legacy flat URLs — every pre-multi-project path, `/tasks/:id` bookmarks and the `/new?...`
- * bookmarklet grammar included — redirect to the boot project's scoped twin, preserving path,
- * query and hash byte-for-byte (BACKWARD_COMPATIBILITY.md protects the bookmarklet contract).
- * The exact bare root is the sole exception: once health and the registry settle, it may restore
- * the last valid project-scoped page THIS browser was on (localStorage, so a second client never
- * decides where this one lands). Any query/hash makes `/` explicit, so pasted links always win.
- * `replace` keeps Back from bouncing off either startup redirect.
- */
+/** Old flat URLs resolve only through the registry's one-available-project compatibility rule. */
 function LegacyPathRedirect() {
   useLocale()
 
   const location = useLocation()
-  const health = useHealth()
   const projects = useProjects()
-  const resolvedBoot = health.data?.bootProject ?? projects.data?.bootProject
-  const bootSourcesSettled =
-    (health.data !== undefined || health.isError) &&
-    (projects.data !== undefined || projects.isError)
-  if (resolvedBoot === undefined && !bootSourcesSettled) return <ScopeResolving />
-  // Health and the registry normally name the same boot project. If neither can answer after
-  // both queries settle, the server-side `default` alias remains the no-config fallback.
-  const boot = resolvedBoot ?? 'default'
 
-  const isBareRoot =
-    location.pathname === '/' && location.search === '' && location.hash === ''
-  if (isBareRoot) {
-    // The remembered location itself is local and synchronous; only the registry that validates
-    // its project is still worth waiting for.
-    if (projects.data === undefined && !projects.isError) return <ScopeResolving />
-
-    const restored = locationToRestore(
-      readStoredLastLocation(),
-      projects.data,
-      resolvedBoot,
-    )
-    if (restored !== null) return <Navigate to={restored} replace />
-
-    // Nothing remembered. The boot folder is the landing project only while the registry lists
-    // it: since `/api/v1/projects` stopped listing an unregistered boot folder once the user has
-    // projects (the seed-once rule), landing there would open the cockpit on a project with no
-    // sidebar row — the launch folder quietly taking over a workspace the user filled on purpose.
-    // The most recently opened registered project is what the sidebar leads with, so it is what
-    // a bare launch opens. `/p/<bootProject>/` and every legacy deep link below still resolve.
-    const landing = bareRootLanding(projects.data, boot)
-    if (landing !== boot) return <Navigate to={`/p/${encodeURIComponent(landing)}/`} replace />
+  if (!projects.data) {
+    if (projects.isError) return <ProjectRegistryError retry={() => void projects.refetch()} />
+    return <ScopeResolving />
   }
 
-  // A bare `/p` (or `/p/`) names no project — send it to the boot project's home rather than
-  // minting a nonsense `/p/<boot>/p` path.
+  const projectId = resolveLegacyProjectId(projects.data)
+  if (projectId === null) return <UnknownProjectRoute registry={projects.data} />
+
+  // A bare `/p` (or `/p/`) names no project — send it to the project's home rather than
+  // minting a nonsense `/p/<id>/p` path.
   const path = location.pathname === '/p' || location.pathname === '/p/' ? '/' : location.pathname
   return (
     <Navigate
-      to={`/p/${encodeURIComponent(boot)}${path}${location.search}${location.hash}`}
+      to={`/p/${encodeURIComponent(projectId)}${path}${location.search}${location.hash}`}
       replace
     />
   )
@@ -315,10 +266,11 @@ export interface PageTitleContext {
 }
 
 const PAGE_TITLE_ROUTES = [
-  { pattern: '/', get pageLabel() { return t('Tasks') } },
+  { pattern: '/', get pageLabel() { return t('Workspace') } },
   // The global page. It is not project-scoped, so it never carries a `/p/` prefix to strip —
   // but it goes through the same table, because the browser title is one mechanism.
   { pattern: '/tasks', get pageLabel() { return t('All tasks') } },
+  { pattern: '/projects', get pageLabel() { return t('Projects') } },
   { pattern: '/dashboard', get pageLabel() { return t('Dashboard') } },
   { pattern: '/new', get pageLabel() { return t('New task') } },
   { pattern: '/compare/:groupId', get pageLabel() { return t('Compare') } },
@@ -335,6 +287,10 @@ const PAGE_TITLE_ROUTES = [
 /** Browser-title context from the project-relative route map; raw ids are lookup keys only. */
 export function pageTitleContext(pathname: string): PageTitleContext {
   const projectPath = stripProjectPrefix(pathname)
+  if (pathname !== projectPath) {
+    if (projectPath === '/') return { pageLabel: t('Overview'), taskId: null }
+    if (projectPath === '/tasks') return { pageLabel: t('Tasks'), taskId: null }
+  }
   const task = matchPath({ path: '/tasks/:id/*', end: true }, projectPath)
   if (task) return { pageLabel: null, taskId: task.params.id ?? null }
 
@@ -360,8 +316,12 @@ export const AppRoutes = memo(function AppRoutes() {
   const capabilities = useHealth().data?.capabilities
   return (
     <Routes>
+      {/* The fixed global workspace home — `/` is never a redirect (task 5, step 3). */}
+      <Route index element={<WorkspaceHomeRoute />} />
+
       <Route path="/p/:projectId" element={<ProjectScopeRoute />}>
-        <Route index element={<TasksOverviewRoute />} />
+        <Route index element={<ProjectOverviewRoute />} />
+        <Route path="tasks" element={<TasksOverviewRoute />} />
         <Route path="new" element={<NewTaskProjectRoute />} />
 
         <Route
@@ -650,9 +610,15 @@ export const AppRoutes = memo(function AppRoutes() {
           scope-prefixed.
 
           EXACTLY `/tasks`, never `/tasks/*`: `/tasks/:id` is a legacy flat task link and must
-          keep redirecting to the boot project's thread (`LegacyPathRedirect` below owns it).
+          resolve through the legacy project-selection rule (`LegacyPathRedirect` below owns it).
           React Router ranks this static segment above that `*`, so the two never compete. */}
       <Route path="/tasks" element={<GlobalTasksRoute />} />
+      <Route
+        path="/projects"
+        element={visibleSettingsSections('global', capabilities).some((section) => section.id === 'projects')
+          ? <ProjectsRoute />
+          : <NotFoundRoute />}
+      />
       <Route path="/dashboard" element={<Suspense fallback={<div role="status" className="p-6 text-sm text-muted-foreground">{t('Loading dashboard…')}</div>}><DashboardRoute /></Suspense>} />
 
       {/* Global settings (multi-project spec, step 3.5) — the one cockpit area that is NOT
@@ -672,8 +638,9 @@ export const AppRoutes = memo(function AppRoutes() {
         />
       ))}
 
-      {/* Everything else IS a legacy flat URL — the boot-project redirect owns it. The 404 for
-          truly unknown paths still renders, scoped, after the redirect. */}
+      {/* Everything else IS a legacy flat URL, resolved through the one-unambiguous-project rule.
+          The workspace home (`/`), global tasks, the dashboard and global settings are matched by
+          the static segments above, so `/` never reaches this redirect. */}
       <Route path="*" element={<LegacyPathRedirect />} />
     </Routes>
   )

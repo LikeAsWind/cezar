@@ -55,7 +55,7 @@ export function GitTabLoadError({ tab, error }: { tab: Exclude<RunTab, 'session'
         }
         actions={
           <Button asChild variant="outline">
-            <Link to="/">{t('Back to tasks')}</Link>
+            <Link to="/tasks">{t('Back to tasks')}</Link>
           </Button>
         }
       />

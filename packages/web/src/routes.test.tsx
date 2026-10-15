@@ -1,7 +1,9 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { getApiScope } from '@open-mercato/cezar-api-client'
 
 import { createQueryClient } from './api/query-client'
 import { queryKeys, workspaceQueryKeys } from './api/queries'
@@ -35,13 +37,10 @@ function rememberLocation(lastLocation: unknown): void {
   localStorage.setItem(LAST_LOCATION_STORAGE_KEY, JSON.stringify(lastLocation))
 }
 
-/** The boot project (multi-project spec, step 3.2) — what `/api/v1/health.bootProject` and
- *  `/api/v1/projects.bootProject` name, and where every legacy flat URL redirects. */
+/** An explicit registered project; the service has no implicit launch project. */
 const BOOT = 'boot'
 
-/** A full-enough `/api/v1/health` answer: the redirect gate reads `bootProject`, and the routes
- *  behind it (inbox, /new) read `capabilities` — a partial seed would crash what a real health
- *  payload never crashes. `followups: true` keeps the Inbox route's real heading. */
+/** Routes read capability flags from the global health cache. */
 const HEALTH = {
   version: '0.0.0-test',
   repoRoot: '/home/u/cezar',
@@ -51,7 +50,6 @@ const HEALTH = {
   forge: null,
   capabilities: { localHandoff: true, followups: true, singleProject: false, automations: false },
   projects: [{ id: BOOT, name: 'cezar' }],
-  bootProject: BOOT,
 }
 
 const REGISTRY: ProjectsResponse = {
@@ -75,7 +73,6 @@ const REGISTRY: ProjectsResponse = {
       status: 'ok',
     },
   ],
-  bootProject: BOOT,
   projectsDir: '~/cezar/projects',
 }
 
@@ -95,16 +92,16 @@ function LocationProbe() {
 
 function ProjectNavigationProbe() {
   const navigate = useNavigate()
-  return <button onClick={() => navigate('/p/other/')}>Switch project</button>
+  return (
+    <>
+      <button onClick={() => navigate('/p/other/tasks')}>Switch project</button>
+      <button onClick={() => navigate('/p/other/new')}>Switch composer</button>
+      <button onClick={() => navigate('/')}>Workspace home</button>
+    </>
+  )
 }
 
-/** Cold-load the router at a URL, exactly as a pasted deep link would — under the same providers
- *  the app shell supplies. With `seed` (the default) the health and registry answers the redirect
- *  gates need are already cached, the way a warm app has them (plus the workspace UI-state the
- *  appearance provider reads); `seed: false` is the cold state where the boot id is still unknown.
- *  Passing `null` skips an individual seed so error and pending behavior can be exercised without
- *  replacing the shared harness. The remembered location is NOT seeded here — it is per-browser
- *  now, so `rememberLocation` writes it to localStorage instead. */
+/** Render real routes with global query fixtures; null seeds exercise pending/error states. */
 function renderAt(
   entry: string,
   {
@@ -121,8 +118,7 @@ function renderAt(
 ) {
   const client = createQueryClient()
   if (seed) {
-    // Scope is unset while seeding, so `queryKeys.health` is the unscoped `['default','health']`
-    // key the legacy-redirect gate reads.
+    // Health and registry belong to the global workspace.
     if (health !== null) client.setQueryData(queryKeys.health, health)
     if (registry !== null) client.setQueryData(workspaceQueryKeys.projects, registry)
     if (uiState !== null) client.setQueryData(workspaceQueryKeys.uiState, uiState)
@@ -135,6 +131,7 @@ function renderAt(
             <ListViewProvider>
               <AppRoutes />
               <LocationProbe />
+              <ProjectNavigationProbe />
             </ListViewProvider>
           </MemoryRouter>
         </AppearanceProvider>
@@ -162,7 +159,10 @@ function currentHash(): string | null {
 
 describe('pageTitleContext', () => {
   it.each([
-    ['/p/cezar/', 'Tasks'],
+    ['/', 'Workspace'],
+    ['/projects', 'Projects'],
+    ['/p/cezar/', 'Overview'],
+    ['/p/cezar/tasks', 'Tasks'],
     ['/new', 'New task'],
     ['/p/cezar/compare/group-1', 'Compare'],
     ['/p/cezar/git', 'Git'],
@@ -195,7 +195,8 @@ describe('pageTitleContext', () => {
  *  `/p/:projectId` prefix (multi-project spec, step 3.2). These paths are pasteable links;
  *  changing one breaks a teammate's bookmark, so the map is asserted URL-by-URL. */
 const ROUTE_CASES: Array<[url: string, route: string, title: string]> = [
-  ['/', 'tasks', 'Tasks'],
+  ['/', 'project-overview', 'Project overview'],
+  ['/tasks', 'tasks', 'Tasks'],
   // The real full-screen composer (R4 Step 1.1): the hero title is the page heading.
   ['/new', 'new', 'What should the agent work on?'],
   // The real thread view (Step R3.1): with fetch never answering it is honestly loading.
@@ -235,6 +236,28 @@ const ROUTE_CASES: Array<[url: string, route: string, title: string]> = [
 ]
 
 describe('scoped route map (/p/:projectId)', () => {
+  // Error assertions wait for data, not Vite's cold transforms of the lazy route modules.
+  beforeAll(async () => {
+    await Promise.all([
+      import('./routes/task-thread/task-thread'),
+      import('./routes/task-git/task-changes'),
+      import('./routes/compare-variants'),
+    ])
+  }, 30_000)
+
+  it.each([
+    ['boot', 'cezar', '/home/u/cezar'],
+    ['other', 'other-repo', '/home/u/other'],
+  ])('opens an independent project overview for %s', (id, name, root) => {
+    renderAt(`/p/${id}/`)
+    expect(screen.getByRole('heading', { name: 'Project overview', level: 1 })).not.toBeNull()
+    expect(screen.getByRole('heading', { name, level: 2 })).not.toBeNull()
+    expect(screen.getByText(root)).not.toBeNull()
+    expect(screen.getByRole('link', { name: 'Tasks & Worktrees' }).getAttribute('href')).toBe(`/p/${id}/tasks`)
+    expect(screen.getByRole('link', { name: 'Back to global workspace' }).getAttribute('href')).toBe('/')
+    expect(screen.queryByLabelText('Search tasks')).toBeNull()
+  })
+
   for (const [url, route, title] of ROUTE_CASES) {
     it(`/p/${BOOT}${url} → ${route}`, () => {
       renderAt(`/p/${BOOT}${url}`)
@@ -253,7 +276,6 @@ describe('scoped route map (/p/:projectId)', () => {
   // MCP lives inside Agent config; keyboard remains hidden and unrouted.
   const unknown = [
     '/nope-404',
-    '/tasks',
     '/settings/nope',
     '/settings/mcp',
     '/settings/keyboard',
@@ -274,7 +296,23 @@ describe('scoped route map (/p/:projectId)', () => {
     expect(routeName()).toBe('not-found')
     expect(document.querySelector('[data-route="not-found"] [data-slot="centered-state"]')).not.toBeNull()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Page not found')
-    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe(`/p/${BOOT}/`)
+    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe(`/p/${BOOT}/tasks`)
+  })
+
+  it.each([
+    ['tasks/nope', '/api/v1/p/boot/runs/nope', 'Task not found'],
+    ['tasks/nope/changes', '/api/v1/p/boot/runs/nope', 'Task not found'],
+    ['compare/nope', '/api/v1/p/boot/groups/nope', 'No such variant group'],
+  ])('returns from a missing %s to the project task list', async (path, endpoint, heading) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === endpoint) {
+        return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
+      }
+      return new Promise<never>(() => {})
+    }))
+    renderAt(`/p/boot/${path}`)
+    await screen.findByRole('heading', { name: heading })
+    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe('/p/boot/tasks')
   })
 
   // The area rule (nav links, tab links…) — spot-checked through the Settings shell, whose
@@ -288,7 +326,7 @@ describe('scoped route map (/p/:projectId)', () => {
   it('remounts the same page and loads its new scope when the project param changes', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input)
-      if (path === '/api/v1/runs' || path === '/api/v1/p/other/runs') {
+      if (path === '/api/v1/p/boot/runs' || path === '/api/v1/p/other/runs') {
         return new Response('[]', { headers: { 'content-type': 'application/json' } })
       }
       return new Promise<never>(() => {})
@@ -302,7 +340,7 @@ describe('scoped route map (/p/:projectId)', () => {
       <QueryClientProvider client={client}>
         <ThemeProvider>
           <AppearanceProvider>
-            <MemoryRouter initialEntries={[`/p/${BOOT}/`]}>
+            <MemoryRouter initialEntries={[`/p/${BOOT}/tasks`]}>
               <ListViewProvider>
                 <AppRoutes />
                 <ProjectNavigationProbe />
@@ -314,7 +352,7 @@ describe('scoped route map (/p/:projectId)', () => {
     )
 
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/runs')).toBe(true),
+      expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/v1/p/boot/runs')).toBe(true),
     )
     fireEvent.change(screen.getByLabelText('Search tasks'), { target: { value: 'stale filter' } })
     fireEvent.click(screen.getByRole('button', { name: 'Switch project' }))
@@ -398,7 +436,7 @@ describe('the global settings area (/settings/global)', () => {
   })
 
   it('the legacy flat /settings/prompt-templates lands there too', () => {
-    renderAt('/settings/prompt-templates')
+    renderAt('/settings/prompt-templates', { registry: SINGLE_PROJECT })
     expect(currentPathname()).toBe(`/p/${BOOT}/settings/instructions`)
     expect(currentHash()).toBe('#prompt-templates')
   })
@@ -412,15 +450,15 @@ describe('the global settings area (/settings/global)', () => {
     })
 
     it(`the legacy flat /settings/${id} lands on the global twin too`, () => {
-      renderAt(`/settings/${id}`)
+      renderAt(`/settings/${id}`, { registry: SINGLE_PROJECT })
       expect(currentPathname()).toBe(`/settings/global/${id}`)
     })
 
     it(`/settings/${id} carries query AND hash through BOTH redirect hops`, () => {
-      // The legacy flat URL takes two hops — `LegacyPathRedirect` into the boot project, then
+      // The legacy flat URL takes two hops — `LegacyPathRedirect` into the sole project, then
       // the moved-section redirect out to the global twin. `settingsSectionPath` returns a bare
       // pathname, so the second hop is exactly where a bookmark's `?…#…` used to disappear.
-      renderAt(`/settings/${id}?tab=x&y=a%2Fb#anchor`)
+      renderAt(`/settings/${id}?tab=x&y=a%2Fb#anchor`, { registry: SINGLE_PROJECT })
       expect(currentPathname()).toBe(`/settings/global/${id}`)
       expect(currentSearch()).toBe('?tab=x&y=a%2Fb')
       expect(currentHash()).toBe('#anchor')
@@ -435,350 +473,213 @@ describe('the global settings area (/settings/global)', () => {
   }
 })
 
-/** Legacy flat URLs (BACKWARD_COMPATIBILITY.md): every pre-multi-project path redirects to the
- *  boot project's scoped twin with params intact — old bookmarks keep landing. */
-describe('legacy flat URLs redirect to the boot project', () => {
-  it('restores the last settled project page from the exact bare root', () => {
-    rememberLocation({
-      projectId: 'other',
-      pathname: '/p/other/tasks/run-1/changes',
-      search: '?file=x',
-      hash: '#L2',
-    })
-    renderAt('/')
+const SINGLE_PROJECT: ProjectsResponse = { ...REGISTRY, projects: [REGISTRY.projects[0]!] }
 
-    expect(currentPathname()).toBe('/p/other/tasks/run-1/changes')
-    expect(currentSearch()).toBe('?file=x')
-    expect(currentHash()).toBe('#L2')
-    expect(routeName()).toBe('task-changes')
-  })
-
-  it('keeps an explicit legacy deep link even when another location was saved', () => {
+describe('global workspace routes', () => {
+  it.each(['/', '/?shared=1#section'])('renders the fixed workspace home at %s', (entry) => {
     rememberLocation({ projectId: 'other', pathname: '/p/other/tasks/run-1' })
-    renderAt('/tasks/run-2?file=y#L3')
-
-    expect(currentPathname()).toBe('/p/boot/tasks/run-2')
-    expect(currentSearch()).toBe('?file=y')
-    expect(currentHash()).toBe('#L3')
+    renderAt(entry)
+    expect(screen.getByRole('heading', { name: 'Workspace' })).not.toBeNull()
+    expect(currentPathname()).toBe('/')
+    expect(getApiScope()).toBeNull()
   })
 
-  it('treats query or hash on / as an explicit boot-project URL', () => {
-    rememberLocation({ projectId: 'other', pathname: '/p/other/tasks/run-1' })
-    renderAt('/?shared=1#section')
-
-    expect(currentPathname()).toBe('/p/boot/')
-    expect(currentSearch()).toBe('?shared=1')
-    expect(currentHash()).toBe('#section')
-  })
-
-  it.each([
-    [
-      'malformed',
-      REGISTRY,
-      { projectId: 'boot', pathname: '/p/other/tasks/run-1' },
-    ],
-    [
-      'unknown',
-      REGISTRY,
-      { projectId: 'unknown', pathname: '/p/unknown/tasks/run-1' },
-    ],
-    [
-      'missing',
-      {
-        ...REGISTRY,
-        projects: [
-          ...REGISTRY.projects,
-          { ...REGISTRY.projects[1]!, id: 'gone', name: 'gone', status: 'missing' as const },
-        ],
-      },
-      { projectId: 'gone', pathname: '/p/gone/tasks/run-1' },
-    ],
-  ])('falls back to the boot project for a %s saved location', (_case, registry, lastLocation) => {
-    rememberLocation(lastLocation)
-    renderAt('/', { registry })
-
-    expect(currentPathname()).toBe('/p/boot/')
-    expect(routeName()).toBe('tasks')
-  })
-
-  it('restores a registered not-git project', () => {
-    rememberLocation({ projectId: 'other', pathname: '/p/other/' })
-    renderAt('/', {
-      registry: {
-        ...REGISTRY,
-        projects: REGISTRY.projects.map((project) =>
-          project.id === 'other' ? { ...project, status: 'not-git' as const } : project,
-        ),
-      },
-    })
-
-    expect(currentPathname()).toBe('/p/other/')
-    expect(routeName()).toBe('tasks')
-  })
-
-  it.each([
-    ['the boot project', { projectId: 'boot', pathname: '/p/boot/tasks/run-1' }, '/p/boot/tasks/run-1'],
-    ['another project', { projectId: 'other', pathname: '/p/other/tasks/run-1' }, '/p/boot/'],
-  ])('with the registry unavailable, handles a saved location for %s', async (_case, lastLocation, expected) => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).startsWith('/api/v1/projects')) {
-          return new Response(JSON.stringify({ error: 'down' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-        return new Promise<never>(() => {})
-      }),
-    )
-
-    rememberLocation(lastLocation)
-    renderAt('/', { registry: null })
-
-    await waitFor(() => expect(currentPathname()).toBe(expected), { timeout: 4_000 })
-  })
-
-  /** The launch folder stopped being a project once the user has some (#774 follow-up):
-   *  `/api/v1/projects` no longer lists `bootProject`, so a bare launch must open a project the
-   *  sidebar actually shows — while every explicit URL still reaches the served folder. */
-  describe('with the boot folder served but not listed', () => {
-    const UNLISTED: ProjectsResponse = {
-      ...REGISTRY,
-      projects: [
-        {
-          ...REGISTRY.projects[1]!,
-          id: 'older',
-          name: 'older',
-          root: '/home/u/older',
-          lastOpenedAt: '2026-01-01T00:00:00.000Z',
-        },
-        { ...REGISTRY.projects[1]!, lastOpenedAt: '2026-02-01T00:00:00.000Z' },
-      ],
-    }
-
-    it('opens the most recently opened registered project from the bare root', () => {
-      renderAt('/', { registry: UNLISTED })
-
-      expect(currentPathname()).toBe('/p/other/')
-      expect(routeName()).toBe('tasks')
-    })
-
-    it('still restores a remembered location', () => {
-      rememberLocation({ projectId: 'older', pathname: '/p/older/tasks/run-1' })
-      renderAt('/', { registry: UNLISTED })
-
-      expect(currentPathname()).toBe('/p/older/tasks/run-1')
-    })
-
-    it('still resolves an explicit legacy deep link to the served folder', () => {
-      renderAt('/tasks/run-2?file=y#L3', { registry: UNLISTED })
-
-      expect(currentPathname()).toBe('/p/boot/tasks/run-2')
-      expect(currentSearch()).toBe('?file=y')
-      expect(currentHash()).toBe('#L3')
-    })
-  })
-
-  it('keeps the quiet resolving surface while bare-root inputs are pending', () => {
+  it('renders home before the registry answers', () => {
     renderAt('/', { seed: false })
-
-    expect(routeName()).toBe('scope-resolving')
+    expect(routeName()).toBe('workspace-home')
     expect(currentPathname()).toBe('/')
   })
 
-  it('uses the registry boot project when health fails instead of resolving forever', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).startsWith('/api/v1/health')) {
-          return new Response(JSON.stringify({ error: 'down' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-        return new Promise<never>(() => {})
-      }),
-    )
+  it('renders global tasks outside project scope', () => {
+    renderAt('/tasks')
+    expect(routeName()).toBe('global-tasks')
+    expect(currentPathname()).toBe('/tasks')
+    expect(getApiScope()).toBeNull()
+  })
 
-    rememberLocation({ projectId: 'other', pathname: '/p/other/tasks/run-1' })
-    renderAt('/', { health: null })
+  it('renders project management outside project scope', () => {
+    renderAt('/projects')
+    expect(screen.getByRole('heading', { name: 'Projects', level: 1 })).not.toBeNull()
+    expect(currentPathname()).toBe('/projects')
+    expect(getApiScope()).toBeNull()
+  })
 
-    await waitFor(() => expect(currentPathname()).toBe('/p/other/tasks/run-1'), {
-      timeout: 4_000,
+  it('does not expose project management in single-project mode', () => {
+    renderAt('/projects', {
+      health: { ...HEALTH, capabilities: { ...HEALTH.capabilities, singleProject: true } },
     })
-    expect(routeName()).toBe('task-thread')
+    expect(routeName()).toBe('not-found')
+    expect(currentPathname()).toBe('/projects')
+    expect(screen.queryByRole('heading', { name: 'Projects', level: 1 })).toBeNull()
+    expect(getApiScope()).toBeNull()
   })
 
-  it('falls through the default alias when health and registry both fail', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (
-          String(input).startsWith('/api/v1/health') ||
-          String(input).startsWith('/api/v1/projects')
-        ) {
-          return new Response(JSON.stringify({ error: 'down' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-        return new Promise<never>(() => {})
-      }),
-    )
-
-    renderAt('/', { health: null, registry: null })
-
-    await waitFor(
-      () => {
-        expect(currentPathname()).toBe('/p/default/')
-        expect(routeName()).toBe('tasks')
-      },
-      { timeout: 4_000 },
-    )
+  it('remounts the composer with the arriving project draft', () => {
+    renderAt('/p/boot/new')
+    fireEvent.change(screen.getByLabelText('Describe a task for the agent'), {
+      target: { value: 'alpha draft' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch composer' }))
+    expect(currentPathname()).toBe('/p/other/new')
+    expect((screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement).value).toBe('')
+    expect(getApiScope()).toBe('other')
   })
 
-  for (const [url, route] of ROUTE_CASES) {
-    it(`${url} → /p/${BOOT}${url}`, () => {
-      renderAt(url)
+  it('unmounts project scope when returning home', () => {
+    renderAt('/p/boot/tasks')
+    expect(getApiScope()).toBe('boot')
+    fireEvent.click(screen.getByRole('button', { name: 'Workspace home' }))
+    expect(currentPathname()).toBe('/')
+    expect(routeName()).toBe('workspace-home')
+    expect(getApiScope()).toBeNull()
+    expect(screen.queryByLabelText('Search tasks')).toBeNull()
+  })
+})
+
+describe('legacy project URLs', () => {
+  for (const [url, route] of ROUTE_CASES.filter(([url]) => url !== '/' && url !== '/tasks')) {
+    it(`${url} resolves when there is exactly one candidate`, () => {
+      renderAt(url, { registry: SINGLE_PROJECT })
       expect(routeName()).toBe(route)
-      expect(currentPathname()).toBe(`/p/${BOOT}${url === '/' ? '/' : url}`)
+      expect(currentPathname()).toBe(`/p/${BOOT}${url}`)
     })
   }
 
-  it('preserves a query byte-for-byte across the redirect', () => {
-    // /skills keeps its `?skill=` selection in the URL, so the address bar itself proves the
-    // redirect carried the query untouched (the /new composer consumes-then-clears its own).
-    const search = '?skill=om-code-review&x=a%2Fb&auto=1'
-    renderAt(`/skills${search}`)
-    expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
-    expect(currentSearch()).toBe(search)
-    expect(routeName()).toBe('skills')
+  it.each([
+    ['zero projects', { ...REGISTRY, projects: [] }],
+    ['multiple projects', REGISTRY],
+    ['only missing projects', { ...REGISTRY, projects: REGISTRY.projects.map((p) => ({ ...p, status: 'missing' as const })) }],
+  ])('asks for a selection with %s', (_label, registry) => {
+    renderAt('/new?ref=task#anchor', { registry })
+    expect(currentPathname()).toBe('/new')
+    expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
+    expect(getApiScope()).toBeNull()
+    expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
   })
 
-  it('preserves the hash too — /settings/skills through both hops', () => {
-    // `/settings/skills` moved to `/skills`, so a legacy flat link redirects twice. Query
-    // survival was already asserted; the hash is the half that was silently dropped.
-    renderAt('/settings/skills?skill=om-code-review#usage')
-    expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
-    expect(currentSearch()).toBe('?skill=om-code-review')
+  it('preserves a query and hash byte-for-byte across the redirect', () => {
+    renderAt('/skills?skill=om-code-review&x=a%2Fb#usage', { registry: SINGLE_PROJECT })
+    expect(currentPathname()).toBe('/p/boot/skills')
+    expect(currentSearch()).toBe('?skill=om-code-review&x=a%2Fb')
     expect(currentHash()).toBe('#usage')
-    expect(routeName()).toBe('skills')
   })
 
-  it('keeps the old bookmarklet pseudo-skill deep link on the project bookmarklets page', () => {
-    renderAt('/settings/skills?skill=__bm#saved')
-    expect(currentPathname()).toBe(`/p/${BOOT}/settings/bookmarklets`)
-    expect(currentSearch()).toBe('')
-    expect(currentHash()).toBe('#saved')
-    expect(routeName()).toBe('settings-bookmarklets')
+  it('does not guess from health when the registry fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith('/api/v1/projects')) {
+        return new Response(JSON.stringify({ error: 'down' }), { status: 404 })
+      }
+      return new Promise<never>(() => {})
+    }))
+    renderAt('/new', { registry: null })
+    await screen.findByRole('button', { name: 'Retry' })
+    expect(currentPathname()).toBe('/new')
+    expect(getApiScope()).toBeNull()
   })
 
-  it('delivers the full bookmarklet grammar into the composer (spec 011 contract)', () => {
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
-    expect(currentPathname()).toBe(`/p/${BOOT}/new`)
-    expect(routeName()).toBe('new')
-    // auto=1 + key armed the unattended start — only possible if every param survived.
-    expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
-    expect(document.body.textContent).not.toContain('s3cret')
-  })
-
-  it('renders the quiet resolving state while the boot id is unknown — never a wrong screen', () => {
+  it('waits while the registry is pending', () => {
     renderAt('/tasks/abc123', { seed: false })
     expect(routeName()).toBe('scope-resolving')
     expect(currentPathname()).toBe('/tasks/abc123')
   })
 
   it('an unknown legacy path still ends at the scoped 404', () => {
-    renderAt('/definitely-not-a-route')
+    renderAt('/definitely-not-a-route', { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('not-found')
-    expect(currentPathname()).toBe(`/p/${BOOT}/definitely-not-a-route`)
+    expect(currentPathname()).toBe('/p/boot/definitely-not-a-route')
   })
 
-  it('a bare /p names no project and lands on the boot project home', () => {
-    renderAt('/p')
-    expect(routeName()).toBe('tasks')
-    expect(currentPathname()).toBe(`/p/${BOOT}/`)
+  it('a bare /p names no project and resolves only an unambiguous project', () => {
+    renderAt('/p', { registry: SINGLE_PROJECT })
+    expect(routeName()).toBe('project-overview')
+    expect(currentPathname()).toBe('/p/boot/')
+  })
+
+  it('preserves old skill redirects through both hops', () => {
+    renderAt('/settings/skills?skill=om-code-review#usage', { registry: SINGLE_PROJECT })
+    expect(currentPathname()).toBe('/p/boot/skills')
+    expect(currentSearch()).toBe('?skill=om-code-review')
+    expect(currentHash()).toBe('#usage')
+  })
+
+  it('keeps the old bookmarklet pseudo-skill link', () => {
+    renderAt('/settings/skills?skill=__bm#saved', { registry: SINGLE_PROJECT })
+    expect(currentPathname()).toBe('/p/boot/settings/bookmarklets')
+    expect(currentSearch()).toBe('')
+    expect(currentHash()).toBe('#saved')
   })
 })
 
-/** `/p/default/…` is the reserved boot alias (never an allocated slug): it resolves to the boot
- *  project and normalizes to the real slug in the address bar. */
-describe('the /p/default alias', () => {
-  it('normalizes /p/default/tasks/x to /p/<boot>/tasks/x', () => {
-    renderAt('/p/default/tasks/x')
-    expect(routeName()).toBe('task-thread')
-    expect(currentPathname()).toBe(`/p/${BOOT}/tasks/x`)
+describe('the /p/default compatibility alias', () => {
+  it('excludes missing directories from compatibility candidates', () => {
+    renderAt('/p/default/skills', {
+      registry: { ...REGISTRY, projects: [REGISTRY.projects[0]!, { ...REGISTRY.projects[1]!, status: 'missing' }] },
+    })
+    expect(currentPathname()).toBe('/p/boot/skills')
+    expect(getApiScope()).toBe('boot')
   })
 
-  it('keeps the query while normalizing', () => {
-    renderAt('/p/default/skills?skill=om-code-review')
-    expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
-    expect(currentSearch()).toBe('?skill=om-code-review')
+  it.each([
+    ['/p/default/tasks/x?tab=a%2Fb#tool', '/p/boot/tasks/x', '?tab=a%2Fb', '#tool'],
+    ['/p/default', '/p/boot/', '', ''],
+  ])('normalizes %s only with one candidate', (entry, pathname, search, hash) => {
+    renderAt(entry, { registry: SINGLE_PROJECT })
+    expect(currentPathname()).toBe(pathname)
+    expect(currentSearch()).toBe(search)
+    expect(currentHash()).toBe(hash)
+    expect(getApiScope()).toBe('boot')
   })
 
-  it('normalizes the bare /p/default to the boot project home', () => {
-    renderAt('/p/default')
-    expect(routeName()).toBe('tasks')
-    expect(currentPathname()).toBe(`/p/${BOOT}/`)
+  it.each([REGISTRY, { ...REGISTRY, projects: [] }])('asks for a project when ambiguous', (registry) => {
+    renderAt('/p/default/tasks/x', { registry })
+    expect(currentPathname()).toBe('/p/default/tasks/x')
+    expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
+    expect(getApiScope()).toBeNull()
+  })
+})
+
+describe('project availability', () => {
+  it('keeps a missing project visible without mounting its page', () => {
+    renderAt('/p/boot/new', {
+      registry: { ...REGISTRY, projects: [{ ...REGISTRY.projects[0]!, status: 'missing' }] },
+    })
+    expect(currentPathname()).toBe('/p/boot/new')
+    expect(screen.getByRole('heading', { name: 'Directory unavailable' })).not.toBeNull()
+    expect(screen.getByText('/home/u/cezar')).not.toBeNull()
+    expect(screen.getByRole('link', { name: 'Manage projects' }).getAttribute('href')).toBe('/projects')
+    expect(getApiScope()).toBeNull()
+    expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
   })
 
-  it('a registry error still resolves the alias via health instead of loading forever', async () => {
-    // `/api/v1/projects` down, `/api/v1/health` already answered (it names the same boot slug): the
-    // alias must not park on the quiet resolving screen for good — health is the fallback.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).startsWith('/api/v1/projects')) {
-          return new Response(JSON.stringify({ error: 'down' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-        return new Promise<never>(() => {})
-      }),
-    )
-    const client = createQueryClient()
-    client.setQueryData(queryKeys.health, HEALTH)
-    render(
-      <QueryClientProvider client={client}>
-        <ThemeProvider>
-          <AppearanceProvider>
-            <MemoryRouter initialEntries={['/p/default/tasks/x']}>
-              <ListViewProvider>
-                <AppRoutes />
-                <LocationProbe />
-              </ListViewProvider>
-            </MemoryRouter>
-          </AppearanceProvider>
-        </ThemeProvider>
-      </QueryClientProvider>,
-    )
-    // The client retries a 5xx once with ~1 s of backoff before erroring — give it room.
-    await waitFor(() => expect(currentPathname()).toBe(`/p/${BOOT}/tasks/x`), { timeout: 4000 })
-    expect(routeName()).toBe('task-thread')
+  it('unmounts a project removed from the registry without redirecting', async () => {
+    const client = renderAt('/p/boot/new')
+    await act(async () => {
+      client.setQueryData(workspaceQueryKeys.projects, { ...REGISTRY, projects: [REGISTRY.projects[1]!] })
+    })
+    expect(currentPathname()).toBe('/p/boot/new')
+    await waitFor(() => expect(routeName()).toBe('unknown-project'))
+    expect(getApiScope()).toBeNull()
   })
 
-  it('with the registry errored and no health either, the alias mounts the scope rather than spin', async () => {
-    // Nothing can name the real boot slug, but the server-side `default` alias answers every
-    // `/api/v1/p/default/*` route as the boot project — mounting the routed view (whose own error
-    // states are the honest surface) beats a permanent "Loading…".
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).startsWith('/api/v1/projects')) {
-          return new Response(JSON.stringify({ error: 'down' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-        return new Promise<never>(() => {})
-      }),
-    )
-    renderAt('/p/default', { seed: false })
-    // The client retries a 5xx once with ~1 s of backoff before erroring — give it room.
-    await waitFor(() => expect(routeName()).toBe('tasks'), { timeout: 4000 })
-    expect(currentPathname()).toBe('/p/default')
+  it('retries registry errors before mounting a project page', async () => {
+    let available = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith('/api/v1/projects')) {
+        return new Response(JSON.stringify(available ? REGISTRY : { error: 'down' }), {
+          status: available ? 200 : 404,
+        })
+      }
+      return new Promise<never>(() => {})
+    }))
+    renderAt('/p/boot/new', { registry: null })
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(currentPathname()).toBe('/p/boot/new')
+    expect(getApiScope()).toBeNull()
+    expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
+    available = true
+    fireEvent.click(retry)
+    await screen.findByLabelText('Describe a task for the agent')
+    expect(getApiScope()).toBe('boot')
   })
 })
 
@@ -810,7 +711,7 @@ describe('/new query params', () => {
     screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
 
   it('prefills the composer from a non-auto deep link', () => {
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1')
+    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1', { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(textarea().value).toBe('https://github.com/o/r/pull/1')
   })
@@ -818,7 +719,7 @@ describe('/new query params', () => {
   it('an armed auto=1 link shows the starting surface, never the composer mid-flight', () => {
     // fetch never answers here, so the key check is honestly in flight: no composer to type
     // into, no run POSTed, and the key nowhere in the DOM.
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
+    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret', { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
     expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
@@ -826,13 +727,13 @@ describe('/new query params', () => {
   })
 
   it('renders an empty composer without params', () => {
-    renderAt('/new')
+    renderAt('/new', { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(textarea().value).toBe('')
   })
 
   it('never prints the launch key anywhere on the page', () => {
-    renderAt('/new?key=s3cret')
+    renderAt('/new?key=s3cret', { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(document.body.textContent).not.toContain('s3cret')
     expect(textarea().value).toBe('')

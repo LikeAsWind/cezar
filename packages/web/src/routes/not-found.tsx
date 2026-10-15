@@ -19,7 +19,7 @@ export function NotFoundRoute() {
         subtitle={t('Nothing lives at this address. The link may be mistyped, or it points at something that is gone.')}
         actions={
           <Button asChild variant="outline">
-            <Link to="/">{t('Back to tasks')}</Link>
+            <Link to="/tasks">{t('Back to tasks')}</Link>
           </Button>
         }
       />

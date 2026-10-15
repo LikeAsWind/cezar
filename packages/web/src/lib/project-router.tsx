@@ -14,6 +14,8 @@ import {
   type To,
 } from 'react-router'
 
+import type { ProjectsResponse } from '@open-mercato/cezar-api-client'
+
 import { useProjectScope } from '@/api/project-scope-context'
 
 /**
@@ -61,9 +63,11 @@ function scopePathname(projectId: string, pathname: string): string {
   return `/p/${encodeURIComponent(projectId)}${pathname}`
 }
 
-/** Prefix a navigation target with a project scope. `null` scope is the identity. */
-export function scopeTo(projectId: string | null, to: To): To {
-  if (projectId === null) return to
+/** Prefix a navigation target with its explicit project owner. */
+export function scopeTo(projectId: string, to: string): string
+export function scopeTo(projectId: string, to: To): To
+export function scopeTo(projectId: string, to: To): To {
+  if (!projectId) throw new Error('projectId is required')
   if (typeof to === 'string') {
     // A string target may carry search/hash (`/skills?skill=x`) — prefixing preserves them.
     return scopePathname(projectId, to)
@@ -72,13 +76,20 @@ export function scopeTo(projectId: string | null, to: To): To {
   return { ...to, pathname: scopePathname(projectId, to.pathname) }
 }
 
+/** Legacy project links resolve only when the registry has exactly one available project. */
+export function resolveLegacyProjectId(registry: ProjectsResponse | undefined): string | null {
+  if (registry === undefined) return null
+  const usable = registry.projects.filter((project) => project.status !== 'missing')
+  return usable.length === 1 ? (usable[0]?.id ?? null) : null
+}
+
 /**
  * The scope every wrapper prefixes with: context when provided, else the URL's own prefix.
  *
  * Exported because links are not the only thing that needs the active project: the bookmarklet
  * generator (step 3.6) bakes it into an absolute URL a browser will open from github.com, and
- * that URL must name the project even for the BOOT project — which mounts UNSCOPED (context
- * `projectId` null) yet still lives under `/p/<boot>/`, so the URL fallback is what answers.
+ * that URL must name the project — the app shell renders OUTSIDE `ProjectScopeProvider`, so the
+ * URL's own `/p/:projectId` prefix is what answers there.
  */
 export function useActiveProjectId(): string | null {
   const { projectId } = useProjectScope()
@@ -89,7 +100,7 @@ export function useActiveProjectId(): string | null {
 /** The step-3.2 helper: turn a flat route target into one scoped to the active project. */
 export function useProjectPath(): (to: To) => To {
   const projectId = useActiveProjectId()
-  return useCallback((to: To) => scopeTo(projectId, to), [projectId])
+  return useCallback((to: To) => projectId === null ? to : scopeTo(projectId, to), [projectId])
 }
 
 /** `matchPath` against the flat route map, ignoring any `/p/:projectId` prefix. */

@@ -6,13 +6,13 @@ import { NAV_ITEMS, activeNavItem, activeNavPath, visibleNavItems } from './nav-
  *  is not a plain equality check — items own areas, and the Settings area nests. */
 describe('activeNavPath', () => {
   const cases: Array<[pathname: string, active: string | null]> = [
-    // Tasks owns the overview *and* every task surface (spec: "clicking a row opens
-    // /tasks/:id with Tasks still active").
-    ['/', '/'],
-    ['/tasks/abc123', '/'],
-    ['/tasks/abc123/changes', '/'],
-    ['/tasks/abc123/files', '/'],
-    ['/compare/grp-1', '/'],
+    // The project overview has its own route; Tasks owns task and comparison surfaces.
+    ['/', null],
+    ['/tasks', '/tasks'],
+    ['/tasks/abc123', '/tasks'],
+    ['/tasks/abc123/changes', '/tasks'],
+    ['/tasks/abc123/files', '/tasks'],
+    ['/compare/grp-1', '/tasks'],
 
     ['/inbox', '/inbox'],
     ['/git', '/git'],

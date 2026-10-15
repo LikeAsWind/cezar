@@ -301,7 +301,7 @@ function Row({
           </span>
         </button>
         <Link
-          to={scopeTo(scope, `/compare/${row.groupId}`)}
+          to={scope === null ? `/compare/${row.groupId}` : scopeTo(scope, `/compare/${row.groupId}`)}
           data-slot="group-compare"
           title={t('Compare the variants')}
           aria-label={t('Compare the variants of {0}', { 0: row.title })}
@@ -485,7 +485,7 @@ const RunRow = React.memo(function RunRow({
         />
       ) : null}
       <Link
-        to={scopeTo(scope, `/tasks/${run.id}`)}
+        to={scope === null ? `/tasks/${run.id}` : scopeTo(scope, `/tasks/${run.id}`)}
         // `title` carries the FULL stored title — including a `NNN: ` prefix the chip let the
         // visible text drop — so hover always gives back everything the column could not show.
         title={title}

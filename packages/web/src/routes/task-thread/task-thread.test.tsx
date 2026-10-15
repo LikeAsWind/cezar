@@ -1603,11 +1603,19 @@ describe('TaskThreadRoute', () => {
         Promise.resolve(new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })),
       ),
     )
-    renderRoute('nope')
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/p/alpha/tasks/nope']}>
+          <ProjectScopeProvider projectId="alpha">
+            <Routes><Route path="/p/:projectId/tasks/:id" element={<TaskThreadRoute />} /></Routes>
+          </ProjectScopeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Task not found')
     })
-    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe('/p/alpha/tasks')
     expect(document.querySelector('[data-slot="centered-state"]')?.getAttribute('data-tone')).toBe('neutral')
   })
 })

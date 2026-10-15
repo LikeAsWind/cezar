@@ -1,10 +1,9 @@
 import type { ProjectsResponse, WorkspaceLastLocation } from '@open-mercato/cezar-api-client'
 import { describe, expect, it } from 'vitest'
 
-import { bareRootLanding, locationToRestore, locationToSave, sameLastLocation } from './last-location'
+import { recentProjectLocation, locationToSave, sameLastLocation } from './last-location'
 
 const REGISTRY: ProjectsResponse = {
-  bootProject: 'boot',
   projectsDir: '/work',
   projects: [
     {
@@ -37,11 +36,8 @@ const REGISTRY: ProjectsResponse = {
   ],
 }
 
-/** What the server answers when cezar was started somewhere with an EMPTY registry: the served
- *  folder is the whole list, flagged, and `bootProject` names it. (With projects registered the
- *  row is not listed at all — `bareRootLanding` below is what that case needs.) */
+/** A registry containing a single project. */
 const UNREGISTERED_BOOT: ProjectsResponse = {
-  bootProject: 'scratch',
   projectsDir: '/work',
   projects: [
     {
@@ -52,7 +48,6 @@ const UNREGISTERED_BOOT: ProjectsResponse = {
       lastOpenedAt: '',
       source: 'local',
       status: 'ok',
-      unregistered: true,
     },
   ],
 }
@@ -104,11 +99,7 @@ describe('locationToSave', () => {
     expect(locationToSave({ pathname: '/p/boot/', search: '', hash: '' }, undefined)).toBeNull()
   })
 
-  // A first launch registers nothing (seed-once) — `GET /api/v1/projects` answers the served
-  // folder with `unregistered: true`, and it has to be a usable project everywhere, this
-  // included. Without that row it could never be the restore target, and the user's only
-  // project would not survive reopening the bare root.
-  it('saves an unregistered boot project like any other', () => {
+  it('saves a single registered project', () => {
     expect(locationToSave({ pathname: '/p/scratch/tasks', search: '', hash: '' }, UNREGISTERED_BOOT)).toEqual({
       projectId: 'scratch',
       pathname: '/p/scratch/tasks',
@@ -116,7 +107,7 @@ describe('locationToSave', () => {
   })
 })
 
-describe('locationToRestore', () => {
+describe('recentProjectLocation', () => {
   const saved: WorkspaceLastLocation = {
     projectId: 'other',
     pathname: '/p/other/tasks/run-1/changes',
@@ -124,12 +115,12 @@ describe('locationToRestore', () => {
     hash: '#L2',
   }
 
-  it('restores a valid registered location exactly', () => {
-    expect(locationToRestore(saved, REGISTRY, 'boot')).toBe('/p/other/tasks/run-1/changes?file=x#L2')
+  it('returns a valid registered location as a hint', () => {
+    expect(recentProjectLocation(saved, REGISTRY)).toEqual(saved)
   })
 
   it('restores a registered not-git project', () => {
-    expect(locationToRestore({ projectId: 'other', pathname: '/p/other/' }, REGISTRY, 'boot')).toBe('/p/other/')
+    expect(recentProjectLocation({ projectId: 'other', pathname: '/p/other/' }, REGISTRY)).toEqual({ projectId: 'other', pathname: '/p/other/' })
   })
 
   it.each([
@@ -143,15 +134,11 @@ describe('locationToRestore', () => {
     ['a search without ?', { projectId: 'boot', pathname: '/p/boot/', search: 'tab=runs' }],
     ['a hash without #', { projectId: 'boot', pathname: '/p/boot/', hash: 'L2' }],
   ])('rejects %s', (_case, value) => {
-    expect(locationToRestore(value, REGISTRY, 'boot')).toBeNull()
+    expect(recentProjectLocation(value, REGISTRY)).toBeNull()
   })
 
-  it('accepts only the health boot project while the registry is unavailable', () => {
-    expect(locationToRestore({ projectId: 'boot', pathname: '/p/boot/tasks/run-1' }, undefined, 'boot')).toBe(
-      '/p/boot/tasks/run-1',
-    )
-    expect(locationToRestore(saved, undefined, 'boot')).toBeNull()
-    expect(locationToRestore({ projectId: 'boot', pathname: '/p/boot/' }, undefined, undefined)).toBeNull()
+  it('offers no hint while the registry is unavailable', () => {
+    expect(recentProjectLocation(saved, undefined)).toBeNull()
   })
 })
 
@@ -177,46 +164,5 @@ describe('sameLastLocation', () => {
     expect(sameLastLocation(current, { ...current, pathname: '/p/boot/git' })).toBe(false)
     expect(sameLastLocation(current, { ...current, search: '?tab=git' })).toBe(false)
     expect(sameLastLocation(current, { ...current, hash: '#L2' })).toBe(false)
-  })
-})
-
-describe('bareRootLanding', () => {
-  it('lands on the boot project when the registry lists it', () => {
-    expect(bareRootLanding(REGISTRY, 'boot')).toBe('boot')
-  })
-
-  it('lands on the boot project when it is the whole list (empty registry)', () => {
-    expect(bareRootLanding(UNREGISTERED_BOOT, 'scratch')).toBe('scratch')
-  })
-
-  it('lands on the most recently opened project when the boot folder is not listed', () => {
-    const registry: ProjectsResponse = {
-      ...REGISTRY,
-      bootProject: 'scratch',
-      projects: [
-        { ...REGISTRY.projects[0]!, lastOpenedAt: '2026-07-01T10:00:00.000Z' },
-        { ...REGISTRY.projects[1]!, lastOpenedAt: '2026-07-29T10:00:00.000Z' },
-      ],
-    }
-
-    expect(bareRootLanding(registry, 'scratch')).toBe('other')
-  })
-
-  it('skips a missing root, and keeps the boot project when every row is missing', () => {
-    const projects = REGISTRY.projects.map((project) => ({ ...project, status: 'missing' as const }))
-    const usable: ProjectsResponse = {
-      ...REGISTRY,
-      bootProject: 'scratch',
-      projects: [projects[0]!, { ...REGISTRY.projects[2]!, status: 'ok' as const }],
-    }
-
-    expect(bareRootLanding(usable, 'scratch')).toBe('gone')
-    expect(bareRootLanding({ ...REGISTRY, bootProject: 'scratch', projects }, 'scratch')).toBe(
-      'scratch',
-    )
-  })
-
-  it('keeps the boot project when the registry is unavailable', () => {
-    expect(bareRootLanding(undefined, 'scratch')).toBe('scratch')
   })
 })

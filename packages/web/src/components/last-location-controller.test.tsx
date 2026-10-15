@@ -1,6 +1,6 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, useNavigate } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
@@ -10,7 +10,6 @@ import { LAST_LOCATION_STORAGE_KEY } from '@/lib/last-location'
 import { LastLocationController } from './last-location-controller'
 
 const REGISTRY: ProjectsResponse = {
-  bootProject: 'boot',
   projectsDir: '/work',
   projects: [
     {
@@ -47,10 +46,12 @@ let clients: QueryClient[] = []
 
 function NavigationControls() {
   const navigate = useNavigate()
+  const location = useLocation()
   return (
     <>
       <button onClick={() => navigate('/p/boot/tasks/middle')}>Middle</button>
       <button onClick={() => navigate('/p/other/tasks/final?tab=events#tool-3')}>Final</button>
+      <output aria-label="Current path">{location.pathname}</output>
     </>
   )
 }
@@ -90,6 +91,14 @@ afterEach(() => {
 })
 
 describe('LastLocationController', () => {
+  it('leaves the bare root global when a recent project is stored', () => {
+    const recent = { projectId: 'other', pathname: '/p/other/tasks/final' }
+    localStorage.setItem(LAST_LOCATION_STORAGE_KEY, JSON.stringify(recent))
+    mount('/')
+    expect(screen.getByLabelText('Current path').textContent).toBe('/')
+    expect(stored()).toEqual(recent)
+  })
+
   it('remembers a valid scoped URL exactly, in this browser', () => {
     mount('/p/boot/tasks/run-1/changes?file=src%2Findex.ts#L12')
 

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useParams } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
+import { ProjectScopeProvider } from '@/api/project-scope-context'
 import type { GroupResponse, GroupVariant, RunStatus } from '@open-mercato/cezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
@@ -200,10 +201,21 @@ describe('the compare columns', () => {
   })
 
   it('renders the 404 as a neutral CenteredState with a way home', async () => {
-    stubFetch(group(), { 'GET /api/v1/groups/g1': () => jsonResponse({ error: 'not found' }, 404) })
-    renderCompare()
+    stubFetch(group(), {
+      'GET /api/v1/p/alpha/groups/g1': () => jsonResponse({ error: 'not found' }, 404),
+      'GET /api/v1/p/alpha/runs': () => jsonResponse([]),
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/p/alpha/compare/g1']}>
+          <ProjectScopeProvider projectId="alpha">
+            <Routes><Route path="/p/:projectId/compare/:groupId" element={<CompareVariantsRoute />} /></Routes>
+          </ProjectScopeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
     await waitFor(() => expect(screen.queryByText('No such variant group')).not.toBeNull())
-    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'Back to tasks' }).getAttribute('href')).toBe('/p/alpha/tasks')
   })
 })
 
