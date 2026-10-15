@@ -15,6 +15,11 @@ import { BookmarkletPanel } from './bookmarklets-section'
  *
  * Multi-project spec, step 3.6: the same generator, mounted under `/p/<id>/settings`, must bake
  * THAT project's URL prefix and THAT project's launch key — the second describe below.
+ *
+ * The explicit-id contract (Task 4): the panel reads `useActiveProjectId()` and renders NOTHING
+ * outside a project route (and issues no request). There is no boot project to fall back to, so
+ * every scoped test below mounts a REAL project id in the provider, and the "outside a project
+ * route" case renders without a provider at a flat, unprefixed URL.
  */
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -57,13 +62,13 @@ afterEach(() => {
 })
 
 /**
- * Mount the panel the way the router does: at a `/p/<id>/settings/bookmarklets` URL, optionally
- * inside a project scope. `scope: null` is the BOOT project's real shape — the URL names it but
- * the provider is unscoped, so the API paths stay legacy (see routes.tsx).
+ * Mount the panel the way the router does: at a `/p/<id>/settings/bookmarklets` URL inside a REAL
+ * project scope. `ProjectScopeProvider` requires a non-empty projectId (there is no boot project
+ * to default to), so every scoped mount names one.
  */
 function renderPanel(
   skills: readonly Skill[] = SKILLS,
-  { at = '/p/cezar/settings/bookmarklets', scope = null }: { at?: string; scope?: string | null } = {},
+  { at = '/p/cezar/settings/bookmarklets', scope = 'cezar' }: { at?: string; scope?: string } = {},
 ) {
   return render(
     <QueryClientProvider client={createQueryClient()}>
@@ -71,6 +76,20 @@ function renderPanel(
         <ProjectScopeProvider projectId={scope}>
           <BookmarkletPanel skills={skills} />
         </ProjectScopeProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+/**
+ * Mount the panel OUTSIDE any project route: no provider (the context defaults to the global
+ * workspace) and a flat, unprefixed URL — the exact shape the panel must render nothing for.
+ */
+function renderUnscoped(skills: readonly Skill[] = SKILLS, at = '/settings/bookmarklets') {
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={[at]}>
+        <BookmarkletPanel skills={skills} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -87,7 +106,7 @@ const hrefOf = (slot: string) =>
 
 describe('BookmarkletPanel repo-name labels (#422)', () => {
   it('stamps the repo name (the sidebar chip basename) into the generic and per-skill labels', async () => {
-    serve({ '/api/v1/health': HEALTH, '/api/v1/launch-key': { key: 'sekret' } })
+    serve({ '/api/v1/health': HEALTH, '/api/v1/p/cezar/launch-key': { key: 'sekret' } })
     renderPanel()
 
     await waitFor(() => expect(label('cezar (cezar): this PR/issue')).toBeTruthy())
@@ -105,7 +124,7 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
   })
 
   it('falls back to the plain label outside a git repository', async () => {
-    serve({ '/api/v1/health': { ...HEALTH, repo: null }, '/api/v1/launch-key': { key: 'sekret' } })
+    serve({ '/api/v1/health': { ...HEALTH, repo: null }, '/api/v1/p/cezar/launch-key': { key: 'sekret' } })
     renderPanel()
 
     await waitFor(() => expect(label('cezar: this PR/issue')).toBeTruthy())
@@ -136,7 +155,6 @@ const REGISTRY: ProjectsResponse = {
       status: 'ok',
     },
   ],
-  bootProject: 'cezar',
   projectsDir: '~/cezar/projects',
 }
 
@@ -162,34 +180,28 @@ describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () =
     expect(label('/om-fix (acme-repo)')).toBeTruthy()
   })
 
-  it('names the boot project too — it is unscoped, but the URL still says which project', async () => {
-    serve({ '/api/v1/health': HEALTH, '/api/v1/projects': REGISTRY, '/api/v1/launch-key': { key: 'boot-key' } })
-    renderPanel(SKILLS, { at: '/p/cezar/settings/bookmarklets', scope: null })
+  it('names every project the same way — the boot project too, from its own scope', async () => {
+    serve({ '/api/v1/health': HEALTH, '/api/v1/projects': REGISTRY, '/api/v1/p/cezar/launch-key': { key: 'cezar-key' } })
+    renderPanel(SKILLS, { at: '/p/cezar/settings/bookmarklets', scope: 'cezar' })
 
-    await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=boot-key'))
-    // The boot project mounts UNSCOPED, so only the URL prefix can answer here.
+    await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=cezar-key'))
+    // The boot project is a project like any other: its scoped URL names it, and the protected
+    // query grammar after `?` is untouched by the prefix.
     expect(hrefOf('bm-generic')).toContain(`/p/cezar/new?'+q`)
-    // …and the protected query grammar is untouched by the prefix.
-    expect(hrefOf('bm-generic')).toContain(`q='auto=0&key=boot-key&ref='`)
+    expect(hrefOf('bm-generic')).toContain(`q='auto=0&key=cezar-key&ref='`)
+  })
+})
+
+describe('BookmarkletPanel outside a project route (explicit-id contract)', () => {
+  it('renders nothing when the URL carries no project prefix', () => {
+    renderUnscoped(SKILLS, '/settings/bookmarklets')
+
+    expect(document.querySelector('[data-slot="bookmarklet-panel"]')).toBeNull()
   })
 
-  it('falls back to the boot project when the URL carries no prefix at all', async () => {
-    // A legacy flat URL still mid-redirect: health names the boot project, so the generated
-    // launcher already lands where the redirect would have taken it.
-    serve({ '/api/v1/health': { ...HEALTH, bootProject: 'cezar' }, '/api/v1/launch-key': { key: 'k' } })
-    renderPanel(SKILLS, { at: '/settings/bookmarklets', scope: null })
+  it('issues no request while no project is mounted', () => {
+    renderUnscoped(SKILLS, '/settings/bookmarklets')
 
-    await waitFor(() => expect(hrefOf('bm-generic')).toContain(`/p/cezar/new?'+q`))
-  })
-
-  it('degrades to the legacy flat /new when nothing names a project', async () => {
-    // Registry and health both unavailable. The flat path is not a dead end — the cockpit
-    // permanently redirects it to the boot project, so the launcher still lands.
-    serve({ '/api/v1/launch-key': { key: 'k' } })
-    renderPanel(SKILLS, { at: '/settings/bookmarklets', scope: null })
-
-    await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=k'))
-    expect(hrefOf('bm-generic')).toContain(`/new?'+q`)
-    expect(hrefOf('bm-generic')).not.toContain('/p/')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

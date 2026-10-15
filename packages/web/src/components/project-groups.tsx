@@ -436,8 +436,8 @@ function ProjectGroup({
   const onNavigate = useSidebarNavigate()
   // Pinning (#935) from a group that may not be the scoped project: the request is addressed to
   // THIS project, and the cache invalidated is the one `useProjectRuns` above writes — which is
-  // `'default'` for the boot project, whose list mounts unscoped.
-  const pinMutation = usePinRun(project.id, boot ? 'default' : project.id)
+  // `['project', project.id, 'runs']`, the boot project included (its list is explicit-id now).
+  const pinMutation = usePinRun(project.id)
   const onTogglePin = React.useCallback(
     (run: RunRecord, pinned: boolean) =>
       pinMutation.mutate(

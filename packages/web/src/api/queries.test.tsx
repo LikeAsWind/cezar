@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from './client'
 import { createQueryClient } from './query-client'
-import { setApiScope } from '@open-mercato/cezar-api-client'
+import { setApiScope, getApiScope } from '@open-mercato/cezar-api-client'
 import { ProjectScopeContext } from './project-scope-context'
 import type { GithubRefStatusData } from '@open-mercato/cezar-api-client'
 import {
@@ -1045,6 +1045,68 @@ describe('usePatchRun', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error).toBeInstanceOf(ApiError)
     expect(invalidate).not.toHaveBeenCalled()
+  })
+})
+
+describe('usePinRun / useSendMessage invalidation (explicit-id seam)', () => {
+  // These mutations used to invalidate `queryKeys.runs.all` (a THROWING getter — it reads
+  // `requireProjectScope()`), so a mutation that completed outside a project route crashed. The
+  // seam is now a non-throwing key: the explicit `projectId` argument when given, else the
+  // mounted scope via `getApiScope()`, and NO invalidation when neither names a project.
+
+  function pinnedResponse() {
+    return json({ ok: true })
+  }
+
+  it('keys the pin invalidation by the EXPLICIT project id, never the active scope', async () => {
+    setApiScope('scope-a')
+    try {
+      fetchMock.mockResolvedValue(pinnedResponse())
+      const client = createQueryClient()
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const { usePinRun } = await import('./queries')
+      const { result } = renderHook(() => usePinRun('proj-x'), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      })
+
+      result.current.mutate({ id: 'run-1', pinned: true })
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'proj-x', 'runs'] })
+      // The mounted scope must NOT leak into an explicit-id invalidation.
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['project', 'scope-a', 'runs'] })
+      // `usePinRun(projectId)` exercises the EXPLICIT-id mutation (`pinProjectRun`), so no scope
+      // is read anywhere in the mutation — a mounted scope is irrelevant, and none is required.
+    } finally {
+      setApiScope(null)
+    }
+  })
+
+  it('does not crash (and skips the throw) when no project is mounted', async () => {
+    setApiScope(null)
+    try {
+      expect(getApiScope()).toBeNull()
+      fetchMock.mockResolvedValue(pinnedResponse())
+      const client = createQueryClient()
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const { usePinRun } = await import('./queries')
+      const { result } = renderHook(() => usePinRun('proj-x'), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      })
+
+      result.current.mutate({ id: 'run-1', pinned: true })
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      // The explicit-id seam never reads the mounted scope, so the mutation completed even though
+      // `requireProjectScope()` (the FETCH-time gate) would have thrown had the invalidation read it.
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'proj-x', 'runs'] })
+    } finally {
+      setApiScope(null)
+    }
   })
 })
 

@@ -96,7 +96,7 @@ import {
   retryProviderAuth,
   searchTrackerItems,
 } from './client'
-import { requireProjectScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { getApiScope, requireProjectScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { normalizeTagsForDisplay } from '@/lib/project-tags'
@@ -1754,16 +1754,35 @@ function withoutReceipt(run: RunRecord): RunRecord {
  *    task). Absent is the ordinary case: the caller is already inside the run's project.
  *  - `cacheScope` is the key that project's run list is cached under — the explicit project id.
  */
-export function usePinRun(projectId?: string, cacheScope?: string) {
+/**
+ * The run-cache key a post-mutation invalidation must refresh.
+ *
+ * The ordinary case is the ACTIVE project — `getApiScope()` (non-throwing) names it, and
+ * `['project', projectId, 'runs']` is a prefix of that project's list, detail, diff, changes
+ * and git-status keys. When a caller names a DIFFERENT project (`projectId` — the sidebar's
+ * per-group quick-lists act on rows outside the mounted scope), the invalidation targets that
+ * project's own `['project', projectId, 'runs']` entry instead, never the active one.
+ *
+ * `null` (the mutation completed outside any project route) invalidates nothing: a post-mutation
+ * cache fix-up must not crash when there is no project to scope — `requireProjectScope()`'s throw
+ * is for FETCHING, not for a cache-invalidation callback that can run after the route unmounted.
+ */
+function runsInvalidationKey(projectId?: string): readonly [string, string, string] | null {
+  if (projectId !== undefined) return ['project', projectId, 'runs'] as const
+  const scope = getApiScope()
+  return scope === null ? null : (['project', scope, 'runs'] as const)
+}
+
+export function usePinRun(projectId?: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
       projectId === undefined ? pinRun(id, pinned) : pinProjectRun(projectId, id, pinned),
     // Hierarchical keys: this covers the list AND the open thread's own record.
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: cacheScope === undefined ? queryKeys.runs.all : ([cacheScope, 'runs'] as const),
-      }),
+    onSuccess: () => {
+      const key = runsInvalidationKey(projectId)
+      if (key !== null) void queryClient.invalidateQueries({ queryKey: key })
+    },
   })
 }
 
@@ -1782,10 +1801,14 @@ export function useSendMessage(id: string, projectId?: string) {
     // is the ordinary case and keeps the scoped-by-context spelling.
     mutationFn: (message: MessageInput) =>
       projectId === undefined ? sendMessage(id, message) : sendProjectRunMessage(projectId, id, message),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.runs.all }),
+    onSuccess: () => {
+      const key = runsInvalidationKey(projectId)
+      if (key !== null) void queryClient.invalidateQueries({ queryKey: key })
+    },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 409) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+        const key = runsInvalidationKey(projectId)
+        if (key !== null) void queryClient.invalidateQueries({ queryKey: key })
       }
     },
   })
@@ -1802,7 +1825,10 @@ export function useContinueRun(id: string, projectId?: string) {
   return useMutation({
     mutationFn: (opts: ContinueOptions = {}) =>
       projectId === undefined ? continueRun(id, opts) : continueProjectRun(projectId, id, opts),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.runs.all }),
+    onSuccess: () => {
+      const key = runsInvalidationKey(projectId)
+      if (key !== null) void queryClient.invalidateQueries({ queryKey: key })
+    },
   })
 }
 
