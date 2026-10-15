@@ -222,10 +222,11 @@ function DefaultAgentField({
   const repo = useRepo()
   const select = useSelectAgentProfile()
 
-  // `projectId: null` is the boot project, which every route addresses by the reserved `default`
-  // alias. The repo ROOT is the key the account store uses, and `useRepo` is project-scoped so it
-  // already answers for the ACTIVE project.
-  const projectId = scope.projectId ?? 'default'
+  // This section is project-scoped (registry `scope: 'project'`), so `scope.projectId` is the
+  // project the URL names — never null inside the route, and never the reserved `default` alias
+  // (which the server resolves only as a legacy one-unambiguous-project fallback). Sending the
+  // id rather than `default` keeps the write honest when more than one project is registered.
+  const projectId = scope.projectId
   const repoRoot = repo.data?.info?.root
   // Repo first, then the machine-wide default — the same order the server resolves in, so the
   // checked row is the account a task would really run under rather than a guess.

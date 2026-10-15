@@ -133,13 +133,16 @@ cd your-repo
 npx cezar-run
 ```
 
-This opens the cockpit at `http://localhost:4321`. Type a task, pick a workflow, then hit **Start**. `npx cezar-cli` still works too — it's the same package under its older name.
+This opens the cockpit at `http://localhost:4321`. `cez serve` starts a **global workspace** — it does not register the directory you launched it from. Register or select a project first, then type a task, pick a workflow, and hit **Start**. Each task runs in its own git worktree inside its selected project. `npx cezar-cli` still works too — it's the same package under its older name.
 
 ```bash
 npx cezar-run run "add a --json flag to the export command"   # headless, no browser
+npx cezar-run run "…" --repo ~/other-repo                     # explicit headless repository
 npx cezar-run init                                            # scaffold .ai/cezar/
 npx cezar-run@nightly                                         # try tonight's build
 ```
+
+Global settings (appearance, notifications, resources) and project settings (agents, instructions, tasks) have separate ownership — global ones apply to the whole workspace, project ones to the repo you have open.
 
 > Just want to look around? Run `CEZ_DRY_RUN=1 npx cezar-run`. It uses a built-in mock agent, so you don't need to log in.
 

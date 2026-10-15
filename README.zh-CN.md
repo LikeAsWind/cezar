@@ -114,13 +114,16 @@ cd your-repo
 npx cezar-run
 ```
 
-这会在 `http://localhost:4321` 打开驾驶舱。输入任务、选择工作流，然后点击 **Start**。
+这会在 `http://localhost:4321` 打开驾驶舱。`cez serve` 启动的是一个**全局工作区**——它不会注册你启动时所在的目录。先注册或选择一个项目，再输入任务、选择工作流，然后点击 **Start**。每个任务都会在自己所选项目内创建独立的 git worktree。
 
 ```bash
 npx cezar-run run "add a --json flag to the export command"   # headless, no browser
+npx cezar-run run "…" --repo ~/other-repo                     # 显式指定无界面运行的仓库
 npx cezar-run init                                            # scaffold .ai/cezar/
 npx cezar-run@nightly                                         # try tonight's build
 ```
+
+全局设置（外观、通知、资源）与项目设置（agent、指令、任务）各自独立——全局设置作用于整个工作区，项目设置作用于你当前打开的仓库。
 
 > 只是想先随便看看？运行 `CEZ_DRY_RUN=1 npx cezar-run`。它使用内置的 mock agent，无需登录。
 

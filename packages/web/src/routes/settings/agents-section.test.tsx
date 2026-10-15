@@ -571,7 +571,7 @@ describe('the agents form', () => {
 
       await waitFor(() => expect(selections()).toHaveLength(1))
       expect(selections()[0]?.body).toEqual({
-        projectId: 'default',
+        projectId: 'boot',
         provider: 'claude',
         profileId: 'klaudiusz',
       })
@@ -594,7 +594,7 @@ describe('the agents form', () => {
 
       await waitFor(() => expect(selections()).toHaveLength(1))
       expect(selections()[0]?.body).toEqual({
-        projectId: 'default',
+        projectId: 'boot',
         provider: 'claude',
         profileId: null,
       })
