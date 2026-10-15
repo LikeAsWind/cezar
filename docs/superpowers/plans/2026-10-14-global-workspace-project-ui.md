@@ -646,7 +646,7 @@ git commit -m "feat: add global and explicit project route trees"
 - Produces: `GLOBAL_NAV_ITEMS` and `projectNavItems(capabilities, tracker)`.
 - Consumes: URL-derived `activeProjectId` and registry entries only.
 
-- [ ] **Step 1: Write selector accessibility tests**
+- [x] **Step 1: Write selector accessibility tests**
 
 ```tsx
 it('starts in the global workspace and selects a project by keyboard', async () => {
@@ -663,13 +663,13 @@ it('searches by project name and marks missing roots', async () => {
 })
 ```
 
-- [ ] **Step 2: Run shell tests and confirm the old always-project UI**
+- [x] **Step 2: Run shell tests and confirm the old always-project UI**
 
 Run: `npx vitest run packages/web/src/components/workspace-switcher.test.tsx packages/web/src/components/app-shell.test.tsx packages/web/src/components/app-shell-container.test.tsx`
 
 Expected: FAIL because the selector does not exist, New Task always links to `/new`, and project groups replace the flat nav.
 
-- [ ] **Step 3: Implement the selector behavior**
+- [x] **Step 3: Implement the selector behavior**
 
 Use the existing shadcn/radix primitives and render:
 
@@ -685,7 +685,7 @@ Use the existing shadcn/radix primitives and render:
 
 The first menu row is always “Global workspace”; project rows show readable name and truncated monospace path. Support Arrow Up/Down, Enter, Escape, focus restoration, and name filtering.
 
-- [ ] **Step 4: Split global and project navigation**
+- [x] **Step 4: Split global and project navigation**
 
 ```ts
 export const GLOBAL_NAV_ITEMS: readonly NavItem[] = [
@@ -711,7 +711,7 @@ export function projectNavItems(flags: ProjectNavFlags): readonly NavItem[] {
 
 Global items remain visible in both scopes. Project items render only when `activeProjectId !== null`, separated under the selected project identity.
 
-- [ ] **Step 5: Gate New Task on explicit project scope**
+- [x] **Step 5: Gate New Task on explicit project scope**
 
 ```tsx
 {activeProjectId ? (
@@ -728,7 +728,7 @@ Global items remain visible in both scopes. Project items render only when `acti
 
 Add a “Back to global workspace” action in the project header that navigates to `/`; route unmounting performs the draft/subscription cleanup from Task 5.
 
-- [ ] **Step 6: Remove boot-project shell derivations**
+- [x] **Step 6: Remove boot-project shell derivations**
 
 In `AppShellContainer`, delete `bootProjectId`, `isBootProject`, health repo fallback, and `useRunsForProject`. Derive the selected entry only as:
 
@@ -739,13 +739,13 @@ const activeProject = registry?.projects.find((project) => project.id === projec
 
 Do not render `ProjectGroups`; keep that component only until its imports/tests are removed in the same commit.
 
-- [ ] **Step 7: Run shell and design guardian tests**
+- [x] **Step 7: Run shell and design guardian tests**
 
 Run: `npx vitest run packages/web/src/components/workspace-switcher.test.tsx packages/web/src/components/app-shell.test.tsx packages/web/src/components/app-shell-container.test.tsx packages/web/src/components/nav-items.test.ts packages/web/src/design-guardian.test.ts`
 
 Expected: PASS on desktop and mobile shell variants.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add packages/web/src/components/workspace-switcher.tsx packages/web/src/components/workspace-switcher.test.tsx packages/web/src/components/app-shell.tsx packages/web/src/components/app-shell.test.tsx packages/web/src/components/app-shell-container.tsx packages/web/src/components/app-shell-container.test.tsx packages/web/src/components/nav-items.ts packages/web/src/components/nav-items.test.ts packages/web/src/components/project-groups.tsx
@@ -768,7 +768,7 @@ git commit -m "feat: add workspace and project navigation shell"
 - Consumes: existing workspace dashboard/global task/project registry queries.
 - Produces: global workspace metrics, registered-project cards, explicit selection actions, and project error-state actions.
 
-- [ ] **Step 1: Write workspace dashboard tests**
+- [x] **Step 1: Write workspace dashboard tests**
 
 ```tsx
 it('renders a useful zero-project workspace', async () => {
@@ -786,17 +786,17 @@ it('shows each project without making one current implicitly', async () => {
 })
 ```
 
-- [ ] **Step 2: Run dashboard tests and confirm failure**
+- [x] **Step 2: Run dashboard tests and confirm failure**
 
 Run: `npx vitest run packages/web/src/routes/workspace-home.test.tsx packages/web/src/routes/dashboard/dashboard.test.tsx packages/web/src/routes/global-tasks.test.tsx`
 
 Expected: FAIL because the workspace home cards do not yet exist.
 
-- [ ] **Step 3: Build the workspace home from existing global data**
+- [x] **Step 3: Build the workspace home from existing global data**
 
 Render four cross-project metrics (needs attention, running, completed, failed), workspace resource usage, registered project summaries, and global configuration summary. Reuse existing dashboard/global-task query results; do not add a second polling loop. Every project action is an explicit `/p/:projectId/` link.
 
-- [ ] **Step 4: Keep global tasks project-labelled**
+- [x] **Step 4: Keep global tasks project-labelled**
 
 Preserve `run.projectId` as the link owner:
 
@@ -807,7 +807,7 @@ Preserve `run.projectId` as the link owner:
 
 Add a regression test that rows from alpha and beta navigate to their own scopes even while another project is open in a second tab.
 
-- [ ] **Step 5: Render explicit project failure states**
+- [x] **Step 5: Render explicit project failure states**
 
 - Unknown/removed id: “Project is not registered” plus “Back to global workspace”.
 - Missing root: selected project identity remains visible plus “Relocate” and “Remove binding”.
@@ -816,13 +816,13 @@ Add a regression test that rows from alpha and beta navigate to their own scopes
 
 Test each state in `routes.test.tsx` or the owning project route test.
 
-- [ ] **Step 6: Run page tests**
+- [x] **Step 6: Run page tests**
 
 Run: `npx vitest run packages/web/src/routes/workspace-home.test.tsx packages/web/src/routes/dashboard/dashboard.test.tsx packages/web/src/routes/global-tasks.test.tsx packages/web/src/routes/settings/projects-section.test.tsx packages/web/src/routes.test.tsx`
 
 Expected: PASS for zero, one, multiple, missing, removed, and failed project states.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/web/src/routes/workspace-home.tsx packages/web/src/routes/workspace-home.test.tsx packages/web/src/routes/dashboard/index.tsx packages/web/src/routes/dashboard/dashboard.test.tsx packages/web/src/routes/global-tasks.tsx packages/web/src/routes/global-tasks.test.tsx packages/web/src/routes/settings/projects-section.tsx packages/web/src/routes/settings/projects-section.test.tsx packages/web/src/routes.test.tsx
@@ -843,7 +843,7 @@ git commit -m "feat: add global workspace dashboard"
 - Produces: `SettingsScope = { kind: 'global' } | { kind: 'project'; projectId: string; projectName: string }`.
 - Produces: inherited setting rows with `effectiveValue`, `source: 'global' | 'project'`, and a clear-override action.
 
-- [ ] **Step 1: Write failing ownership-label tests**
+- [x] **Step 1: Write failing ownership-label tests**
 
 ```tsx
 it('labels machine settings as global', () => {
@@ -860,13 +860,13 @@ it('shows a project override and its effective source', () => {
 })
 ```
 
-- [ ] **Step 2: Run settings tests and confirm failure**
+- [x] **Step 2: Run settings tests and confirm failure**
 
 Run: `npx vitest run packages/web/src/routes/settings/settings.test.tsx packages/web/src/routes.test.tsx`
 
 Expected: FAIL because settings routes do not consistently expose ownership/source.
 
-- [ ] **Step 3: Thread a discriminated settings scope**
+- [x] **Step 3: Thread a discriminated settings scope**
 
 ```ts
 export type SettingsScope =
@@ -876,17 +876,17 @@ export type SettingsScope =
 
 Global pages own project registry, workspace resources, agent accounts/defaults, notifications, branding, and UI preferences. Project pages own Git/forge, tracker connections, agent overrides, automations, skills, workflows, project secrets, and task/worktree policy.
 
-- [ ] **Step 4: Show effective values and clear overrides**
+- [x] **Step 4: Show effective values and clear overrides**
 
 For every already-supported override, render both value and source. “Restore global default” must send the existing `null`/clear operation, invalidate the project settings key, and leave the global value untouched. Do not invent overrides for fields the backend does not support.
 
-- [ ] **Step 5: Run settings and route tests**
+- [x] **Step 5: Run settings and route tests**
 
 Run: `npx vitest run packages/web/src/routes/settings/settings.test.tsx packages/web/src/routes.test.tsx packages/web/src/api/queries.test.tsx`
 
 Expected: PASS; every settings screen identifies its scope.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/web/src/routes/settings/settings-shell.tsx packages/web/src/routes/settings/registry.tsx packages/web/src/routes/settings/settings.test.tsx packages/web/src/routes/settings/projects-section.tsx packages/web/src/api/agent-accounts.ts packages/web/src/api/queries.ts
@@ -907,7 +907,7 @@ git commit -m "feat: clarify global and project settings ownership"
 - Consumes: the complete behavior from Tasks 1–8.
 - Produces: browser-level acceptance evidence and user-facing startup semantics.
 
-- [ ] **Step 1: Add a real-browser acceptance test**
+- [x] **Step 1: Add a real-browser acceptance test**
 
 ```ts
 test('global home and two projects remain isolated', async ({ browser, fixture }) => {
@@ -936,11 +936,11 @@ test('global home and two projects remain isolated', async ({ browser, fixture }
 })
 ```
 
-- [ ] **Step 2: Add startup-directory invariance coverage**
+- [x] **Step 2: Add startup-directory invariance coverage**
 
 Start the same workspace service from two temporary directories with an isolated `CEZ_HOME`. Assert that both runs expose the same empty/registered project list and that neither temporary directory is added to `config.json`.
 
-- [ ] **Step 3: Run the full verification matrix**
+- [x] **Step 3: Run the full verification matrix**
 
 Run:
 
@@ -953,7 +953,7 @@ npx e2e tests/global-workspace-project-ui.e2e.ts
 
 Expected: all commands exit 0; the production web build contains no generated `/p/default` link.
 
-- [ ] **Step 4: Scan for forbidden boot/default dependencies**
+- [x] **Step 4: Scan for forbidden boot/default dependencies**
 
 Run:
 
@@ -963,7 +963,7 @@ rg -n "bootProject|DEFAULT_SCOPE|projectId \?\? 'default'|/p/default" packages/c
 
 Expected: matches exist only in explicitly labelled backward-compatibility code/tests and historical comments that remain accurate. No production navigation, query key, or task creation path uses them.
 
-- [ ] **Step 5: Update user documentation**
+- [x] **Step 5: Update user documentation**
 
 Document these exact behaviors in all three READMEs:
 
@@ -975,7 +975,7 @@ Document these exact behaviors in all three READMEs:
 
 Update `BACKWARD_COMPATIBILITY.md` with the ambiguity rule for legacy flat paths and `/p/default`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/global-workspace-project-ui.e2e.ts e2e.config.ts README.md README.zh-CN.md README.zh-TW.md BACKWARD_COMPATIBILITY.md
