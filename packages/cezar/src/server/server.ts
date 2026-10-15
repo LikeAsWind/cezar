@@ -334,14 +334,11 @@ export interface ServerDeps {
 
 // ---- project-scoped routing (multi-project spec, step 2.2) -----------------
 
-/** Hono env for the mirrored project-route table: the scope resolver puts the
+/** Hono env for the project-route table: the scope resolver puts the
  *  request's `ProjectContext` on the context, handlers read `c.get('project')`. */
 type ProjectApiEnv = { Variables: { project: ProjectContext } };
 
-/** `projectId` gate at the route boundary (spec "Project identity"): the slug
- *  shape ONLY. `default` is the reserved compatibility alias and is NOT accepted
- *  by the normal project middleware — it is resolved (or refused) by the legacy
- *  alias logic in `resolveProjectScope`. */
+/** `projectId` gate at the route boundary (spec "Project identity"): the slug shape only. */
 const projectIdSchema = z.string().regex(PROJECT_ID_RE);
 
 const providerConnectSchema = z.object({
@@ -503,8 +500,7 @@ const V1_SCOPED_PREFIX = `${V1_PREFIX}/p/:projectId`;
  * The project-scoped route table of a `createApp()` app, derived from its actual registrations
  * (so it can never drift from the code): every method+path mounted under
  * `/api/v1/p/:projectId/…`, minus the scope-resolver middleware (method ALL), deduped. The
- * alias-parity suite iterates this to assert `/api/v1/<path>` ≡ `/api/v1/p/<boot>/<path>` ≡
- * `/api/v1/p/default/<path>`.
+ * explicit-scope suite checks that project routes have no unscoped alias.
  */
 export function projectRouteManifest(app: Hono): ProjectRouteInfo[] {
   const seen = new Set<string>();
@@ -1292,12 +1288,7 @@ export function createApp(deps: ServerDeps) {
   // ---- workspace project identity (Tasks 2–3) ------------------------------
   // `cez serve` is project-neutral: there is NO boot project. Project routes
   // answer only under `/api/v1/p/:projectId/*`, resolved through the runtime's
-  // lazy context map. The compatibility resolver below answers legacy
-  // `/p/default/*` and flat project requests.
-  const resolveLegacyProjectId = (projects: readonly ProjectListEntry[]): string | null => {
-    const usable = projects.filter((project) => project.status !== 'missing');
-    return usable.length === 1 ? (usable[0]?.id ?? null) : null;
-  };
+  // lazy context map.
 
   // Health's workspace garnish: id+name ONLY — never `root` (#431, see the
   // health route). Reads only the registry file; no per-root status probes,
@@ -1481,22 +1472,14 @@ export function createApp(deps: ServerDeps) {
   // this sub-app; `createApp` mounts it under `/api/v1/p/:projectId` ONLY —
   // there is no unscoped alias, so `/api/v1/runs` 404s. The resolver middleware
   // binds `c.get('project')` from the runtime's lazy context map, mapping
-  // `ProjectContextError` to 404 (unknown) / 409 (missing root). `/p/default`
-  // is the compatibility-only alias: resolved to the ONE usable registered
-  // project, or 409s when ambiguous/empty.
+  // `ProjectContextError` to 404 (unknown) / 409 (missing root).
   const resolveProjectScope = async (c: Context<ProjectApiEnv>, next: Next): Promise<Response | void> => {
     const raw = c.req.param('projectId');
     if (typeof raw !== 'string' || !projectIdSchema.safeParse(raw).success) {
       return c.json({ error: `unknown project: ${raw}` }, 404);
     }
-    let id = raw;
-    if (raw === 'default') {
-      const legacy = resolveLegacyProjectId(await listProjects());
-      if (legacy === null) return c.json({ error: 'select a project' }, 409);
-      id = legacy;
-    }
     try {
-      c.set('project', await contexts.context(id));
+      c.set('project', await contexts.context(raw));
     } catch (err) {
       if (err instanceof ProjectContextError) {
         return err.reason === 'missing-root'
@@ -2374,16 +2357,10 @@ export function createApp(deps: ServerDeps) {
         // checkout. No project to resolve, and therefore no 404 path.
         let root: string | null = null;
         if (projectId !== null) {
-          // `default` is the legacy alias, resolved to the one usable project
-          // (409 when ambiguous). Everything else addresses a registered id.
-          const resolvedId = projectId === 'default'
-            ? resolveLegacyProjectId(await listProjects())
-            : projectId;
-          if (resolvedId === null) return c.json({ error: 'select a project' }, 409);
           // Keyed by repo ROOT, so the selection survives the registry being rebuilt and needs no
           // cross-reference into config.json. An unknown project is a 404 rather than an orphan
           // entry nobody will ever read.
-          root = await projectRootFor(resolvedId);
+          root = await projectRootFor(projectId);
           if (root === null) return c.json({ error: `unknown project: ${projectId}` }, 404);
         }
         // A user naming an account that does not exist gets told so — the opposite of how RUN
@@ -2519,12 +2496,7 @@ export function createApp(deps: ServerDeps) {
       if (!projectIdSchema.safeParse(raw).success) {
         return c.json({ error: `unknown project: ${raw}` }, 404);
       }
-      // `default` is the legacy alias: resolve it to the one usable project,
-      // refusing with 409 when ambiguous.
-      const id = raw === 'default'
-        ? resolveLegacyProjectId(await listProjects())
-        : raw;
-      if (id === null) return c.json({ error: 'select a project' }, 409);
+      const id = raw;
 
       let entry: WorkspaceProject | undefined;
       try {
@@ -2589,11 +2561,7 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: `unknown project: ${raw}` }, 404);
       }
       const parsed = { data: c.req.valid('json') };
-      // `default` is the legacy alias, resolved to the one usable project.
-      const id = raw === 'default'
-        ? resolveLegacyProjectId(await listProjects())
-        : raw;
-      if (id === null) return c.json({ error: 'select a project' }, 409);
+      const id = raw;
       const { maxParallel, tags } = parsed.data;
 
       // Read-first (mirroring DELETE, server.ts:1252-1258): a well-formed but
@@ -2901,11 +2869,7 @@ export function createApp(deps: ServerDeps) {
     { root: string } | { status: 404 | 409; error: string }
   > => {
     if (!projectIdSchema.safeParse(raw).success) return { status: 404, error: `unknown project: ${raw}` };
-    const id = raw === 'default'
-      ? resolveLegacyProjectId(await listProjects())
-      : raw;
-    if (id === null) return { status: 409, error: 'select a project' };
-    const project = (await loadWorkspaceConfig()).projects.find((entry) => entry.id === id);
+    const project = (await loadWorkspaceConfig()).projects.find((entry) => entry.id === raw);
     if (!project) return { status: 404, error: `unknown project: ${raw}` };
     if ((await probeProjectStatus(project.root)).status === 'missing') {
       return { status: 409, error: `project folder not found: ${raw}` };

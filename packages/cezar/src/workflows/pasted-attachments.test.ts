@@ -529,7 +529,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ maxParallel: 1 }));
     store = RunStore.open(dataDir);
-    manager = new RunManager(store, repoRoot);
+    manager = new RunManager(store, repoRoot, { projectId: 'alpha' });
   });
 
   afterAll(() => {
@@ -591,7 +591,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     // The task image is durable and renderable before `execute()` gets a slot.
     const queued = store.getRun(record.id);
     expect(queued?.status).toBe('queued');
-    expect(queued?.taskImages).toEqual([`/api/v1/runs/${record.id}/images/pasted-1.png`]);
+    expect(queued?.taskImages).toEqual([`/api/v1/p/alpha/runs/${record.id}/images/pasted-1.png`]);
     expect(existsSync(join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png'))).toBe(true);
 
     await waitForStatus(record.id, ['done', 'review', 'failed', 'cancelled']);
@@ -656,8 +656,8 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const queued = store.getRun(record.id);
     expect(queued?.status).toBe('queued');
     expect(queued?.taskImages).toEqual([
-      `/api/v1/runs/${record.id}/images/pasted-1.md`,
-      `/api/v1/runs/${record.id}/images/pasted-2.pdf`,
+      `/api/v1/p/alpha/runs/${record.id}/images/pasted-1.md`,
+      `/api/v1/p/alpha/runs/${record.id}/images/pasted-2.pdf`,
     ]);
 
     await waitForStatus(record.id, ['done', 'review', 'failed', 'cancelled']);
@@ -872,7 +872,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
       { type: 'text', text: 'please inspect this screenshot' },
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: TINY_PNG_B64 } },
     ]);
-    expect(queuedMessage?.images).toEqual([`/api/v1/runs/${record.id}/images/pasted-1.png`]);
+    expect(queuedMessage?.images).toEqual([`/api/v1/p/alpha/runs/${record.id}/images/pasted-1.png`]);
     expect(existsSync(join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png'))).toBe(true);
 
     await waitForStatus(record.id, ['done', 'review', 'failed', 'cancelled']);
@@ -897,7 +897,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     mkdirSync(liveDataDir, { recursive: true });
     writeFileSync(join(liveDataDir, 'config.json'), JSON.stringify({ maxParallel: 1 }));
     const liveStore = RunStore.open(liveDataDir);
-    const liveManager = new RunManager(liveStore, liveRepoRoot);
+    const liveManager = new RunManager(liveStore, liveRepoRoot, { projectId: 'alpha' });
     const waitForLiveStatus = async (runId: string, statuses: string[]): Promise<string> => {
       const deadline = Date.now() + 20_000;
       for (;;) {
@@ -978,7 +978,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const blockedLibrary = attachmentLibraryDir(liveDataDir);
     writeFileSync(blockedLibrary, 'mkdir is intentionally blocked');
     const liveStore = RunStore.open(liveDataDir);
-    const liveManager = new RunManager(liveStore, liveRepoRoot);
+    const liveManager = new RunManager(liveStore, liveRepoRoot, { projectId: 'alpha' });
     const waitForLiveStatus = async (runId: string, statuses: string[]): Promise<string> => {
       const deadline = Date.now() + 20_000;
       for (;;) {
@@ -1057,7 +1057,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string; images?: string[] })
       .find((event) => event.type === 'user-message' && event.text === 'fix what this shows');
-    expect(userMessage?.images?.[0]).toBe(`/api/v1/runs/${record.id}/images/${filePath.split('/').pop()}`);
+    expect(userMessage?.images?.[0]).toBe(`/api/v1/p/alpha/runs/${record.id}/images/${filePath.split('/').pop()}`);
     expect(ndjson).not.toContain(TINY_PNG_B64);
 
     manager.finish(record.id);

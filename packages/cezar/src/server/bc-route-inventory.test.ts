@@ -67,10 +67,9 @@ export interface RegisteredRoute {
 /**
  * Every `/api/v1/*` path a built app answers on, in the spelling §2 inventories.
  *
- * Two kinds of registration are folded away, because §2 lists each route once:
+ * Middleware is excluded and project routes use the relative spelling §2 inventories:
  *   - `method: 'ALL'` — middleware (`app.use`), not a callable route.
- *   - `/api/v1/p/:projectId/…` — the project-scoped mirror of the unscoped spelling, held
- *     identical by `route-parity.test.ts`.
+ *   - `/api/v1/p/:projectId/…` — §2 lists these under their project-relative spelling.
  *
  * There is no unversioned surface left to fold onto: `versioned-surface.test.ts` fails if a
  * route appears outside `/api/v1`, so every path this sees is already the real URL.
@@ -79,8 +78,9 @@ export function registeredApiRoutes(routes: readonly RegisteredRoute[]): Set<str
   const out = new Set<string>();
   for (const route of routes) {
     if (route.method === 'ALL') continue;
-    if (route.path.startsWith('/api/v1/p/')) continue;
-    if (route.path.startsWith('/api/v1/')) out.add(normalizePath(route.path));
+    if (route.path.startsWith('/api/v1/')) {
+      out.add(normalizePath(route.path.replace(/^\/api\/v1\/p\/:projectId\//, '/api/v1/')));
+    }
   }
   return out;
 }
@@ -174,9 +174,8 @@ describe('BACKWARD_COMPATIBILITY.md §2 route inventory', () => {
       expect(registeredApiRoutes(fake)).toEqual(new Set(['/api/v1/real']));
     });
 
-    it('folds the project-scoped mirror onto the unscoped spelling', () => {
+    it('inventories project routes even when only the scoped registration exists', () => {
       const fake = [
-        { method: 'GET', path: '/api/v1/runs/:runId' },
         { method: 'GET', path: '/api/v1/p/:projectId/runs/:runId' },
       ];
       expect(registeredApiRoutes(fake)).toEqual(new Set(['/api/v1/runs/:p']));

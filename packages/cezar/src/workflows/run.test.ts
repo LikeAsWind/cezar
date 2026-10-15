@@ -2372,7 +2372,7 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-persist-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    manager = new RunManager(store, repoRoot);
+    manager = new RunManager(store, repoRoot, { projectId: 'alpha' });
   });
 
   afterEach(() => {
@@ -2385,7 +2385,20 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
     const second = persist('run-a', 'pasted');
     expect(first?.name).toBe('pasted-1.png');
     expect(second?.name).toBe('pasted-2.png');
-    expect(first?.url).toBe('/api/v1/runs/run-a/images/pasted-1.png');
+    expect(first?.url).toBe('/api/v1/p/alpha/runs/run-a/images/pasted-1.png');
+  });
+
+  it('keeps headless attachment bytes without emitting an unscoped HTTP descriptor', () => {
+    manager.dispose();
+    manager = new RunManager(store, repoRoot);
+    expect(persist('headless', 'pasted')).toBeNull();
+    expect(readFileSync(join(imagesDir('headless'), 'pasted-1.png'), 'utf8')).toBe('fake-png-bytes');
+  });
+
+  it('gives a generated screenshot the owning project HTTP address', () => {
+    const saved = persist('run-a');
+    expect(saved?.url).toBe('/api/v1/p/alpha/runs/run-a/images/screenshot-1.png');
+    expect(readFileSync(saved!.path, 'utf8')).toBe('fake-png-bytes');
   });
 
   /** The count-based bug this replaces: one file on disk named `pasted-3.png` is a
@@ -2458,7 +2471,7 @@ describe('RunManager queued-stack mutators (#472)', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-stack-'));
     store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    manager = new RunManager(store, repoRoot);
+    manager = new RunManager(store, repoRoot, { projectId: 'alpha' });
   });
 
   afterEach(() => {
@@ -2481,7 +2494,7 @@ describe('RunManager queued-stack mutators (#472)', () => {
   it('persists attached images and records their URLs', () => {
     const r = seedQueued();
     const msg = manager.enqueueMessage(r.id, [image(), { type: 'text', text: 'like this' }]);
-    expect(msg?.images).toEqual([`/api/v1/runs/${r.id}/images/pasted-1.png`]);
+    expect(msg?.images).toEqual([`/api/v1/p/alpha/runs/${r.id}/images/pasted-1.png`]);
     expect(existsSync(join(imagesDir(r.id), 'pasted-1.png'))).toBe(true);
   });
 
@@ -2561,7 +2574,7 @@ describe('RunManager queued-stack mutators (#472)', () => {
     expect(delivered?.persistedAttachments).toEqual([
       {
         name: 'pasted-1.png',
-        url: `/api/v1/runs/${r.id}/images/pasted-1.png`,
+        url: `/api/v1/p/alpha/runs/${r.id}/images/pasted-1.png`,
         path: join(imagesDir(r.id), 'pasted-1.png'),
       },
     ]);

@@ -145,6 +145,7 @@ import {
   apiPath,
   createCezarClient,
   getApiBaseUrl,
+  projectApiPath,
   requireProjectScope,
   runHistoryContextSchema,
   runHistoryPageSchema,
@@ -396,7 +397,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
 async function requestText(path: string, init: RequestInit = {}): Promise<string> {
   const headers = new Headers(init.headers)
   headers.set('accept', 'text/plain')
-  const res = await send(path, { ...init, headers })
+  const res = await fetchOrThrow(projectApiPath(requireProjectScope(), path), { ...init, headers })
   const body = await res.text()
   if (!res.ok) throw errorFor(res.status, res.statusText, body)
   return body
@@ -505,9 +506,7 @@ export async function getRuns(opts?: ReadOptions): Promise<ApiRun[]> {
 }
 
 /** One project's run list by EXPLICIT id (`GET /api/p/:projectId/runs`, step 3.3): the sidebar
- *  reads non-active projects' tasks, which the active-scope `send()` prefix cannot reach. An
- *  already-`/api/p/`-prefixed path passes through `apiPath` untouched, so this stays
- *  correct whatever scope is mounted. */
+ *  reads non-active projects' tasks, independently of the mounted project scope. */
 export async function getProjectRuns(projectId: string, opts?: ReadOptions): Promise<ApiRun[]> {
   return unwrap(await cez.api.v1.p[':projectId'].runs.$get({ param: { projectId } }, init(opts)), '/runs')
 }
@@ -703,7 +702,7 @@ export async function getAgentConfigFile(
   )
 }
 
-/** Save inside the selected project scope; send() adds /api/p/:projectId. */
+/** Save inside the selected project scope. */
 export async function putAgentConfigFile(
   id: string,
   body: SetAgentConfigInput,
@@ -757,7 +756,7 @@ export async function getRepoFile(path: string, opts?: ReadOptions): Promise<Wor
  *  sibling. Same server-side protections: image extensions only, inside the size cap, `nosniff`
  *  and the no-script CSP. Handed to an `<img>`, never fetched, so it is built here. */
 export function repoFileRawUrl(path: string): string {
-  return apiPath(`/repo/files?path=${encodeURIComponent(path)}&raw=1`)
+  return projectApiPath(requireProjectScope(), `/repo/files?path=${encodeURIComponent(path)}&raw=1`)
 }
 
 /** One commit's structured diff (R5 repo view): `?structured=1` on the legacy commit route —
@@ -1185,7 +1184,7 @@ export async function getRunFile(id: string, path: string, opts?: ReadOptions): 
  *  server serves raw ONLY for image extensions within the size cap — everything else 409s.
  *  Scoped here rather than in send() — this URL is handed to an `<img>`, never fetched. */
 export function runFileRawUrl(id: string, path: string): string {
-  return apiPath(runPath(id, `/files?path=${encodeURIComponent(path)}&raw=1`))
+  return projectApiPath(requireProjectScope(), runPath(id, `/files?path=${encodeURIComponent(path)}&raw=1`))
 }
 
 /** The variant-compare data (spec 010): one entry per variant of the group, with the legacy

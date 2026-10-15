@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { apiPath, getApiScope } from '@open-mercato/cezar-api-client'
+import { projectApiPath, getApiScope } from '@open-mercato/cezar-api-client'
 import type { RunEvent } from '@open-mercato/cezar-api-client'
 
 /**
@@ -164,7 +164,7 @@ export function useRunEvents(runId: string | undefined, options: RunEventStreamO
     allowLateFramesRef.current = false
     seenSeqsRef.current.clear()
     setEvents([])
-    if (!runId) return
+    if (!runId || !scope) return
 
     // Off `globalThis`, like global-events.tsx: jsdom has no EventSource, and the tests stub it.
     const Source = globalThis.EventSource
@@ -311,15 +311,13 @@ export function useRunEvents(runId: string | undefined, options: RunEventStreamO
       // stale before its first frame lands.
       lastFrameAt = Date.now()
       pageHighWaterRef.current = Math.max(pageHighWaterRef.current, afterSeq)
-      // Scoped per project like every client.ts path (spec 3.1) — unscoped this is the
-      // byte-identical legacy URL. Read per (re)open, but the scope only changes with the
-      // route, which unmounts this hook first.
+      // Capture this subscription's owner so reopening cannot target another active project.
       const params = new URLSearchParams()
       if (cursor !== undefined) params.set('cursor', cursor)
       const highWater = Math.max(pageHighWaterRef.current, maxSeqRef.current)
       if (cursor !== undefined || highWater > 0) params.set('afterSeq', String(highWater))
       const query = params.size > 0 ? `?${params.toString()}` : ''
-      const current = new Source(apiPath(`/runs/${encodeURIComponent(runId)}/events${query}`), {
+      const current = new Source(projectApiPath(scope, `/runs/${encodeURIComponent(runId)}/events${query}`), {
         withCredentials: true,
       })
       source = current

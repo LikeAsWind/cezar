@@ -13,8 +13,7 @@ import { testRuntime } from './runtime.testkit.ts';
 /**
  * Explicit project scoping (Tasks 2–3): project routes answer ONLY under
  * `/api/v1/p/:projectId/<path>`. There is no unscoped alias bound to a boot
- * project, so `/api/v1/runs` 404s; `/p/default/*` is compatibility-only and
- * resolves to the ONE usable registered project, or 409s when ambiguous; an
+ * project, so `/api/v1/runs` and `/p/default/*` 404; an
  * unknown id is 404 and a registered project whose folder is gone is 409.
  */
 
@@ -134,22 +133,37 @@ describe('explicit project scoping (scoped-only routes)', () => {
     // Its own (empty) store — the run above lives in the boot-era store, not the registry's.
     expect(await scoped.json()).toEqual([]);
 
-    // No unscoped alias: `/api/v1/runs` is not a route.
-    const unscoped = await apiRequest(app, '/api/v1/runs');
-    expect(unscoped.status).toBe(404);
+    for (const path of ['/runs', '/launch-key', '/config', '/agent-config', '/workflows']) {
+      const unscoped = await apiRequest(app, `/api/v1${path}`);
+      expect(unscoped.status, path).toBe(404);
+    }
   });
 
   it('never resolves default when two projects exist', async () => {
     await registerProject(otherRoot);
     const res = await apiRequest(app, '/api/v1/p/default/runs');
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'select a project' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown project: default' });
   });
 
-  it('resolves default to the one usable project', async () => {
+  it('rejects default even with one usable project', async () => {
     const res = await apiRequest(app, '/api/v1/p/default/runs');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown project: default' });
+  });
+
+  it.each([
+    ['/api/v1/projects/default', 'PATCH', { tags: ['test'] }],
+    ['/api/v1/workspace/agent-profiles/selection', 'PUT', { projectId: 'default', provider: 'claude', profileId: null }],
+    ['/api/v1/workspace/skills-update?projectId=default', 'GET', undefined],
+    ['/api/v1/projects/default', 'DELETE', undefined],
+  ] as const)('rejects default for %s (%s)', async (path, method, body) => {
+    const res = await apiRequest(app, path, {
+      method,
+      ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+    });
+    expect(res.status, `${method} ${path}`).toBe(404);
+    expect(await res.json()).toEqual({ error: 'unknown project: default' });
   });
 
   it('unknown and malformed project ids answer 404 {error}', async () => {

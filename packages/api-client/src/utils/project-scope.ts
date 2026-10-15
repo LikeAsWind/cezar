@@ -2,15 +2,12 @@
  * Where a request goes: which API version, and which project's copy of it.
  *
  * Callers name a ROUTE (`/runs/123/diff`), never a URL. This module turns that into the real
- * path — `/api/v1/runs/123/diff` for a workspace route, or `/api/v1/p/<id>/runs/123/diff` when a
- * project scope is active — which is what makes the version a single fact in the codebase rather
+ * path — `/api/v1/workspace/events` for a workspace route, or `/api/v1/p/<id>/runs/123/diff` for an
+ * explicit project route — which is what makes the version a single fact in the codebase rather
  * than a prefix spelled at sixty call sites. A `v2` is one edit here.
  *
- * The scope itself is module-level rather than context-threaded on purpose: the API client
- * (client.ts) is a module of plain functions and its private `send()` is the single choke point
- * every request funnels through — threading a React context down into it would mean turning
- * every exported call into a hook. Instead the ProjectScopeProvider (project-scope-context.tsx)
- * writes the scope here as it mounts/changes, and the client reads it per request. One provider
+ * The active scope is module-level: ProjectScopeProvider (project-scope-context.tsx)
+ * writes the scope here as it mounts/changes, and project callers read it per request. One provider
  * per app (it wraps the routed tree), so there is exactly one writer.
  *
  * There is NO boot project and NO `'default'` sentinel. When nothing has written a scope, the
@@ -25,7 +22,13 @@
  * the whole API was reachable under `/api/v1` (BACKWARD_COMPATIBILITY.md §2). Nothing should
  * reintroduce a bare `/api/...` fetch — it will 404.
  */
-export const API_PREFIX = '/api/v1'
+import {
+  API_PREFIX,
+  projectApiPath as buildProjectApiPath,
+  runAssetPath as buildRunAssetPath,
+} from '@open-mercato/cezar-contract'
+
+export { API_PREFIX }
 
 /**
  * Where the service lives, when it is not the origin serving this bundle.
@@ -84,8 +87,17 @@ export function requireProjectScope(): string {
  * when one is set). Throws on an empty id: there is no boot project to fall back to.
  */
 export function projectApiBase(projectId: string): string {
-  if (projectId === '') throw new Error('projectId is required')
-  return `${baseUrl}${API_PREFIX}/p/${encodeURIComponent(projectId)}`
+  return projectApiPath(projectId, '')
+}
+
+/** Build an explicit project request with the configured service origin. */
+export function projectApiPath(projectId: string, path: string): string {
+  return `${baseUrl}${buildProjectApiPath(projectId, path)}`
+}
+
+/** Build an explicit project asset request with the configured service origin. */
+export function runAssetPath(projectId: string, runId: string, filename: string): string {
+  return `${baseUrl}${buildRunAssetPath(projectId, runId, filename)}`
 }
 
 /**
@@ -98,9 +110,8 @@ const WORKSPACE_LEVEL =
   /^\/(?:health$|models(?:$|[/?])|providers(?:$|[/?])|projects(?:$|[/?])|workspace\/|fs\/)/
 
 /**
- * Turn a ROUTE into the request path: `/runs` → `/api/v1/runs`, or `/api/v1/p/<id>/runs` when a
- * project scope is active. Workspace-level routes (above) answer for the whole workspace and
- * never take the scope.
+ * Turn a workspace ROUTE into a versioned request path, independent of the active project.
+ * Project requests use `projectApiPath` with an explicit id.
  *
  * Every caller passes a route, never a URL — that is what keeps the version in one place.
  * A URL that arrived from the server goes through `resolveApiUrl` instead.
@@ -108,13 +119,13 @@ const WORKSPACE_LEVEL =
  * Applied at request time (send(), the EventSources), never stored.
  */
 export function apiPath(route: string): string {
-  return `${baseUrl}${API_PREFIX}${scopeRoute(route)}`
+  return `${baseUrl}${API_PREFIX}${route}`
 }
 
-/** The active project's prefix, or nothing — the one place the scoping rule is spelled. */
+/** Legacy transcript URLs gain a scope only when one is available at render time. */
 function scopeRoute(route: string): string {
   if (activeProjectId === null || WORKSPACE_LEVEL.test(route)) return route
-  return `/p/${encodeURIComponent(activeProjectId)}${route}`
+  return buildProjectApiPath(activeProjectId, route).slice(API_PREFIX.length)
 }
 
 /** Matches a cockpit API URL and captures the part after `/api`, scope included. */

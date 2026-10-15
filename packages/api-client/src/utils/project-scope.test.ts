@@ -6,9 +6,11 @@ import {
   getApiBaseUrl,
   getApiScope,
   projectApiBase,
+  projectApiPath,
   queryScope,
   requireProjectScope,
   resolveApiUrl,
+  runAssetPath,
   setApiBaseUrl,
   setApiScope,
 } from './project-scope.ts'
@@ -16,6 +18,30 @@ import {
 afterEach(() => {
   setApiScope(null)
   setApiBaseUrl('')
+})
+
+describe('explicit project paths', () => {
+  it('encodes the project id and normalizes a project-relative path', () => {
+    expect(projectApiPath('api tools', '/runs')).toBe('/api/v1/p/api%20tools/runs')
+    expect(projectApiPath('alpha', 'runs')).toBe('/api/v1/p/alpha/runs')
+    expect(projectApiPath('alpha', '')).toBe('/api/v1/p/alpha')
+    expect(() => projectApiPath('', '/runs')).toThrow('projectId is required')
+  })
+
+  it('encodes each run asset path segment', () => {
+    expect(runAssetPath('api tools', 'run/1', 'a b.png')).toBe(
+      '/api/v1/p/api%20tools/runs/run%2F1/images/a%20b.png',
+    )
+  })
+
+  it('uses the explicit owner and configured origin regardless of active project scope', () => {
+    setApiScope('other')
+    setApiBaseUrl('https://cezar.example.com/gateway')
+    expect(projectApiPath('alpha', '/runs')).toBe('https://cezar.example.com/gateway/api/v1/p/alpha/runs')
+    expect(runAssetPath('alpha', 'run-1', 'shot.png')).toBe(
+      'https://cezar.example.com/gateway/api/v1/p/alpha/runs/run-1/images/shot.png',
+    )
+  })
 })
 
 describe('apiPath — unscoped', () => {
@@ -47,20 +73,20 @@ describe('apiPath — unscoped', () => {
 })
 
 describe('apiPath — scoped', () => {
-  it('inserts the project scope inside the version prefix', () => {
+  it('keeps workspace paths independent of the active project', () => {
     setApiScope('cezar')
-    expect(apiPath('/runs')).toBe('/api/v1/p/cezar/runs')
+    expect(apiPath('/runs')).toBe('/api/v1/runs')
     expect(apiPath('/runs/run-1/files?path=x.png&raw=1')).toBe(
-      '/api/v1/p/cezar/runs/run-1/files?path=x.png&raw=1',
+      '/api/v1/runs/run-1/files?path=x.png&raw=1',
     )
-    expect(apiPath('/runs/run-1/events')).toBe('/api/v1/p/cezar/runs/run-1/events')
+    expect(apiPath('/runs/run-1/events')).toBe('/api/v1/runs/run-1/events')
     expect(queryScope()).toBe('cezar')
   })
 
   it('URL-encodes the project id', () => {
     // Registered slugs are tame, but the id rides into a URL — encode like every path segment.
     setApiScope('a b/c')
-    expect(apiPath('/runs')).toBe('/api/v1/p/a%20b%2Fc/runs')
+    expect(projectApiPath('a b/c', '/runs')).toBe('/api/v1/p/a%20b%2Fc/runs')
     expect(projectApiBase('a b/c')).toBe('/api/v1/p/a%20b%2Fc')
   })
 
@@ -74,10 +100,10 @@ describe('apiPath — scoped', () => {
     expect(apiPath('/fs/browse')).toBe('/api/v1/fs/browse')
   })
 
-  it('does not treat a lookalike route as workspace-level', () => {
+  it('never guesses scope from a route name', () => {
     setApiScope('cezar')
-    // `/healthcheck` is not `/health`; the exemption matches whole segments only.
-    expect(apiPath('/healthcheck')).toBe('/api/v1/p/cezar/healthcheck')
+    // Workspace addressing does not infer a project from any route spelling.
+    expect(apiPath('/healthcheck')).toBe('/api/v1/healthcheck')
   })
 
   it('treats the empty string as unscoped — there is no project ""', () => {
@@ -196,7 +222,7 @@ describe('setApiBaseUrl — the service on another origin', () => {
   it('composes with the project scope', () => {
     setApiBaseUrl('https://cezar.example.com')
     setApiScope('cezar')
-    expect(apiPath('/runs')).toBe('https://cezar.example.com/api/v1/p/cezar/runs')
+    expect(apiPath('/runs')).toBe('https://cezar.example.com/api/v1/runs')
     expect(projectApiBase('cezar')).toBe('https://cezar.example.com/api/v1/p/cezar')
   })
 

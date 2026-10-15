@@ -53,6 +53,7 @@ const line = (seq: number, type: string, rest: Record<string, unknown> = {}) =>
   JSON.stringify({ seq, ts: '2026-07-14T12:00:00.000Z', type, ...rest })
 
 beforeEach(() => {
+  setApiScope('alpha')
   FakeEventSource.instances = []
   vi.useFakeTimers()
   vi.stubGlobal('EventSource', FakeEventSource)
@@ -60,6 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  setApiScope(null)
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
@@ -99,7 +101,7 @@ describe('useRunEvents — subscription', () => {
   it('opens one stream at the run endpoint, and none without a run id', () => {
     renderHook(() => useRunEvents('run-1'))
     expect(FakeEventSource.instances).toHaveLength(1)
-    expect(FakeEventSource.last.url).toBe('/api/v1/runs/run-1/events')
+    expect(FakeEventSource.last.url).toBe('/api/v1/p/alpha/runs/run-1/events')
     expect(FakeEventSource.last.init).toEqual({ withCredentials: true })
 
     cleanup()
@@ -115,6 +117,12 @@ describe('useRunEvents — subscription', () => {
     } finally {
       setApiScope(null)
     }
+  })
+
+  it('opens no project stream without a project identity', () => {
+    setApiScope(null)
+    renderHook(() => useRunEvents('run-1'))
+    expect(FakeEventSource.instances).toHaveLength(0)
   })
 
   it('collects BOTH wire vocabularies into one ordered list — v1 `run-event` and v2 `ui-event`', async () => {
@@ -414,7 +422,7 @@ describe('useRunEvents — lifecycle', () => {
 
     // Old socket closed, new one at the new endpoint, and run-1's events are gone.
     expect(first.closeCount).toBe(1)
-    expect(FakeEventSource.last.url).toBe('/api/v1/runs/run-2/events')
+    expect(FakeEventSource.last.url).toBe('/api/v1/p/alpha/runs/run-2/events')
     expect(result.current).toEqual([])
 
     // The high-water mark reset with the list: run-2's own seq 1 must not be "stale".
@@ -452,7 +460,7 @@ describe('useRunEvents — lifecycle', () => {
 
     const second = FakeEventSource.last
     expect(second).not.toBe(first)
-    expect(second.url).toBe('/api/v1/runs/run-1/events?afterSeq=1')
+    expect(second.url).toBe('/api/v1/p/alpha/runs/run-1/events?afterSeq=1')
     second.emit('run-event', line(1, 'stdout', { text: 'before' })) // replayed prefix
     second.emit('run-event', line(2, 'stdout', { text: 'after' }))
     await flushEvents()

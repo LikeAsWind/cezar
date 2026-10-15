@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
-import type { RunManager } from '../workflows/run.ts';
+import { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -44,7 +44,10 @@ describe('the versioned API surface', () => {
     writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     clearProjectProbeCache();
     store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
-    contexts = new ProjectContexts({ listProjects });
+    contexts = new ProjectContexts({
+      listProjects,
+      managerFactory: (projectStore, root, options) => new RunManager(projectStore, root, options),
+    });
     bootId = (await registerProject(repoRoot)).id;
     app = createApp({
       runtime: testRuntime({ repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, contexts }),
@@ -70,6 +73,14 @@ describe('the versioned API surface', () => {
 
   it('rejects an unknown project', async () => {
     expect((await answer('/api/v1/p/nope/agent-config')).status).toBe(404);
+  });
+
+  it('requires a real project id for project routes', async () => {
+    for (const path of ['/runs', '/launch-key', '/agent-config']) {
+      expect((await answer(`${V1}${path}`)).status, path).toBe(404);
+      expect((await answer(`${V1}/p/default${path}`)).status, path).toBe(404);
+      expect((await answer(`${V1}/p/${bootId}${path}`)).status, path).toBe(200);
+    }
   });
 
   it('serves health cross-origin — the discovery endpoint', async () => {

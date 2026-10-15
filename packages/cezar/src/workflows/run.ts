@@ -50,6 +50,7 @@ import {
   isImageAttachmentName,
   isImageMediaType,
   PENDING_ASK_MAX_QUESTIONS,
+  runAssetPath,
   sanitizeAttachmentName,
 } from '@open-mercato/cezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
@@ -6743,10 +6744,9 @@ export class RunManager {
           throw err;
         }
         this.queuedImageSeq.set(runId, seq);
-        // Versioned, because that is the only surface served now. The cockpit still upgrades
-        // the unversioned URLs sitting in OLD transcripts when it renders them
-        // (`resolveApiUrl`), but a URL minted today must be fetchable as written.
-        return { name, url: `/api/v1/runs/${runId}/images/${name}`, path };
+        // Headless managers can save bytes, but have no project HTTP address to publish.
+        if (!this.projectId) return null;
+        return { name, url: runAssetPath(this.projectId, runId, name), path };
       }
       return null;
     } catch {

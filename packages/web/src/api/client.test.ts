@@ -38,6 +38,7 @@ import {
   putUiState,
   refreshSkills,
   removeTodo,
+  repoFileRawUrl,
   runFileRawUrl,
   sendMessage,
   setProviderEnabled,
@@ -340,8 +341,15 @@ describe('request shapes', () => {
     expect(lastCall().path).toBe('/api/v1/p/proj-a/runs/a%20b%2F..%2Fc/cancel')
   })
 
-  it('hands out the byte-identical legacy raw-image URL when unscoped', () => {
-    expect(runFileRawUrl('run-1', 'shots/final.png')).toBe('/api/v1/runs/run-1/files?path=shots%2Ffinal.png&raw=1')
+  it('requires a project before building raw-image URLs', () => {
+    expect(() => runFileRawUrl('run-1', 'shots/final.png')).toThrow('projectId is required')
+    expect(() => repoFileRawUrl('shots/final.png')).toThrow('projectId is required')
+  })
+
+  it('requires a project before requesting a run text representation', async () => {
+    await expect(getRunDiff('run-1')).rejects.toThrow('projectId is required')
+    await expect(getRunHandoff('run-1')).rejects.toThrow('projectId is required')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('forwards an abort signal to fetch', async () => {
