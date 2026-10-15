@@ -1,10 +1,9 @@
 /**
  * `cez runs …` — read a running cockpit's tasks from a shell (#1080).
  *
- * A thin, read-only HTTP client over `GET /api/v1/runs`, addressed like `cez task` and
- * `cez automation`: `CEZ_API_URL` (the cockpit) and optionally `CEZ_PROJECT_ID` (which project;
- * without it the cockpit answers for the project it was started in). No server: the command says
- * so and exits 2 — the address is never guessed, see `cockpit-address.ts`.
+ * A thin, read-only HTTP client over project-scoped `GET /runs`, addressed like `cez task` and
+ * `cez automation`: `CEZ_API_URL` (the cockpit) and `CEZ_PROJECT_ID` (which project).
+ * No server: the command says so and exits 2 — the address is never guessed, see `cockpit-address.ts`.
  *
  * Read-only on purpose. Cancelling or relaunching a task from a shell is a separate surface with
  * its own questions (which verbs, what an agent may do with them); listing is what a person needs
@@ -17,7 +16,7 @@
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { runRecordSchema, runStatusSchema, type RunStatus } from '@open-mercato/cezar-contract';
-import { missingCockpitMessage } from '../cockpit-address.ts';
+import { CliProjectContextError, resolveCliProjectContext } from '../cli-project-context.ts';
 
 export interface RunsCliEnv {
   CEZ_API_URL?: string;
@@ -38,7 +37,7 @@ export interface RunsCliIo {
  *  (#1133 review) — a plain, generous bound for a call to a cockpit on the same machine. */
 const RUNS_REQUEST_TIMEOUT_MS = 10_000;
 
-const USAGE = `cez runs — read the tasks of a running cockpit from a shell (CEZ_API_URL, optional CEZ_PROJECT_ID)
+const USAGE = `cez runs — read the tasks of a running cockpit from a shell (CEZ_API_URL, CEZ_PROJECT_ID)
 
   cez runs list [--status <status>[,<status>]] [--all] [--json]
                     this project's tasks, newest first: id, status, cost, title and branch;
@@ -66,12 +65,6 @@ const listedRunSchema = runRecordSchema
     archived: true,
   })
   .extend({ status: z.string() });
-
-function base(env: RunsCliEnv): string | null {
-  const url = env.CEZ_API_URL?.replace(/\/+$/, '');
-  if (!url) return null;
-  return env.CEZ_PROJECT_ID ? `${url}/api/v1/p/${encodeURIComponent(env.CEZ_PROJECT_ID)}` : `${url}/api/v1`;
-}
 
 async function readError(response: Response): Promise<string> {
   try {
@@ -124,13 +117,12 @@ export async function runRunsCommand(
     io.error(`cez runs: unknown command "${command}"\n\n${USAGE}`);
     return 2;
   }
-  const scope = base(env);
-  if (!scope) {
-    io.error(missingCockpitMessage({
-      command: 'cez runs',
-      example: 'cez runs list',
-      insideTask: 'this cockpit did not give the task an address. Read your own task tree with `cez task list` instead, or stop and report that the cockpit is unreachable.',
-    }, env));
+  let api;
+  try {
+    api = resolveCliProjectContext(env, 'cez runs');
+  } catch (error) {
+    if (!(error instanceof CliProjectContextError)) throw error;
+    io.error(error.message);
     return 2;
   }
 
@@ -148,7 +140,7 @@ export async function runRunsCommand(
     const timeoutMs = io.timeoutMs ?? RUNS_REQUEST_TIMEOUT_MS;
     let response: Response;
     try {
-      response = await io.fetch(`${scope}/runs`, { signal: AbortSignal.timeout(timeoutMs) });
+      response = await io.fetch(`${api.apiBase}/runs`, { signal: AbortSignal.timeout(timeoutMs) });
     } catch (error) {
       throw isTimeout(error) ? new Error(`the cockpit did not answer within ${formatDuration(timeoutMs)}`) : error;
     }

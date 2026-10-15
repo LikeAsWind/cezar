@@ -9,7 +9,7 @@
  * worded for whoever is asking) and exits 2.
  */
 import { parseArgs } from 'node:util';
-import { missingCockpitMessage } from '../cockpit-address.ts';
+import { CliProjectContextError, resolveCliProjectContext } from '../cli-project-context.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
 export interface TaskCliEnv {
@@ -34,13 +34,6 @@ const USAGE = `cez task — dispatch cezar tasks from inside a task (on by defau
                   [--side-effect "…"]… [--error "…"]… [--next "…"]
   cez task list                       the tree this task belongs to, with status and cost
   cez task tree <run id>              the tree rooted at (or containing) another run`;
-
-function base(env: TaskCliEnv): { url: string; scope: string } | null {
-  const url = env.CEZ_API_URL?.replace(/\/+$/, '');
-  if (!url) return null;
-  const scope = env.CEZ_PROJECT_ID ? `${url}/api/v1/p/${encodeURIComponent(env.CEZ_PROJECT_ID)}` : `${url}/api/v1`;
-  return { url, scope };
-}
 
 async function readError(response: Response): Promise<string> {
   try {
@@ -69,13 +62,12 @@ export async function runTaskCommand(
     io.log(USAGE);
     return command ? 0 : 2;
   }
-  const api = base(env);
-  if (!api) {
-    io.error(missingCockpitMessage({
-      command: 'cez task',
-      example: 'cez task tree <run id>',
-      insideTask: 'this command only works inside a task run by a cockpit with dispatch on (it is on by default; CEZ_DISPATCH=0 turns it off). Do not substitute sub-agents or do the delegated work yourself: stop and report that dispatch is unavailable.',
-    }, env));
+  let api;
+  try {
+    api = resolveCliProjectContext(env, 'cez task');
+  } catch (error) {
+    if (!(error instanceof CliProjectContextError)) throw error;
+    io.error(error.message);
     return 2;
   }
 
@@ -121,7 +113,7 @@ export async function runTaskCommand(
           ...(values.model ? { model: values.model } : {}),
           ...(values['retry-limit'] !== undefined ? { retry_limit: number(values['retry-limit'], 'retry-limit') } : {}),
         };
-        const response = await io.fetch(`${api.scope}/runs/${encodeURIComponent(env.CEZ_TASK_ID)}/dispatch`, {
+        const response = await io.fetch(`${api.apiBase}/runs/${encodeURIComponent(env.CEZ_TASK_ID)}/dispatch`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
@@ -161,7 +153,7 @@ export async function runTaskCommand(
           ...(values.confidence !== undefined ? { confidence: number(values.confidence, 'confidence') } : {}),
           ...(values.next ? { recommended_next_action: values.next } : {}),
         };
-        const response = await io.fetch(`${api.scope}/runs/${encodeURIComponent(env.CEZ_TASK_ID)}/report`, {
+        const response = await io.fetch(`${api.apiBase}/runs/${encodeURIComponent(env.CEZ_TASK_ID)}/report`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
@@ -174,7 +166,7 @@ export async function runTaskCommand(
       case 'tree': {
         const anchor = command === 'tree' ? rest[0] : env.CEZ_TASK_ID;
         if (!anchor) throw new Error(command === 'tree' ? 'a run id is required' : 'CEZ_TASK_ID is not set');
-        const response = await io.fetch(`${api.scope}/runs`);
+        const response = await io.fetch(`${api.apiBase}/runs`);
         if (!response.ok) throw new Error(`could not list runs — ${await readError(response)}`);
         const runs = (await response.json()) as Array<{
           id: string;

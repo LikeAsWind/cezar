@@ -209,11 +209,11 @@ describe('cez automation', () => {
     expect(none.calls).toHaveLength(0);
   });
 
-  it('falls back to the unscoped API and link without a project id', async () => {
+  it('refuses without a project id before making any request', async () => {
     const h = harness([{ status: 201, body: { automation: { id: 'x', name: 'n', enabled: false } } }]);
-    expect(await runAutomationCommand(['create', '--json', JSON.stringify(definition)], { CEZ_API_URL: 'http://127.0.0.1:1' }, h.io)).toBe(0);
-    expect(h.calls[0]?.url).toBe('http://127.0.0.1:1/api/v1/automations');
-    expect(h.out[1]).toBe('cockpit: http://127.0.0.1:1/automations/x');
+    expect(await runAutomationCommand(['create', '--json', JSON.stringify(definition)], { CEZ_API_URL: 'http://127.0.0.1:1' }, h.io)).toBe(2);
+    expect(h.err[0]).toContain('CEZ_PROJECT_ID');
+    expect(h.calls).toHaveLength(0);
   });
 
   it('prints usage for help and for an unknown command', async () => {

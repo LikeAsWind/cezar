@@ -52,10 +52,10 @@ describe('cez runs', () => {
     ]);
   });
 
-  it('--all includes archived tasks, --status filters, and the unscoped API is used without a project', async () => {
+  it('--all includes archived tasks and --status filters within the project', async () => {
     const h = harness({ status: 200, body: runs });
-    expect(await runRunsCommand(['list', '--all', '--status', 'done'], { CEZ_API_URL: 'http://127.0.0.1:1' }, h.io)).toBe(0);
-    expect(h.calls).toEqual(['http://127.0.0.1:1/api/v1/runs']);
+    expect(await runRunsCommand(['list', '--all', '--status', 'done'], env, h.io)).toBe(0);
+    expect(h.calls).toEqual(['http://127.0.0.1:4321/api/v1/p/proj/runs']);
     expect(h.out).toEqual([
       'cccccccc  done  task cccccccc-3  (archived)',
       'aaaaaaaa  done  $1.50  task aaaaaaaa-1  [cez/aaaaaaaa]',
@@ -88,6 +88,13 @@ describe('cez runs', () => {
     const none = harness({ status: 200, body: runs });
     await runRunsCommand(['list', '--status', 'failed'], env, none.io);
     expect(none.out).toEqual(['no tasks match']);
+  });
+
+  it('without a project id it refuses before calling the cockpit', async () => {
+    const h = harness({ status: 200, body: runs });
+    expect(await runRunsCommand(['list'], { CEZ_API_URL: env.CEZ_API_URL }, h.io)).toBe(2);
+    expect(h.err[0]).toContain('CEZ_PROJECT_ID');
+    expect(h.calls).toHaveLength(0);
   });
 
   it('without an address it explains how to set one and never guesses a cockpit', async () => {
@@ -188,7 +195,7 @@ describe('cez runs — request timeout', () => {
     });
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runRunsCommand(['list'], { CEZ_API_URL: base }, io(out, err));
+    const code = await runRunsCommand(['list'], { CEZ_API_URL: base, CEZ_PROJECT_ID: 'proj' }, io(out, err));
     expect(code).toBe(1);
     expect(err).toEqual(['cez runs: the cockpit did not answer within 50ms']);
   });
@@ -201,7 +208,7 @@ describe('cez runs — request timeout', () => {
     });
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runRunsCommand(['list'], { CEZ_API_URL: base }, io(out, err));
+    const code = await runRunsCommand(['list'], { CEZ_API_URL: base, CEZ_PROJECT_ID: 'proj' }, io(out, err));
     expect(code).toBe(1);
     expect(err).toEqual(['cez runs: the cockpit did not answer within 50ms']);
   });
