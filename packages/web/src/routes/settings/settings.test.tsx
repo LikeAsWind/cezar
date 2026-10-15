@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
+import type { ProjectListEntry } from '@open-mercato/cezar-api-client'
 import { AppearanceProvider } from '@/components/appearance-provider'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppRoutes } from '@/routes'
@@ -46,7 +47,7 @@ function serve(uiState: Record<string, unknown> = {}) {
       if (url === '/api/v1/ui-state' && method === 'GET') return json(projectUiState)
       if (url === '/api/v1/ui-state' && method === 'PUT')
         return json({ ...projectUiState, ...(body as Record<string, unknown>) })
-      if (url === '/api/v1/config') return json(AGENTS_CONFIG)
+      if (url === '/api/v1/p/boot/config') return json(AGENTS_CONFIG)
       if (url === '/api/v1/providers/status')
         return json({
           providers: [
@@ -65,13 +66,14 @@ function serve(uiState: Record<string, unknown> = {}) {
   )
 }
 
-/** Enough of `GET /api/v1/config` for the Agents section to render its form. */
+/** Enough of `GET /api/v1/p/:projectId/config` for the Agents section to render its form. */
 const AGENTS_CONFIG = {
   baseBranch: null,
   defaultRunner: 'claude',
   systemPrompt: null,
   branchNaming: null,
   defaultModels: {},
+  modelsLocked: false,
   maxParallel: 2,
   memoryLimitMb: null,
   worktreeRetention: 10,
@@ -79,21 +81,29 @@ const AGENTS_CONFIG = {
   reviewGate: null,
 }
 
-/** Seeds the step-3.2 route gates — boot id (legacy redirect) + registry (known-check) — so a
- *  flat entry URL lands scoped immediately. The boot project mounts UNSCOPED, so the exact
- *  `/api/v1/*` paths this file's fetch stub matches stay byte-identical. */
+/** Seeds the step-3.2 route gates — the registry (known-check) — so a flat entry URL lands
+ *  scoped immediately via the one-available-project rule. Exactly one usable project, matching
+ *  the legacy `resolveLegacyProjectId` contract now that the boot project is gone from the wire. */
 function gateSeededClient(singleProject = false) {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, {
-    bootProject: 'boot',
     capabilities: { localHandoff: true, followups: true, singleProject },
   })
   client.setQueryData(workspaceQueryKeys.projects, {
-    projects: [],
-    bootProject: 'boot',
+    projects: [BOOT_PROJECT],
     projectsDir: '~/cezar/projects',
   })
   return client
+}
+
+const BOOT_PROJECT: ProjectListEntry = {
+  id: 'boot',
+  name: 'cezar',
+  root: '/home/u/cezar',
+  addedAt: '',
+  lastOpenedAt: '',
+  source: 'local',
+  status: 'ok',
 }
 
 function renderAt(entry: string, { singleProject = false }: { singleProject?: boolean } = {}) {
@@ -245,6 +255,21 @@ describe('the settings shell', () => {
     expect(index.querySelector('[data-section="projects"]')?.getAttribute('href')).toBe(
       '/settings/global/projects',
     )
+  })
+
+  describe('settings ownership (task 8)', () => {
+    it('labels machine settings as global, and says they apply unless overridden', () => {
+      renderAt('/settings/global/resources')
+      expect(screen.getByText('Global settings')).toBeTruthy()
+      expect(screen.getByText('Applies to every registered project unless overridden.')).toBeTruthy()
+    })
+
+    it('labels project settings as project in the section header', () => {
+      renderAt('/settings/agents')
+      // The desktop section header names the area on BOTH sides of the split, not just global.
+      const chip = document.querySelector('[data-slot="settings-scope-chip"]')
+      expect(chip?.textContent).toBe('Project settings')
+    })
   })
 
   it('single-project mode removes Projects from the global index and navigation', () => {
@@ -419,8 +444,8 @@ describe('the settings split writes the right store', () => {
 
     fireEvent.click(runner)
 
-    await waitFor(() => expect(putsTo('/api/v1/config')).toHaveLength(1))
-    expect(putsTo('/api/v1/config')[0]?.body).toEqual({ defaultRunner: 'codex' })
+    await waitFor(() => expect(putsTo('/api/v1/p/boot/config')).toHaveLength(1))
+    expect(putsTo('/api/v1/p/boot/config')[0]?.body).toEqual({ defaultRunner: 'codex' })
     expect(requests.some((r) => r.method === 'PUT' && r.url.startsWith('/api/v1/workspace/'))).toBe(false)
   })
 })

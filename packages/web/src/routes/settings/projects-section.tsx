@@ -721,31 +721,60 @@ export function MaxParallelStepper({
   useLocale()
 
   const update = useUpdateProject()
+  const overridden = project.maxParallel != null
   return (
-    <IntegerStepper
-      aria-label={t('Max parallel tasks for {0}', { 0: project.name })}
-      data-slot="project-max-parallel"
-      value={project.maxParallel ?? null}
-      min={MAX_PARALLEL_MIN}
-      max={MAX_PARALLEL_MAX}
-      allowEmpty
-      emptyStepFrom={Math.min(MAX_PARALLEL_MAX, Math.max(MAX_PARALLEL_MIN, workspaceMax))}
-      placeholder={t('Inherit ({0})', { 0: workspaceMax })}
-      className="w-40"
-      onCommit={(next) =>
-        update.mutateAsync(
-          { id: project.id, maxParallel: next },
-          {
-            onSuccess: () =>
-              toast(
-                next === null
-                  ? t('{0} inherits the workspace limit ({1})', { 0: project.name, 1: workspaceMax })
-                  : t('{0} runs at most {1} task{2} at a time', { 0: project.name, 1: next, 2: next === 1 ? '' : 's' }),
-              ),
-            onError: (error: Error) => toast(error.message, { tone: 'danger' }),
-          },
-        )
-      }
-    />
+    <div className="flex flex-col gap-1">
+      <IntegerStepper
+        aria-label={t('Max parallel tasks for {0}', { 0: project.name })}
+        data-slot="project-max-parallel"
+        value={project.maxParallel ?? null}
+        min={MAX_PARALLEL_MIN}
+        max={MAX_PARALLEL_MAX}
+        allowEmpty
+        emptyStepFrom={Math.min(MAX_PARALLEL_MAX, Math.max(MAX_PARALLEL_MIN, workspaceMax))}
+        placeholder={t('Inherit ({0})', { 0: workspaceMax })}
+        className="w-40"
+        onCommit={(next) =>
+          update.mutateAsync(
+            { id: project.id, maxParallel: next },
+            {
+              onSuccess: () =>
+                toast(
+                  next === null
+                    ? t('{0} inherits the workspace limit ({1})', { 0: project.name, 1: workspaceMax })
+                    : t('{0} runs at most {1} task{2} at a time', { 0: project.name, 1: next, 2: next === 1 ? '' : 's' }),
+                ),
+              onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+            },
+          )
+        }
+      />
+      {/* Ownership, said where the cap is set: an empty field inherits the machine-wide ceiling,
+          a pinned value is this project's own override of it (R8). */}
+      <p data-slot="project-max-parallel-source" className="text-[11px] text-soft-foreground">
+        {overridden
+          ? t('Source: {0} override', { 0: project.name })
+          : t('Source: workspace default')}
+      </p>
+      {overridden ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-action="project-max-parallel-restore"
+          disabled={update.isPending}
+          onClick={() =>
+            update.mutate(
+              { id: project.id, maxParallel: null },
+              {
+                onSuccess: () =>
+                  toast(t('{0} inherits the workspace limit ({1})', { 0: project.name, 1: workspaceMax })),
+                onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+              },
+            )
+          }
+        >{t('Restore global default')}</Button>
+      ) : null}
+    </div>
   )
 }

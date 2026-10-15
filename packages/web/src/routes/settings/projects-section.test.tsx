@@ -418,6 +418,39 @@ describe('Global settings → Projects', () => {
     await waitFor(() => expect(maxParallelSelect('shop-backend')!.value).toBe(''))
   })
 
+  it('states the max-parallel source and restores the global default (task 8)', async () => {
+    serve()
+    renderProjects()
+    await waitFor(() => expect(rows()).toHaveLength(3))
+
+    const source = (id: string) => row(id)?.querySelector<HTMLElement>('[data-slot="project-max-parallel-source"]')
+
+    // Unset: inherited from the workspace, no restore affordance.
+    expect(source('shop-backend')?.textContent).toBe('Source: workspace default')
+    expect(row('shop-backend')?.querySelector('[data-action="project-max-parallel-restore"]')).toBeNull()
+
+    // A pinned cap says whose override it is and offers the clear.
+    fireEvent.change(maxParallelSelect('shop-backend')!, { target: { value: '3' } })
+    fireEvent.blur(maxParallelSelect('shop-backend')!)
+    await waitFor(() => expect(source('shop-backend')?.textContent).toBe('Source: shop-backend override'))
+    await waitFor(() =>
+      expect(row('shop-backend')?.querySelector('[data-action="project-max-parallel-restore"]')).not.toBeNull(),
+    )
+
+    // The button commits `maxParallel: null` — the same clear the empty-field commit sends.
+    const restore = row('shop-backend')!.querySelector<HTMLButtonElement>('[data-action="project-max-parallel-restore"]')!
+    fireEvent.click(restore)
+    await waitFor(() =>
+      expect(patches().at(-1)).toEqual({
+        method: 'PATCH',
+        url: '/api/v1/projects/shop-backend',
+        body: { maxParallel: null },
+      }),
+    )
+    await waitFor(() => expect(source('shop-backend')?.textContent).toBe('Source: workspace default'))
+    expect(row('shop-backend')?.querySelector('[data-action="project-max-parallel-restore"]')).toBeNull()
+  })
+
   /**
    * Tags: the labels that group connected repositories, which the global Tasks page filters by.
    * What matters here is that the editor never keeps its own copy of the list — every gesture

@@ -103,9 +103,13 @@ function SectionNav({
       ))}
       {/* The nav footer answers "what am I editing?" — and each area answers it differently.
           Global: settings are per USER, not per repo, said once where the choice to write there
-          is being made. Project: WHICH repo, by its absolute path on disk. */}
+          is being made, plus what that means for every other project. Project: WHICH repo, by
+          its absolute path on disk. */}
       {scope === 'global' ? (
-        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">{t('Stored in ~/.cezar')}</p>
+        <div className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">
+          <p>{t('Stored in ~/.cezar')}</p>
+          <p className="mt-1">{t('Applies to every registered project unless overridden.')}</p>
+        </div>
       ) : (
         <ProjectLocationNav />
       )}
@@ -183,9 +187,9 @@ export function SettingsSectionRoute({
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
         <h1 className="text-base font-semibold">{section.title}</h1>
         <p className="text-[13px] text-soft-foreground">{section.description}</p>
-        {scope === 'global' ? (
-          <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">{t('Global settings')}</span>
-        ) : null}
+        <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">
+          {scope === 'global' ? t('Global settings') : t('Project settings')}
+        </span>
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
         <SectionNav scope={scope} activeId={section.id} capabilities={capabilities} />

@@ -82,15 +82,15 @@ function seededClient({
 }: { singleProject?: boolean; registry?: ProjectListEntry[] } = {}) {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, {
-    bootProject: 'boot',
     capabilities: { localHandoff: true, followups: true, singleProject },
   })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: registry ?? [project('boot'), project('demo')],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   client.setQueryData(workspaceQueryKeys.config, {
+    branding: { name: 'cezar', logoUrl: null },
+    agentDefaults: {},
     browseRoot: '~/',
     projectsDir: '~/cezar/projects',
     skillsAutoUpdate: null,
@@ -104,7 +104,9 @@ function seededClient({
     resources: {
       maxParallel: 4,
       maxMonitoringSessions: 2,
+      idleTimeoutMinutes: null,
       monitoringWakeIntervalMinutes: null,
+      autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
       worktreeRetentionDefault: 10,
     },
@@ -191,13 +193,13 @@ describe('the General page', () => {
     })
   })
 
-  it('refuses to remove the boot project before the click, with the reason', async () => {
+  it('offers Remove for the boot project too — every registered project is removable', async () => {
     renderAt('/p/boot/settings')
     const remove = await screen.findByRole('button', { name: /^Remove cezar from the workspace/ })
-    expect(remove.hasAttribute('disabled')).toBe(true)
-    expect(document.querySelector('[data-slot="project-general-remove-boot"]')?.textContent).toContain(
-      'cezar is serving this project',
-    )
+    // No boot-disable: the server 409s only on running tasks, so any registered project can be
+    // removed. The pre-click refusal hint (and its data-slot) are gone with it.
+    expect(remove.hasAttribute('disabled')).toBe(false)
+    expect(document.querySelector('[data-slot="project-general-remove-boot"]')).toBeNull()
   })
 
   it('offers to add — not manage — the folder cezar is serving but has not saved', async () => {
@@ -240,18 +242,18 @@ describe('the General page', () => {
   })
 
   it('names a folder that is gone, and says what to do about it', async () => {
+    // A missing project does not mount its settings page at all — the scope gate answers
+    // "Directory unavailable" (with Remove binding) instead. The General page's "folder not
+    // found" readout is the project-area index's, which a missing project cannot reach.
     renderAt('/p/demo/settings', {
       registry: [project('boot'), { ...project('demo'), status: 'missing' }],
     })
-    const status = await waitFor(() => {
-      const el = document.querySelector('[data-slot="project-general-status"]')
-      expect(el).not.toBeNull()
-      return el!
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Directory unavailable' })).not.toBeNull()
     })
-    expect(status.textContent).toContain('folder not found')
-    // "folder not found" alone does not say what to do about it; the hint points at the Remove
-    // field rendered directly below.
-    expect(status.textContent).toContain('remove it below')
+    expect(screen.getByRole('button', { name: 'Remove binding' })).not.toBeNull()
+    // The page for the missing project never mounts.
+    expect(general()).toBeNull()
   })
 
   it('single-project mode keeps what describes the project and drops what manages the registry', async () => {
@@ -268,20 +270,17 @@ describe('the General page', () => {
     expect(document.querySelector('[data-action="project-general-remove"]')).toBeNull()
   })
 
-  it('sends a missing folder to the path when there is no Remove button to point at', async () => {
-    // The other half of the gate: single-project mode took the Remove field away, so the hint
-    // must not send the reader "below" to a control that is not rendered.
+  it('a missing only project under a legacy flat URL asks for a project rather than mounting', async () => {
+    // Single-project mode took the registry-management half of the General page away, and a
+    // missing project never mounts its page at all. With the boot project itself missing, the
+    // legacy flat `/settings` has NO usable candidate — the legacy rule asks rather than guessing.
     renderAt('/settings', {
       singleProject: true,
       registry: [{ ...project('boot'), status: 'missing' }],
     })
-    const status = await waitFor(() => {
-      const el = document.querySelector('[data-slot="project-general-status"]')
-      expect(el).not.toBeNull()
-      return el!
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
     })
-    expect(status.textContent).toContain('folder not found')
-    expect(status.textContent).toContain('restore the folder at the path above')
-    expect(status.textContent).not.toContain('remove it below')
+    expect(general()).toBeNull()
   })
 })

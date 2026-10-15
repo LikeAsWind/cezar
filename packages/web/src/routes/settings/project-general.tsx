@@ -112,7 +112,7 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<C
               <p className="text-[13px] text-soft-foreground">{t('Loading the workspace limit…')}</p>
             )}
           </SettingsField>
-          <RemoveProject project={project} bootProject={registry.bootProject} />
+          <RemoveProject project={project} />
         </>
       ) : null}
     </div>
@@ -188,25 +188,18 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
  * Deregister this project — the registry table's per-row Remove, offered where the user already
  * is. Same hook, same dialog, same words (remove-project.tsx).
  *
- * The boot project cannot be removed from the cockpit: this server is serving that folder, and
- * dropping its registry row would break the session's own sidebar, so the server 409s. Disabling
- * here means the explanation arrives before the click rather than as an error toast after it —
- * and the offline gesture (`cezar projects remove`, which has no such refusal) is what the
- * message points at.
- *
- * On success the URL this page lives at (`/p/<id>/settings`) has just stopped resolving, so the
- * navigation is part of the action, not a nicety. It targets the BOOT project explicitly rather
- * than `/`: the bare root restores the last saved location, and whether the removed project has
- * already left the registry cache when that check runs is a race — this is the one project that
- * is always registered.
+ * Every registered project is removable from the cockpit: the server 409s only on running tasks
+ * (see the route), so the removal succeeds for any project with none. On success the URL this
+ * page lives at (`/p/<id>/settings`) has just stopped resolving, so the navigation is part of the
+ * action, not a nicety — it leaves for the workspace root rather than a page for a project the
+ * registry no longer has.
  */
-function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bootProject: string }) {
+function RemoveProject({ project }: { project: ProjectListEntry }) {
   useLocale()
 
   const [confirming, setConfirming] = useState<ProjectListEntry | null>(null)
   const remove = useProjectRemoval()
   const navigate = useNavigate()
-  const isBoot = project.id === bootProject
 
   return (
     <SettingsField
@@ -223,15 +216,11 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
           // reach it, then says what "Remove" actually does — the row context that makes a bare
           // "Remove" safe-sounding isn't read out with it.
           aria-label={t('Remove {0} from the workspace — unregisters it, no files are deleted', { 0: project.name })}
-          title={isBoot ? t('cezar is serving this project — stop it and use `cezar projects remove`') : undefined}
-          disabled={isBoot || remove.isPending}
+          disabled={remove.isPending}
           onClick={() => setConfirming(project)}
           className="text-danger"
         >{t('Remove')}{' '}{project.name}
         </Button>
-        {isBoot ? (
-          <span data-slot="project-general-remove-boot" className="text-[11px] text-soft-foreground">{t('cezar is serving this project — stop cezar and run `cezar projects remove` to drop it.')}</span>
-        ) : null}
       </div>
       <RemoveProjectDialog
         project={confirming}
@@ -240,7 +229,7 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
           setConfirming(null)
           // A 409 (running tasks) leaves the project registered, so the navigation is inside the
           // success path only — `useProjectRemoval` toasts the server's refusal and stays put.
-          remove.confirm(project, () => void navigate(`/p/${encodeURIComponent(bootProject)}`))
+          remove.confirm(project, () => void navigate('/'))
         }}
       />
     </SettingsField>
