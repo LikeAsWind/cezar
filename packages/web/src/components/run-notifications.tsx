@@ -1,8 +1,9 @@
 import { hashKey, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { queryKeys, useWorkspaceUiState } from '@/api/queries'
+import { projectQueryKeys, useWorkspaceUiState } from '@/api/queries'
 import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
+import { getApiScope } from '@open-mercato/cezar-api-client'
 import {
   diffRunTransitions,
   normalizeNotifications,
@@ -16,9 +17,10 @@ import {
  * run ENTERS `waiting`/`review`/failed while the tab is hidden.
  *
  * It watches the cached run list rather than opening its own listener on `/api/events`: the
- * global stream (api/global-events.tsx) already folds every `run` event into
- * `queryKeys.runs.list()`, and the reconnect/visibility reconciliation refetches it — so one
- * cache subscription sees BOTH deliveries of the same truth. That second path is not a bonus,
+ * global stream (api/global-events.tsx) already folds every `run` event into the active
+ * project's run-list cache (`projectQueryKeys.runs.list`), and the reconnect/visibility
+ * reconciliation refetches it — so one cache subscription sees BOTH deliveries of the same
+ * truth. That second path is not a bonus,
  * it is the point: a hidden tab is exactly when the stream is most likely to have been frozen
  * (mobile background freeze, laptop lid), and the run that flipped to `waiting` while the socket
  * was dead arrives via the reconciling refetch, not via an event.
@@ -45,7 +47,13 @@ export function RunNotifications() {
   const statusesRef = useRef<ReadonlyMap<string, RunStatus>>(new Map())
 
   useEffect(() => {
-    const listHash = hashKey(queryKeys.runs.list())
+    // The ACTIVE project's run list — read via the non-throwing scope so a
+    // global route (scope null) no-ops instead of crashing. There is no run
+    // list to watch outside a project.
+    const projectId = getApiScope()
+    if (projectId === null) return
+    const listKey = projectQueryKeys.runs.list(projectId)
+    const listHash = hashKey(listKey)
 
     const observe = (runs: readonly ApiRun[] | undefined): void => {
       const { entering, statuses } = diffRunTransitions(statusesRef.current, runs)
@@ -62,7 +70,7 @@ export function RunNotifications() {
 
     // Seed from whatever the cache already holds: with an empty previous map nothing can
     // "enter", so a mount mid-session records the current statuses and stays silent.
-    observe(queryClient.getQueryData<ApiRun[]>(queryKeys.runs.list()))
+    observe(queryClient.getQueryData<ApiRun[]>(listKey))
 
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.query.queryHash !== listHash || event.type !== 'updated') return

@@ -222,7 +222,7 @@ import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/u
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { createProjectInputSchema } from '@open-mercato/cezar-contract';
 import { createProject, listGithubOwners, type CommandRunner } from './create-project.ts';
-import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
+import { ProjectContextError, type ProjectContext } from './project-context.ts';
 import type { SystemRuntime } from './system-runtime.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
@@ -6754,14 +6754,15 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   const socketHub = deps.socketHub ?? createSocketHub();
   // No boot project (Tasks 2–3): the coordinator tracks registered projects
   // only, and the ONE lazy context map + workspace semaphore live on the
-  // runtime (Task 1) — startServer must not build a second one.
+  // runtime (Task 1) — startServer must not build a second one. The runtime's
+  // single map gets the coordinator's cached store late-bound here (F4), so
+  // scheduler-built contexts share the HTTP routes' map instead of a disjoint
+  // one.
   const automationCoordinator = new AutomationCoordinator({ listProjects });
-  const sharedContexts = new ProjectContexts({
-    listProjects,
-    semaphore: deps.runtime.semaphore,
-    automationStore: (projectId, root) => automationCoordinator.store(projectId, root)!,
-  });
-  const appRuntime: SystemRuntime = { ...deps.runtime, contexts: sharedContexts };
+  deps.runtime.contexts.setAutomationStore(
+    (projectId, root) => automationCoordinator.store(projectId, root)!,
+  );
+  const appRuntime: SystemRuntime = deps.runtime;
   // #801: GitHub automations are opt-in. Off, the flag must remove the BEHAVIOR and not merely
   // the UI — no scheduler, no GitHub polling, no launched runs — so every entry point into the
   // workspace scheduler below is gated on it. Read per call rather than captured, for the same
@@ -6806,7 +6807,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       const project = automationProjects.get(projectId);
       if (!project) return undefined;
       const contextOf = async () => {
-        return sharedContexts.context(projectId);
+        return deps.runtime.contexts.context(projectId);
       };
       const dispatchEnabled = resolveCapabilities(process.env, deps.bindHost).dispatch;
       return {
@@ -6873,7 +6874,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       void Promise.all(all.map(async (project) => {
         await registerAutomationProject(project.id, project.root);
         const automationStore = automationCoordinator.store(project.id, project.root);
-        const runStore = sharedContexts.peek(project.id)?.store;
+        const runStore = deps.runtime.contexts.peek(project.id)?.store;
         if (automationStore && runStore) reconcileAutomationReceipts(automationStore, runStore);
         if (automationStore) rebaselineIdleAutomations(automationStore, (automationId, revision) => workspaceEvents.emit('automation-change', { project: project.id, automationId, revision }));
       })).then(() => automationScheduler.start()).catch(() => undefined);

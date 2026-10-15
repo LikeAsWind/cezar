@@ -12,6 +12,7 @@ import { getRepoInfo } from './server/git.ts';
 import { loadConfig } from './config.ts';
 import { armRepoHandle } from './runs/arm-repo-handle.ts';
 import { RunStore } from './runs/store.ts';
+import type { RunStatus } from './runs/store.ts';
 import { RunManager } from './workflows/run.ts';
 import { loadWorkflows } from './workflows/load.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
@@ -255,6 +256,10 @@ async function main(): Promise<void> {
 
 // ---- serve -----------------------------------------------------------------
 
+/** Run statuses a process is actively responsible for — the same set server.ts
+ *  uses for its `activeRunCount`, kept in step with it (F5). */
+const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
+
 async function serveCommand(
   preferredPort: number,
   openBrowser: boolean,
@@ -262,9 +267,19 @@ async function serveCommand(
 ): Promise<void> {
   // Project-neutral boot (Task 2): the system runtime owns the ONE workspace
   // semaphore, the lazy project-context map and the workspace event bus. No
-  // `getRepoInfo`, no `initWorkspace`, no `openStore`, no `RunManager`, no
-  // worktree prune/retention/recovery — projects build lazily on first
-  // `/api/v1/p/:projectId/*` access, through `runtime.contexts`.
+  // `openStore`, no `RunManager`, no worktree prune/retention/recovery —
+  // projects build lazily on first `/api/v1/p/:projectId/*` access, through
+  // `runtime.contexts`.
+  //
+  // Deliberate exception (F7): single-project mode is the constrained
+  // launch-repo deployment whose add/checkout/remove are 409'd, so it must
+  // register the launch directory or a project-neutral boot leaves it with an
+  // empty, unusable registry. Only under `CEZ_SINGLE_PROJECT=1`.
+  if (process.env.CEZ_SINGLE_PROJECT === '1') {
+    const cwd = resolve(process.cwd());
+    const repoRoot = (await getRepoInfo(cwd))?.root ?? cwd;
+    await initWorkspace(repoRoot);
+  }
   const runtime = createSystemRuntime();
   await runtime.start();
 
@@ -274,7 +289,16 @@ async function serveCommand(
   let httpServer: ReturnType<typeof startServer> | null = null;
   const selfUpdate = buildSelfUpdateService({
     // Runs in flight across the workspace, for the dialog's warning.
-    activeRuns: () => 0,
+    activeRuns: () =>
+      runtime.contexts.ids().reduce(
+        (n, id) =>
+          n +
+          (runtime.contexts
+            .peek(id)
+            ?.store.listRuns()
+            .filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).length ?? 0),
+        0,
+      ),
     // The server's own predicate, not a second spelling of it: the `/apply` guard decides hosted
     // mode through `resolveCapabilities`, and the two must never disagree (they did, on 127.0.0.2).
     trimPaths: () => !resolveCapabilities(process.env, bindHost).localHandoff,

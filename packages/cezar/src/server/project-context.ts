@@ -107,6 +107,8 @@ export class ProjectContextError extends Error {
 export class ProjectContexts {
   private readonly contexts = new Map<string, ProjectContext>();
   private readonly building = new Map<string, Promise<ProjectContext>>();
+  /** Late-bound automation store provider (see {@link setAutomationStore}). */
+  private automationStore: ((projectId: string, root: string) => AutomationStore) | undefined;
   /** Live store-created subscribers; invoked before RunManager recovery. */
   private readonly storeListeners = new Set<(store: RunStore) => void>();
   /** Live `onContextBuilt` subscribers (workspace SSE, step 2.8). */
@@ -117,6 +119,18 @@ export class ProjectContexts {
 
   constructor(private readonly deps: ProjectContextDeps) {
     this.semaphore = deps.semaphore ?? new WorkspaceSemaphore();
+    this.automationStore = deps.automationStore;
+  }
+
+  /**
+   * Late-bound the automation store provider (F4): production constructs the
+   * runtime before the automation coordinator exists, so `startServer` sets the
+   * provider once — routing every context build through the coordinator's
+   * cached per-root store instead of a second `ProjectContexts` map. Only
+   * affects contexts built AFTER the call; a provider already in the deps wins.
+   */
+  setAutomationStore(provider: (projectId: string, root: string) => AutomationStore): void {
+    if (this.automationStore === undefined) this.automationStore = provider;
   }
 
   /** The built context for `projectId`, building it on first access.
@@ -233,7 +247,7 @@ export class ProjectContexts {
     // when this project's context last existed are re-queued or resumed.
     const openStore = this.deps.openStore ?? RunStore.open;
     const store = openStore(dataDir, { keepLive: true });
-    const automationStore = this.deps.automationStore?.(project.id, project.root)
+    const automationStore = this.automationStore?.(project.id, project.root)
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);
     this.notifyStoreCreated(store);

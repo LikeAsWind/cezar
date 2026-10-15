@@ -3,8 +3,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import { queryKeys, workspaceQueryKeys } from '@/api/queries'
+import { projectQueryKeys, workspaceQueryKeys } from '@/api/queries'
 import type { DashboardInsights, RunRecord, StarCountPayload } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@open-mercato/cezar-api-client'
 import {
   STAR_ASK_KEY,
   STAR_ASK_PENDING_MS,
@@ -52,13 +53,14 @@ function mount(starCount: StarCountPayload | undefined = AVAILABLE, seed: RunRec
     branding: { name: 'cezar', logoUrl: null },
   })
   if (starCount) client.setQueryData(workspaceQueryKeys.starCount, starCount)
-  client.setQueryData(queryKeys.runs.list(), seed)
+  client.setQueryData(projectQueryKeys.runs.list('shop'), seed)
   render(
     <QueryClientProvider client={client}>
       <StarPromo />
     </QueryClientProvider>,
   )
-  const patch = (runs: RunRecord[]) => act(() => client.setQueryData(queryKeys.runs.list(), runs))
+  const patch = (runs: RunRecord[]) =>
+    act(() => client.setQueryData(projectQueryKeys.runs.list('shop'), runs))
   return { client, patch }
 }
 const touch = () => act(() => fireEvent.pointerDown(window))
@@ -72,6 +74,8 @@ beforeEach(() => {
   visibility = 'visible'
   vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+  // The ask watches the ACTIVE project's run list (F1) — mount inside a scope.
+  setApiScope('shop')
 })
 
 afterEach(() => {
@@ -82,6 +86,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  setApiScope(null)
 })
 
 describe('StarPromo', () => {
@@ -189,6 +194,15 @@ describe('StarPromo', () => {
     const { patch } = mount(UNAVAILABLE)
     touch()
     patch(THIRD_DONE)
+    settle()
+    expect(dialog()).toBeNull()
+  })
+
+  it('no-ops outside a project scope — a global route has no run list to observe', () => {
+    setApiScope(null)
+    const { patch } = mount()
+    touch()
+    expect(() => patch(THIRD_DONE)).not.toThrow()
     settle()
     expect(dialog()).toBeNull()
   })

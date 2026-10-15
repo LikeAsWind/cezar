@@ -3,7 +3,8 @@ import { hashKey, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRightIcon, StarIcon } from 'lucide-react'
 
-import { queryKeys, useStarCount, useWorkspaceConfig } from '@/api/queries'
+import { projectQueryKeys, useStarCount, useWorkspaceConfig } from '@/api/queries'
+import { getApiScope } from '@open-mercato/cezar-api-client'
 import { useDashboardInsights } from '@/api/dashboard-insights'
 import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
 import {
@@ -76,7 +77,13 @@ export function StarPromo() {
   const lastInteractionRef = useRef(0)
 
   useEffect(() => {
-    const listHash = hashKey(queryKeys.runs.list())
+    // The ACTIVE project's run list — non-throwing scope so a global route
+    // (scope null) no-ops instead of crashing; outside a project there is no
+    // run list to observe for success transitions.
+    const projectId = getApiScope()
+    if (projectId === null) return
+    const listKey = projectQueryKeys.runs.list(projectId)
+    const listHash = hashKey(listKey)
     let settle: ReturnType<typeof setTimeout> | undefined
 
     const present = () =>
@@ -132,7 +139,7 @@ export function StarPromo() {
     window.addEventListener('focus', tryAsk)
 
     // Seed silently: with an empty previous map nothing can be a transition.
-    observe(queryClient.getQueryData<ApiRun[]>(queryKeys.runs.list()))
+    observe(queryClient.getQueryData<ApiRun[]>(listKey))
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (event.query.queryHash !== listHash || event.type !== 'updated') return
       observe(event.query.state.data as ApiRun[] | undefined)

@@ -1,10 +1,11 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { act, cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import { queryKeys, workspaceQueryKeys } from '@/api/queries'
+import { projectQueryKeys, workspaceQueryKeys } from '@/api/queries'
 import type { RunRecord, RunStatus, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@open-mercato/cezar-api-client'
 import { RunNotifications } from './run-notifications'
 
 /**
@@ -66,15 +67,22 @@ function mount(uiState: WorkspaceUiState, seed: RunRecord[]) {
   // Queries would otherwise fire real fetches for ui-state/runs — keep them honestly pending.
   vi.stubGlobal('fetch', vi.fn(() => new Promise<never>(() => {})))
   const client = makeClient(uiState)
-  client.setQueryData(queryKeys.runs.list(), seed)
+  client.setQueryData(projectQueryKeys.runs.list('shop'), seed)
   render(
     <QueryClientProvider client={client}>
       <RunNotifications />
     </QueryClientProvider>,
   )
-  const patch = (runs: RunRecord[]) => act(() => client.setQueryData(queryKeys.runs.list(), runs))
+  const patch = (runs: RunRecord[]) =>
+    act(() => client.setQueryData(projectQueryKeys.runs.list('shop'), runs))
   return { client, patch }
 }
+
+beforeEach(() => {
+  // The trigger watches the ACTIVE project's run list (F1) — mount inside a
+  // project scope, like app.tsx does on a `/p/:projectId` route.
+  setApiScope('shop')
+})
 
 afterEach(() => {
   cleanup()
@@ -84,6 +92,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   // Drop the visibility override so the next test starts from happy-dom's own 'visible'.
   delete (document as unknown as Record<string, unknown>).visibilityState
+  setApiScope(null)
 })
 
 describe('RunNotifications', () => {
@@ -201,7 +210,20 @@ describe('RunNotifications', () => {
     const constructed = stubNotification('granted')
     hideTab()
     const { client } = mount({ notifications: { enabled: true } }, [run({ status: 'running' })])
-    act(() => client.setQueryData(queryKeys.runs.detail('r1'), run({ status: 'waiting' })))
+    act(() => client.setQueryData(projectQueryKeys.runs.run('shop', 'r1'), run({ status: 'waiting' })))
+    expect(constructed).toEqual([])
+  })
+
+  it('no-ops outside a project scope — a global route has no run list to watch', () => {
+    const constructed = stubNotification('granted')
+    hideTab()
+    setApiScope(null)
+    const { client, patch } = mount({ notifications: { enabled: true } }, [run({ status: 'running' })])
+    // A transition landing on the (unobserved) list must stay silent, and must not throw.
+    expect(() => patch([run({ status: 'waiting' })])).not.toThrow()
+    expect(constructed).toEqual([])
+    // No subscription was left behind: an unrelated cache update is inert too.
+    act(() => client.setQueryData(projectQueryKeys.runs.run('shop', 'r1'), run({ status: 'waiting' })))
     expect(constructed).toEqual([])
   })
 })

@@ -16,6 +16,7 @@ import { Link, useSearchParams } from 'react-router'
 
 import { archiveProjectRun, setProjectRunRead } from '@/api/client'
 import {
+  projectQueryKeys,
   rememberReferenceStatuses,
   useHealth,
   useProjects,
@@ -218,7 +219,7 @@ function useIndexedRunMutation<V extends { task: GlobalTask }>({
       // getter — this page stands outside every project, so it must not read that) or a sidebar
       // group's explicit key. The explicit per-project key below covers the run's own list
       // regardless of scope.
-      void queryClient.invalidateQueries({ queryKey: [task.run.projectId, 'runs', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: projectQueryKeys.runs.list(task.run.projectId) })
     },
   })
 }
