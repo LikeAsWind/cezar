@@ -1,9 +1,11 @@
 import { t, useLocale } from '@/lib/i18n'
 import { FolderSearchIcon } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
 import type { ProjectsResponse } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
+import { Button } from '@/components/ui/button'
+import { useProjectRemoval } from '@/routes/settings/remove-project'
 
 /** Unknown project ids and ambiguous legacy links never choose another project implicitly. */
 export function UnknownProjectRoute({
@@ -62,6 +64,9 @@ export function UnknownProjectRoute({
 export function MissingProjectRoute({ project }: { project: ProjectsResponse['projects'][number] }) {
   useLocale()
 
+  const navigate = useNavigate()
+  const remove = useProjectRemoval()
+
   return (
     <CenteredState
       icon={<FolderSearchIcon />}
@@ -70,6 +75,11 @@ export function MissingProjectRoute({ project }: { project: ProjectsResponse['pr
       actions={
         <>
           <Link to="/" className="text-sm text-primary underline">{t('Back to global workspace')}</Link>
+          <Button
+            variant="outline"
+            disabled={remove.isPending}
+            onClick={() => remove.confirm(project, () => navigate('/'))}
+          >{t('Remove binding')}</Button>
           <Link to="/projects" className="text-sm text-primary underline">{t('Manage projects')}</Link>
         </>
       }

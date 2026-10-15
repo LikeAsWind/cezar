@@ -647,6 +647,7 @@ describe('project availability', () => {
     expect(screen.getByRole('heading', { name: 'Directory unavailable' })).not.toBeNull()
     expect(screen.getByText('/home/u/cezar')).not.toBeNull()
     expect(screen.getByRole('link', { name: 'Manage projects' }).getAttribute('href')).toBe('/projects')
+    expect(screen.getByRole('button', { name: 'Remove binding' })).not.toBeNull()
     expect(getApiScope()).toBeNull()
     expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
   })

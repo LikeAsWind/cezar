@@ -75,7 +75,6 @@ const HEALTH: HealthResponse = {
     { id: BOOT, name: 'cezar' },
     { id: OTHER, name: 'shop-frontend' },
   ],
-  bootProject: BOOT,
 }
 
 const REGISTRY: ProjectsResponse = {
@@ -101,7 +100,6 @@ const REGISTRY: ProjectsResponse = {
       branch: 'develop',
     },
   ],
-  bootProject: BOOT,
   projectsDir: '~/cezar/projects',
 }
 

@@ -34,11 +34,7 @@ export function useDashboardAutomations(enabled: boolean) {
   const registry = useProjects()
   const client = useQueryClient()
   const registered = registry.data?.projects ?? []
-  const boot = registry.data?.bootProject
-  const projects =
-    boot && !registered.some((p) => p.id === boot)
-      ? [...registered, { id: boot, name: boot, status: 'ok' }]
-      : registered
+  const projects = registered
   const query = useQuery({
     queryKey: [
       ...workspaceQueryKeys.dashboard,

@@ -19,14 +19,27 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function mount(projects = true) {
+/** A registered project, as `GET /api/v1/projects` answers it. */
+function project(id: string) {
+  return {
+    id,
+    name: id,
+    root: `/work/${id}`,
+    source: 'local' as const,
+    status: 'ok' as const,
+    addedAt: '',
+    lastOpenedAt: '',
+  }
+}
+
+const alpha = project('alpha')
+const beta = project('beta')
+
+function mount(projects = [alpha]) {
   const client = createQueryClient()
   client.setQueryData(workspaceQueryKeys.projects, {
     projectsDir: '/work',
-    projects: projects ? [{
-      id: 'alpha', name: 'Alpha', root: '/work/alpha', source: 'local', status: 'ok',
-      addedAt: '', lastOpenedAt: '',
-    }] : [],
+    projects,
   })
   render(
     <QueryClientProvider client={client}>
@@ -36,8 +49,21 @@ function mount(projects = true) {
 }
 
 describe('WorkspaceHomeRoute', () => {
+  it('renders a useful zero-project workspace', () => {
+    mount([])
+    expect(screen.getByText('No projects registered')).not.toBeNull()
+    expect(screen.getByRole('link', { name: 'Register project' }).getAttribute('href')).toBe('/projects?register=1')
+    expect(screen.getByText('This home is not bound to the directory that started Cezar.')).not.toBeNull()
+  })
+
+  it('shows each project without making one current implicitly', () => {
+    mount([alpha, beta])
+    expect(screen.getByRole('link', { name: /Open alpha/ }).getAttribute('href')).toBe('/p/alpha/')
+    expect(screen.getByRole('link', { name: /Open beta/ }).getAttribute('href')).toBe('/p/beta/')
+  })
+
   it('renders a global home with no projects', () => {
-    mount(false)
+    mount([])
     expect(screen.getByRole('heading', { name: 'Workspace' })).not.toBeNull()
   })
 
@@ -46,7 +72,7 @@ describe('WorkspaceHomeRoute', () => {
       projectId: 'alpha', pathname: '/p/alpha/tasks/one', search: '?tab=events', hash: '#tool',
     }))
     mount()
-    expect(screen.getByRole('link', { name: 'Recent project: Alpha' }).getAttribute('href'))
+    expect(screen.getByRole('link', { name: 'Recent project: alpha' }).getAttribute('href'))
       .toBe('/p/alpha/tasks/one?tab=events#tool')
     expect(screen.getByRole('heading', { name: 'Workspace' })).not.toBeNull()
   })
@@ -55,7 +81,7 @@ describe('WorkspaceHomeRoute', () => {
     localStorage.setItem(LAST_LOCATION_STORAGE_KEY, JSON.stringify({
       projectId: 'alpha', pathname: '/p/alpha/',
     }))
-    mount(false)
+    mount([])
     expect(screen.queryByRole('link', { name: /Recent project/ })).toBeNull()
   })
 })

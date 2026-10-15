@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { queryKeys, workspaceQueryKeys } from '@/api/queries'
+import { workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
 import type { ProjectListEntry, ProjectsResponse, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
@@ -80,7 +80,7 @@ type Answers = {
   putConfig?: { status: number; payload: unknown }
   /** What `DELETE /api/v1/projects/:id` answers. */
   del?: { status: number; payload: unknown }
-  /** Serve the boot folder as an unregistered row (and make it `bootProject`). */
+  /** Serve the boot folder as an unregistered row. */
   unregisteredBoot?: boolean
   /** What `POST /api/v1/projects` answers — the unregistered row's Add button. */
   post?: { status: number; payload: unknown }
@@ -94,7 +94,6 @@ function serve(answers: Answers = {}) {
     projects: answers.unregisteredBoot
       ? [UNREGISTERED_BOOT, ...PROJECTS.map((p) => ({ ...p }))]
       : PROJECTS.map((p) => ({ ...p })),
-    bootProject: answers.unregisteredBoot ? UNREGISTERED_BOOT.id : 'cezar',
     projectsDir: '~/cezar/projects',
   }
   const config: WorkspaceConfigResponse = {
@@ -186,11 +185,8 @@ function serve(answers: Answers = {}) {
 /** Seeds the step-3.2 route gates so the (unscoped) global settings shell renders immediately. */
 function gateSeededClient(unregisteredBoot = false) {
   const client = createQueryClient()
-  const bootProject = unregisteredBoot ? UNREGISTERED_BOOT.id : 'cezar'
-  client.setQueryData(queryKeys.health, { bootProject })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: unregisteredBoot ? [UNREGISTERED_BOOT, ...PROJECTS] : PROJECTS,
-    bootProject,
     projectsDir: '~/cezar/projects',
   })
   return client
@@ -674,13 +670,12 @@ describe('Global settings → Projects', () => {
     })
   })
 
-  it('disables Remove for the project cezar is serving', async () => {
+  it('offers Remove for every registered project, including the one cezar is serving', async () => {
     serve()
     renderProjects()
     await waitFor(() => expect(rows()).toHaveLength(3))
-    // The server refuses it too (it is serving that repo); disabling explains it first.
-    expect(removeButton('cezar')?.disabled).toBe(true)
-    expect(removeButton('cezar')?.title).toContain('is serving this project')
+    // There is no boot project: the server removes any registered project that has no running tasks.
+    expect(removeButton('cezar')?.disabled).toBe(false)
   })
 
   /**

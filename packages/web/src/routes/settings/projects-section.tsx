@@ -314,7 +314,6 @@ function RegistryTable({
                 <ProjectRow
                   key={project.id}
                   project={project}
-                  isBoot={project.id === registry.bootProject}
                   workspaceMax={workspaceMax}
                   vocabulary={vocabulary}
                   disabled={remove.isPending}
@@ -337,14 +336,12 @@ function RegistryTable({
 
 function ProjectRow({
   project,
-  isBoot,
   workspaceMax,
   vocabulary,
   disabled,
   onRemove,
 }: {
   project: ProjectListEntry
-  isBoot: boolean
   workspaceMax: number
   vocabulary: readonly string[]
   disabled: boolean
@@ -409,10 +406,7 @@ function ProjectRow({
             // word, so the accessible name contains the visible one (WCAG 2.5.3 Label in Name) and
             // speech input still reaches the control. Same shape as the General page's button.
             aria-label={t('Remove {0} from the workspace — unregisters it, no files are deleted', { 0: project.name })}
-            // The boot project is refused server-side too (this server runs out of it);
-            // disabling here means the user gets the explanation before the click, not after.
-            title={isBoot ? t('cezar is serving this project — stop it and use `cezar projects remove`') : undefined}
-            disabled={disabled || isBoot}
+            disabled={disabled}
             onClick={onRemove}
           >{t('Remove')}</Button>
         )}

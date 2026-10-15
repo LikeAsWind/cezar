@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/api/query-client'
 import type { ProjectListEntry, RunIndexEntry } from '@open-mercato/cezar-api-client'
 import { ListViewProvider, useListView } from '@/components/list-view'
+import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { __clearRememberedStatusesForTests, workspaceQueryKeys } from '@/api/queries'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
@@ -165,7 +166,7 @@ function stubFetch({
         return jsonResponse({ capabilities: { costMetrics, tokenUsageMetrics: true } })
       }
       if (path === '/api/v1/projects') {
-        return jsonResponse({ projects, bootProject: 'api', projectsDir: '/repos' })
+        return jsonResponse({ projects, projectsDir: '/repos' })
       }
       if (path === '/api/v1/workspace/runs-index') {
         if (indexStatus !== 200) return jsonResponse({ error: 'workspace unreadable' }, indexStatus)
@@ -266,6 +267,33 @@ describe('global tasks page', () => {
     expect(rowIds()).toEqual(['a1', 'w1', 'i1'])
     // The whole reason this page cannot use the scope-aware Link: each row leaves for a
     // different project.
+    expect(screen.getByRole('link', { name: 'Add checkout endpoint' }).getAttribute('href')).toBe(
+      '/p/api/tasks/a1',
+    )
+    expect(screen.getByRole('link', { name: 'Checkout page' }).getAttribute('href')).toBe(
+      '/p/web/tasks/w1',
+    )
+  })
+
+  it('keeps each row’s own scope even while another project is open in a second tab', async () => {
+    // The rows come from `api` and `web`, but a second tab has `infra` mounted as its active
+    // project (ProjectScopeProvider sets the module-level api scope). Each row must still name
+    // its OWN project — `scopeTo(run.projectId, …)` — never the mounted one.
+    stubFetch()
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/tasks']}>
+          <ProjectScopeProvider projectId="infra">
+            <ListViewProvider>
+              <GlobalTasksRoute />
+              <Toaster />
+            </ListViewProvider>
+          </ProjectScopeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await screen.findByText('Add checkout endpoint')
     expect(screen.getByRole('link', { name: 'Add checkout endpoint' }).getAttribute('href')).toBe(
       '/p/api/tasks/a1',
     )

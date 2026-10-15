@@ -16,7 +16,6 @@ import { Link, useSearchParams } from 'react-router'
 
 import { archiveProjectRun, setProjectRunRead } from '@/api/client'
 import {
-  queryKeys,
   rememberReferenceStatuses,
   useHealth,
   useProjects,
@@ -215,10 +214,10 @@ function useIndexedRunMutation<V extends { task: GlobalTask }>({
     },
     onSettled: (_data, _error, { task }) => {
       void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.runsIndex })
-      // The run's own project may be the active scope (its list is `queryKeys.runs.all`) or a
-      // sidebar group's explicit key — invalidate both spellings so neither shows a row this
-      // page has just changed.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      // The row's own project list may be the active scope (`queryKeys.runs.all`, a THROWING
+      // getter — this page stands outside every project, so it must not read that) or a sidebar
+      // group's explicit key. The explicit per-project key below covers the run's own list
+      // regardless of scope.
       void queryClient.invalidateQueries({ queryKey: [task.run.projectId, 'runs', 'list'] })
     },
   })
