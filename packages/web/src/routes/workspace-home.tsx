@@ -17,6 +17,8 @@ import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { effectiveHostView, formatCpuCores, formatMemPair } from '@/lib/host-effective'
 import { readStoredLastLocation, recentProjectLocation } from '@/lib/last-location'
+import { cn } from '@/lib/utils'
+import { metricAccents, metricSurface, MetricContent } from './dashboard/presentation'
 
 /**
  * The fixed global workspace home — the one page outside every `/p/:projectId`.
@@ -97,21 +99,23 @@ export function WorkspaceHomeRoute() {
         <section aria-label={t('Workspace metrics')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {(
             [
-              { key: 'needsYou', label: t('Needs attention'), value: metrics?.needsYou, Icon: CircleHelp },
-              { key: 'running', label: t('Running'), value: metrics?.running, Icon: Activity },
-              { key: 'completed', label: t('Completed'), value: metrics?.completed, Icon: CheckCheck },
-              { key: 'failed', label: t('Failed'), value: metrics?.failed, Icon: CircleAlert },
+              { key: 'needsYou', label: t('Needs attention'), value: metrics?.needsYou, tint: metricAccents.violet, Icon: CircleHelp },
+              { key: 'running', label: t('Running'), value: metrics?.running, tint: metricAccents.info, Icon: Activity },
+              { key: 'completed', label: t('Completed'), value: metrics?.completed, tint: metricAccents.success, Icon: CheckCheck },
+              { key: 'failed', label: t('Failed'), value: metrics?.failed, tint: metricAccents.danger, Icon: CircleAlert },
             ] as const
-          ).map(({ key, label, value, Icon }) => (
-            <div key={key} className="flex flex-col gap-1 rounded-lg border border-border bg-card p-4 shadow-xs">
-              <span className="flex items-center justify-between gap-2 text-[13px] font-medium text-muted-foreground">
-                {label}
-                <Icon className="size-4 text-soft-foreground" aria-hidden="true" />
-              </span>
-              <span className="mt-1 text-2xl font-semibold tabular-nums">
-                {value === undefined ? '—' : value}
-              </span>
-              <span className="text-xs text-soft-foreground">{t('Across every project')}</span>
+          ).map(({ key, label, value, tint, Icon }) => (
+            <div
+              key={key}
+              className={cn(metricSurface, value === undefined ? metricAccents.neutral : tint)}
+            >
+              <MetricContent
+                label={label}
+                value={value === undefined ? '—' : value}
+                icon={<Icon className="size-4" />}
+              >
+                {t('Across every project')}
+              </MetricContent>
             </div>
           ))}
         </section>
