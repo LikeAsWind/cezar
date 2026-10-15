@@ -36,8 +36,8 @@ export function UnknownProjectRoute({
         }
         actions={
           <>
-            <Link to="/" className="text-sm text-primary underline">{t('Back to global workspace')}</Link>
-            <Link to="/projects" className="text-sm text-primary underline">{t('Manage projects')}</Link>
+            <Button asChild><Link to="/">{t('Back to global workspace')}</Link></Button>
+            <Button asChild variant="outline"><Link to="/projects">{t('Manage projects')}</Link></Button>
           </>
         }
       >
@@ -74,13 +74,13 @@ export function MissingProjectRoute({ project }: { project: ProjectsResponse['pr
       subtitle={project.name || project.id}
       actions={
         <>
-          <Link to="/" className="text-sm text-primary underline">{t('Back to global workspace')}</Link>
+          <Button asChild><Link to="/">{t('Back to global workspace')}</Link></Button>
           <Button
             variant="outline"
             disabled={remove.isPending}
             onClick={() => remove.confirm(project, () => navigate('/'))}
           >{t('Remove binding')}</Button>
-          <Link to="/projects" className="text-sm text-primary underline">{t('Manage projects')}</Link>
+          <Button asChild variant="outline"><Link to="/projects">{t('Manage projects')}</Link></Button>
         </>
       }
     >

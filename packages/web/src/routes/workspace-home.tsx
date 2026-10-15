@@ -85,12 +85,11 @@ export function WorkspaceHomeRoute() {
           {t('Every project in one place. Open a project from the sidebar, or start a task in one.')}
         </p>
         {recent && recentProject ? (
-          <Link
-            to={`${recent.pathname}${recent.search ?? ''}${recent.hash ?? ''}`}
-            className="ml-auto text-sm text-primary underline"
-          >
-            {t('Recent project: {0}', { 0: recentProject.name || recentProject.id })}
-          </Link>
+          <Button asChild variant="outline" size="sm" className="ml-auto">
+            <Link to={`${recent.pathname}${recent.search ?? ''}${recent.hash ?? ''}`}>
+              {t('Recent project: {0}', { 0: recentProject.name || recentProject.id })}
+            </Link>
+          </Button>
         ) : null}
       </header>
 
