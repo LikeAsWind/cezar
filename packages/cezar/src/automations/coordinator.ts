@@ -4,11 +4,8 @@ import { AutomationStore } from './store.ts';
 
 /**
  * The identity of a project's automation state is its DIRECTORY, not the id the
- * caller happens to address it by. One folder can legitimately carry two ids at
- * once: the boot alias (`'default'`) the server opens it under, and the registry
- * slug it acquires the moment the user saves the served folder. Realpath'd so a
- * symlinked spelling and the registry's normalized root agree — `registerProject`
- * stores realpaths, while the boot root is whatever the process was started with.
+ * caller happens to address it by. Realpath'd so a symlinked spelling and the
+ * registry's normalized root agree — `registerProject` stores realpaths.
  */
 function rootKey(root: string): string {
   try {
@@ -29,18 +26,6 @@ export interface AutomationProjectSource {
 export interface AutomationCoordinatorOptions {
   listProjects: () => Promise<readonly AutomationProjectSource[]>;
   warn?: (message: string) => void;
-  /**
-   * The boot project's id, which `refresh()` must never evict even though
-   * `listProjects()` (the REGISTRY) does not name it. The server serves the
-   * folder it was started in whether or not that folder is registered, and
-   * since boot registration became seed-once (`shouldAutoRegisterProject`)
-   * the unregistered case is the ordinary one — the store is then keyed on
-   * the `'default'` boot alias, which is never a registry id. Without this
-   * the sweep below drops that store on the first `reschedule()`, and the
-   * boot project's automations stay visible and editable in the cockpit
-   * while nothing ever polls for them.
-   */
-  pinned?: string;
 }
 
 /**
@@ -54,9 +39,9 @@ export class AutomationCoordinator {
    * with an in-memory snapshot taken at `open()` — `list()` serves that snapshot
    * and `setState()` rewrites the whole state file from the writer's own copy —
    * so two instances over one `.ai/cezar` diverge permanently the first time
-   * either writes. Keying by id let that happen as soon as one folder had two
-   * ids: the cockpit wrote through the boot alias while the scheduler polled a
-   * second store, so a disabled automation kept firing and cursors rolled back.
+   * either writes. Keying by id lets alternate spellings or ids for one root
+   * open a second store, so a disabled automation can keep firing and cursors
+   * can roll back.
    */
   private readonly stores = new Map<string, AutomationStore>();
   /** projectId → the root that id addresses (unnormalized; `rootKey` normalizes). */
@@ -74,11 +59,7 @@ export class AutomationCoordinator {
       this.options.warn?.(`Unable to refresh GitHub automations: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    // The pinned boot id survives the sweep: it is a project this process is
-    // demonstrably serving, not a stale handle, and the registry it is being
-    // compared against is exactly the list that does not know about it.
     const present = new Set(projects.map((project) => project.id));
-    if (this.options.pinned !== undefined) present.add(this.options.pinned);
     for (const id of [...this.opened]) {
       if (!present.has(id)) this.remove(id);
     }
@@ -112,11 +93,6 @@ export class AutomationCoordinator {
    * scheduler builds a due entry per id returned here, and two ids for one root
    * meant every definition in it polled and launched twice.
    *
-   * The pinned boot id wins that tie deliberately. `/p/<slug>/` resolves to the
-   * boot context anyway, but the scheduler's `launch` only takes the boot
-   * manager and store when it is handed the boot id; given the slug it would
-   * build a SECOND `ProjectContext` over the boot root, double-opening the
-   * `.ai/cezar` state the server takes care never to open twice.
    */
   enabledProjectIds(): string[] {
     const chosen = new Map<string, string>();
@@ -126,7 +102,7 @@ export class AutomationCoordinator {
       const key = rootKey(root);
       const store = this.stores.get(key);
       if (!store?.list().some((definition) => definition.enabled)) continue;
-      if (!chosen.has(key) || projectId === this.options.pinned) chosen.set(key, projectId);
+      if (!chosen.has(key)) chosen.set(key, projectId);
     }
     return [...chosen.values()];
   }

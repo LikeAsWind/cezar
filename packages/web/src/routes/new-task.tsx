@@ -592,7 +592,7 @@ export function NewTaskRoute() {
                     // it refuses to overwrite an unsent draft already waiting over there.
                     const result = handOffComposition(draftProjectId, scopeKeyOf(next))
                     if (!result.moved && result.reason === 'destination-busy') {
-                      // `draftProjectId` is the API scope key, so null means the boot project.
+                      // `draftProjectId` is the API scope key; null retains the legacy unscoped draft.
                       // Resolve both ends through the registry: the user needs to know where
                       // their composition remains as well as which destination was occupied.
                       const departingName =

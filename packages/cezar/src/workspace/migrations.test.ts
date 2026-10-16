@@ -45,7 +45,7 @@ describe('workspace migrations', () => {
 
   it('fresh home: creates config.json with defaults and schemaVersion 1', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await runMigrations({ bootRepoRoot: null });
+    await runMigrations({ repoRoot: null });
     const config = await loadWorkspaceConfig();
     expect(config).toEqual({ ...defaultWorkspaceConfig(), schemaVersion: 1 });
     expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
@@ -64,7 +64,7 @@ describe('workspace migrations', () => {
     const repoConfigBefore = readFileSync(join(repoRoot, '.ai/cezar/config.json'), 'utf8');
     const repoUiBefore = readFileSync(join(repoRoot, '.ai/cezar/ui-state.json'), 'utf8');
 
-    await runMigrations({ bootRepoRoot: repoRoot });
+    await runMigrations({ repoRoot });
 
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(1);
@@ -94,7 +94,7 @@ describe('workspace migrations', () => {
     writeRepoFile('config.json', { maxParallel: 5, memoryLimitMb: 1024 });
     writeRepoFile('ui-state.json', { appearance: { accent: 'violet' }, notifications: { enabled: true } });
 
-    await runMigrations({ bootRepoRoot: repoRoot });
+    await runMigrations({ repoRoot });
 
     const config = await loadWorkspaceConfig();
     expect(config.resources.maxParallel).toBe(8); // globally set — kept
@@ -107,7 +107,7 @@ describe('workspace migrations', () => {
   it('re-running the migration body is idempotent: imported values are not re-imported', async () => {
     writeRepoFile('config.json', { maxParallel: 5 });
     writeRepoFile('ui-state.json', { appearance: { accent: 'violet' } });
-    await runMigrations({ bootRepoRoot: repoRoot });
+    await runMigrations({ repoRoot });
 
     // Simulate a crash between the migration body and the version bump: force
     // schemaVersion back to 0 and re-run against CHANGED repo values. The
@@ -116,7 +116,7 @@ describe('workspace migrations', () => {
     writeFileSync(workspaceConfigPath(), JSON.stringify({ ...raw, schemaVersion: 0 }), 'utf8');
     writeRepoFile('config.json', { maxParallel: 3 });
     writeRepoFile('ui-state.json', { appearance: { accent: 'lime' } });
-    await runMigrations({ bootRepoRoot: repoRoot });
+    await runMigrations({ repoRoot });
 
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(1);
@@ -125,15 +125,15 @@ describe('workspace migrations', () => {
   });
 
   it('a completed migration is skipped entirely on the next boot', async () => {
-    await runMigrations({ bootRepoRoot: null });
+    await runMigrations({ repoRoot: null });
     const run = vi.fn(async () => {});
-    await runMigrations({ bootRepoRoot: null }, [{ to: 1, id: '001-spy', run }]);
+    await runMigrations({ repoRoot: null }, [{ to: 1, id: '001-spy', run }]);
     expect(run).not.toHaveBeenCalled();
   });
 
   it('out-of-range repo values are not imported (defaults kept)', async () => {
     writeRepoFile('config.json', { maxParallel: 99, memoryLimitMb: 12.5 });
-    await runMigrations({ bootRepoRoot: repoRoot });
+    await runMigrations({ repoRoot });
     const config = await loadWorkspaceConfig();
     expect(config.resources.maxParallel).toBe(2);
     expect(config.resources.memoryLimitMb).toBeNull();
@@ -142,7 +142,7 @@ describe('workspace migrations', () => {
   it('an unwritable home degrades with ONE warning and never throws', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     chmodSync(home, 0o500); // read-only home dir → the atomic write fails
-    await expect(runMigrations({ bootRepoRoot: null })).resolves.toBeUndefined();
+    await expect(runMigrations({ repoRoot: null })).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toContain('001-workspace-config');
     chmodSync(home, 0o700);
@@ -165,7 +165,7 @@ describe('workspace migrations', () => {
       // migration 1's bump must already be on disk when migration 2 runs
       versionSeenBySecond = rawGlobalConfig().schemaVersion;
     });
-    await runMigrations({ bootRepoRoot: null }, [second, first]); // deliberately out of order
+    await runMigrations({ repoRoot: null }, [second, first]); // deliberately out of order
     expect(order).toEqual([1, 2]);
     expect(versionSeenBySecond).toBe(1);
     expect((await loadWorkspaceConfig()).schemaVersion).toBe(2);
@@ -174,7 +174,7 @@ describe('workspace migrations', () => {
   it('a failing migration warns once and stops the chain (later steps do not run)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const second = vi.fn(async () => {});
-    await runMigrations({ bootRepoRoot: null }, [
+    await runMigrations({ repoRoot: null }, [
       { to: 1, id: '001-boom', run: async () => Promise.reject(new Error('boom')) },
       { to: 2, id: '002-after', run: second },
     ]);

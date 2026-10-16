@@ -1046,7 +1046,7 @@ export async function getGithubSearch(
  * Batched status for the PR/issue chips on screen. Takes its project EXPLICITLY, like
  * `getProjectRuns` and `archiveProjectRun` and for the same reason: the global Tasks page stands
  * outside every `/p/:projectId`, and its rows belong to different projects — `requireProjectScope()` would
- * ask the boot project about another project's PR number and get a confident wrong answer.
+ * ask an implicit project about another project's PR number and get a confident wrong answer.
  * Callers standing in one project pass their own id.
  *
  * Degrades to `{ available: false, reason }` server-side; an absent number is "nothing known",
@@ -1320,7 +1320,7 @@ export async function getGithubOwners(opts?: ReadOptions): Promise<GithubOwnersR
  *
  * Registry-only by contract — the server deletes NOTHING under the project root — so this
  * never needs an "are you sure you have a backup" ceremony beyond the pane's own confirm.
- * Ordinary `unwrap`: the 409s (running tasks, the boot project) are real failures whose
+ * Ordinary `unwrap`: the 409s (running tasks) are real failures whose
  * `{ error }` message is what the pane shows, and `errorFor` already surfaces it.
  */
 export async function removeProject(projectId: string): Promise<RemoveProjectResponse> {
@@ -1435,7 +1435,7 @@ export async function archiveProjectRun(
 /**
  * The read receipt by EXPLICIT project — the twin of `archiveProjectRun`, and for the same
  * reason: the global Tasks page stands outside every `/p/:projectId`, so `requireProjectScope()` would
- * stamp the receipt on the boot project. `read: false` is the inverse route (#775).
+ * stamp the receipt on an implicit project. `read: false` is the inverse route (#775).
  */
 export async function setProjectRunRead(
   projectId: string,

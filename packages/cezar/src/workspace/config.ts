@@ -24,9 +24,8 @@ import { assertCezarHomeWriteIsSandboxed, isAbsolutePath, workspaceConfigPath } 
  * - a corrupt file degrades to in-memory defaults plus ONE warning line, and
  *   is left in place until the next successful merge-write replaces it. What
  *   makes that survivable is the `config.json.bak` snapshot below, which the
- *   load path restores from before degrading — NOT re-registration: since boot
- *   registration became seed-once (`shouldAutoRegisterProject`), opening a
- *   project no longer writes it back, so a registry lost with its snapshot is
+ *   load path restores from before degrading — opening a project never
+ *   registers it implicitly, so a registry lost with its snapshot is
  *   re-added with `cezar projects add <dir>` (or the cockpit's Add project),
  *   one gesture per project. Nothing inside any repo is ever at stake.
  */

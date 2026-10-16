@@ -8,12 +8,8 @@ import { loadWorkspaceConfig } from './config.ts';
 import { clearProjectProbeCache, registerProject } from './projects.ts';
 
 /**
- * `initWorkspace` — the one function every boot path (`serve`, `run`, the
- * single-project `projects list`) calls, and therefore the only thing that
- * decides whether starting cezar in a folder writes to the user's registry.
- * `shouldAutoRegisterProject` has its own unit tests; these assert the WIRING,
- * because a boot that quietly went back to the old path would leave every one
- * of those tests green.
+ * Workspace initialization runs config migrations but never turns the launch
+ * directory into a project. Project registration stays an explicit gesture.
  */
 describe('initWorkspace', () => {
   const originalHome = process.env.CEZ_HOME;
@@ -44,34 +40,28 @@ describe('initWorkspace', () => {
   const registeredRoots = async (): Promise<string[]> =>
     (await loadWorkspaceConfig()).projects.map((project) => project.root);
 
-  it('seeds the registry from the folder cezar first runs in', async () => {
+  it('leaves an empty registry empty when initialization runs from a repository', async () => {
     const root = makeRepo('first');
-    const id = await initWorkspace(root);
-    expect(id).toBe('first');
-    expect(await registeredRoots()).toEqual([realpathSync(root)]);
+    expect(await initWorkspace(root)).toBeUndefined();
+    expect(await registeredRoots()).toEqual([]);
   });
 
-  it('does not add the folder once the user has projects', async () => {
+  it('does not add an unregistered launch folder when the user has projects', async () => {
     await registerProject(makeRepo('kept'));
     const scratch = makeRepo('scratch');
 
-    // No id to plumb into the server — it derives the boot slug itself and
-    // lists the folder as unregistered (see the projects API tests).
     expect(await initWorkspace(scratch)).toBeUndefined();
-    expect(await registeredRoots()).toEqual([realpathSync(join(repos, 'kept'))]);
+    expect((await registeredRoots()).map((root) => root.split(/[\\/]/).at(-1))).toEqual(['kept']);
   });
 
-  it('still opens a known project: same id, refreshed lastOpenedAt', async () => {
+  it('does not select or update a registered project when initialized from it', async () => {
     const root = makeRepo('known');
     const first = await registerProject(root);
     await registerProject(makeRepo('other'));
 
-    const id = await initWorkspace(root);
-    expect(id).toBe(first.id);
+    expect(await initWorkspace(root)).toBeUndefined();
     const entry = (await loadWorkspaceConfig()).projects.find((project) => project.id === first.id);
-    expect(Date.parse(entry?.lastOpenedAt ?? '')).toBeGreaterThanOrEqual(
-      Date.parse(first.lastOpenedAt),
-    );
+    expect(entry?.lastOpenedAt).toBe(first.lastOpenedAt);
     expect(await registeredRoots()).toHaveLength(2);
   });
 

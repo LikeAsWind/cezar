@@ -43,7 +43,7 @@ import type {
  *
  * Multi-project (spec, step 3.1): the one stream carries EVERY project's events, each stamped
  * with its owner. This layer unwraps the envelope (events.ts) and applies only the active
- * project's events — the mounted scope's, or the boot project's when unscoped — so the caches
+ * project's events — the mounted scope's; unscoped workspace pages drop stamped project events — so the caches
  * (which are keyed by that same scope, queries.ts) never see another project's data. One
  * connection for the whole workspace, not one per project: same per-origin socket-budget
  * argument as ever, and a project switch changes the filter, not the socket.

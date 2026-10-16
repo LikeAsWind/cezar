@@ -14,7 +14,7 @@ describe('the contract reaches the cockpit as BOTH a schema and a type', () => {
     const ok = healthResponseSchema.safeParse({
       version: '1', repoRoot: '/r', repo: null, checks: [], defaultRunner: 'claude',
       forge: null, capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false, dispatch: false },
-      projects: [], bootProject: 'default',
+      projects: [],
     })
     expect(ok.success).toBe(true)
     expect(healthResponseSchema.safeParse({ version: 1 }).success).toBe(false)
@@ -23,7 +23,7 @@ describe('the contract reaches the cockpit as BOTH a schema and a type', () => {
     const h: HealthResponse = {
       version: '1', repoRoot: '/r', repo: null, checks: [], defaultRunner: 'claude',
       forge: null, capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false, dispatch: false },
-      projects: [], bootProject: 'default',
+      projects: [],
     }
     expect(h.defaultRunner).toBe('claude')
   })

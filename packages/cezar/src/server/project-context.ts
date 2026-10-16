@@ -15,14 +15,14 @@ import { ensureDataGitignore } from '../data-gitignore.ts';
 
 /**
  * Per-project server context (spec 2026-07-20-multi-project-workspace,
- * "Project contexts" + "Boot flow"): one `{store, manager, dataDir,
+ * "Project contexts"): one `{store, manager, dataDir,
  * launchKey}` bundle per registered project, built lazily on first access.
  *
- * Building a context mirrors what `serveCommand` does for the boot project
- * today — `RunStore.open(dataDir, { keepLive: true })`, `new RunManager`,
+ * Building a context opens the registered project with `RunStore.open(dataDir,
+ * { keepLive: true })`, `new RunManager`,
  * orphan-worktree prune + count-based retention when the root is a git repo,
  * then `manager.recover()` — so a project opened from the sidebar gets the
- * exact same crash recovery the boot project gets. A registry entry whose
+ * exact same crash recovery every project gets. A registry entry whose
  * root is gone (`status: 'missing'`) is never instantiated; `context()`
  * throws a typed `ProjectContextError` the route layer maps to 409 (and
  * `unknown-project` to 404).
@@ -60,8 +60,8 @@ export interface ProjectContextDeps {
    *  injects the workspace automation coordinator's cached store so API
    *  mutations and scheduler reads share the same in-memory state. */
   automationStore?: (projectId: string, root: string) => AutomationStore;
-  /** Workspace-wide parallel-cap semaphore (spec 2026-07-20, step 2.5). Boot
-   *  passes the ONE instance it already gave the boot manager, so every
+  /** Workspace-wide parallel-cap semaphore (spec 2026-07-20, step 2.5). The
+   *  system runtime passes the ONE instance to every manager, so every
    *  project's RunManager counts against the same `resources.maxParallel`.
    *  When omitted, the map still shares one private instance across the
    *  managers it builds (workspace defaults, never refreshed). */
@@ -257,7 +257,7 @@ export class ProjectContexts {
     try {
       const launchKey = ensureLaunchKey(dataDir);
       // Startup reconcile (spec 006) + count-based retention (#483) — the same
-      // best-effort sweeps serveCommand runs for the boot project, gated on the
+      // best-effort sweeps run for each registered project, gated on the
       // root actually being a git repo. A managerFactory caller owns that
       // manager's lifecycle and skips recovery with it.
       if (!this.deps.managerFactory && (await getRepoInfo(project.root))) {

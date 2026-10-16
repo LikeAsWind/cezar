@@ -7,7 +7,7 @@ import type { Capabilities, ProjectListEntry } from '@open-mercato/cezar-api-cli
 import { Button } from '@/components/ui/button'
 import { useActiveProjectId } from '@/lib/project-router'
 import { ProjectFolderField } from './project-location'
-import { AddBootProjectButton, MaxParallelStepper, STATUS_LABEL } from './projects-section'
+import { MaxParallelStepper, STATUS_LABEL } from './projects-section'
 import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
 import { SettingsField } from './settings-field'
 
@@ -76,24 +76,13 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<C
   // No registry entry for this URL (an unscoped mount, or an id the registry does not have):
   // there is nothing true to say about a project that isn't one.
   if (!registry || !project) return null
-  // See the header comment: single-project mode keeps the description, drops the management.
-  // An UNREGISTERED boot folder drops it for a different reason: there is no registry row to
-  // manage. `PATCH`/`DELETE /api/v1/projects/:id` would both 404, so the page offers the one
-  // thing that does apply — adding it — and says why it is not there yet.
-  const managesRegistry = capabilities?.singleProject !== true && project.unregistered !== true
+  // Single-project deployments may inspect a project but cannot edit the registry.
+  const managesRegistry = capabilities?.singleProject !== true
 
   return (
     <div data-slot="project-general" className="mx-auto flex w-full max-w-2xl flex-col gap-7">
       <ProjectFolderField />
       <ProjectFacts project={project} canRemove={managesRegistry} />
-      {project.unregistered ? (
-        <SettingsField
-          title={t('Add to your projects')}
-          hint={t('cezar is serving this folder because you started it here — starting cezar somewhere new never adds it to your project list for you. Adding it keeps it in the sidebar between runs and gives it a registry entry to hold settings like the task cap. Nothing on disk changes either way.')}
-        >
-          <AddBootProjectButton root={project.root} name={project.name} />
-        </SettingsField>
-      ) : null}
       {managesRegistry ? (
         <>
           <SettingsField
@@ -158,27 +147,16 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
           </>
         ) : null}
 
-        {/* A folder cezar is serving but has never registered has no registry dates to read out
-            — inventing them (or dashing two rows) would say less than naming the state once. */}
-        {project.unregistered ? (
-          <>
-            <dt className="text-muted-foreground">{t('In your projects')}</dt>
-            <dd data-slot="project-general-unregistered" className="text-foreground">{t('No — served because cezar was started here')}</dd>
-          </>
-        ) : (
-          <>
-            <dt className="text-muted-foreground">{t('Added')}</dt>
-            <dd className="text-foreground">
-              {fullDate(project.addedAt)}
-              <span className="text-soft-foreground">
-                {project.source === 'checkout' ? t(' · cloned from GitHub') : t(' · opened locally')}
-              </span>
-            </dd>
+        <dt className="text-muted-foreground">{t('Added')}</dt>
+        <dd className="text-foreground">
+          {fullDate(project.addedAt)}
+          <span className="text-soft-foreground">
+            {project.source === 'checkout' ? t(' · cloned from GitHub') : t(' · opened locally')}
+          </span>
+        </dd>
 
-            <dt className="text-muted-foreground">{t('Last opened')}</dt>
-            <dd className="text-foreground">{fullDate(project.lastOpenedAt)}</dd>
-          </>
-        )}
+        <dt className="text-muted-foreground">{t('Last opened')}</dt>
+        <dd className="text-foreground">{fullDate(project.lastOpenedAt)}</dd>
       </dl>
     </SettingsField>
   )

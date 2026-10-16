@@ -85,13 +85,13 @@ describe('cezar projects CLI', () => {
       expect(io.out.join('\n')).toContain('no projects registered yet');
     });
 
-    it('pins listing to an explicit boot project while preserving default listings', async () => {
+    it('lists every registered project without preferring a launch project', async () => {
       const boot = await registerProject(makeRepo('boot'));
       await registerProject(makeRepo('other'));
 
-      expect(await runProjectsCommand([], { defaultRoot: repos, bootProjectId: boot.id, io })).toBe(0);
+      expect(await runProjectsCommand([], { defaultRoot: repos, io })).toBe(0);
       expect(io.out.join('\n')).toContain('boot');
-      expect(io.out.join('\n')).not.toContain('other');
+      expect(io.out.join('\n')).toContain('other');
 
       io.out.length = 0;
       expect(await run()).toBe(0);
@@ -192,18 +192,19 @@ describe('cezar projects CLI', () => {
       },
     );
 
-    it('preserves list behavior and requires the exact value 1 to refuse mutations', async () => {
+    it('lists the registry in single-project mode and still refuses mutations', async () => {
       const existing = await registerProject(makeRepo('existing'));
+      await registerProject(makeRepo('other'));
 
       expect(
         await runProjectsCommand(['list'], {
           defaultRoot: repos,
-          bootProjectId: existing.id,
           env: { CEZ_SINGLE_PROJECT: '1' },
           io,
         }),
       ).toBe(0);
       expect(io.out.join('\n')).toContain('existing');
+      expect(io.out.join('\n')).toContain('other');
 
       io.out.length = 0;
       expect(
@@ -213,12 +214,11 @@ describe('cezar projects CLI', () => {
           io,
         }),
       ).toBe(0);
-      expect((await loadWorkspaceConfig()).projects.map((project) => project.id)).toEqual(['existing', 'allowed']);
+      expect((await loadWorkspaceConfig()).projects.map((project) => project.id)).toEqual(['existing', 'other', 'allowed']);
     });
 
-    it('does not expose the registry when boot project identity is unavailable', async () => {
-      await registerProject(makeRepo('hidden'));
-
+    it('lists the registry when single-project mode has no launch-project identity', async () => {
+      await registerProject(makeRepo('visible'));
       expect(
         await runProjectsCommand(['list'], {
           defaultRoot: repos,
@@ -226,8 +226,7 @@ describe('cezar projects CLI', () => {
           io,
         }),
       ).toBe(0);
-      expect(io.out.join('\n')).toContain('no projects registered yet');
-      expect(io.out.join('\n')).not.toContain('hidden');
+      expect(io.out.join('\n')).toContain('visible');
     });
   });
 

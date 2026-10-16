@@ -7067,7 +7067,7 @@ export class RunManager {
       // (BACKWARD_COMPATIBILITY.md §1 — `cez task`/`cez automation` address a cockpit with it),
       // so it is replaced, never stripped. A headless `cezar run` builds its manager without a
       // projectId, and deleting the operator's value there would leave `CEZ_API_URL` in place
-      // while `cez task create` silently fell back to the cockpit's boot project.
+      // while `cez task create` silently fell back to an implicit project.
       if (name === 'CEZ_PROJECT_ID' && !this.projectId) continue;
       delete base[name];
     }

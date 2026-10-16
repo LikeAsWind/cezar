@@ -56,7 +56,6 @@ afterEach(() => {
 const HEALTH: HealthResponse = {
   version: '0.1.3',
   projects: [],
-  bootProject: 'default',
   repoRoot: '/repo',
   repo: { root: '/repo', branch: 'main' },
   defaultRunner: 'claude',

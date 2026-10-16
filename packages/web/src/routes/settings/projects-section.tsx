@@ -7,7 +7,6 @@ import { Link } from 'react-router'
 import { putWorkspaceConfig } from '@/api/client'
 import {
   useProjects,
-  useRegisterProject,
   useUpdateProject,
   useWorkspaceConfig,
   workspaceQueryKeys,
@@ -326,18 +325,12 @@ function RegistryTable({
         title={t('Registered projects')}
         description={t('Project tags group work across repositories. Max parallel is a per-project task cap; an empty value inherits the workspace limit. Removing a project only unregisters it — no files on disk are deleted.')}
       >
-      {/* Defensive: `GET /api/v1/projects` names at least the folder this server is serving
-          whenever the registry is empty (the unregistered row), and the registry's own rows
-          otherwise — so today this branch cannot render. Kept because an empty table with
-          headers and no rows would be a worse answer than a sentence if that ever changes. */}
+      {/* An empty registry is a normal workspace state. */}
       {registry.projects.length === 0 ? (
         <p data-slot="projects-empty" className="text-[13px] text-soft-foreground">{t('No projects registered yet.')}</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full border-collapse text-sm">
-            {/* Not "registered": this table also renders the folder cezar is serving without
-                having saved it, whose only action is Add project. A screen-reader user was told
-                the list was registered projects and then met a row that is the opposite. */}
             <caption className="sr-only">{t('Projects in this workspace')}</caption>
             {/* Explicit widths rather than letting the browser distribute them by content: Tags
                 is the one cell whose content GROWS with use, and auto-layout kept giving it
@@ -418,33 +411,18 @@ function ProjectRow({
         >
           {STATUS_LABEL[project.status]}
         </span>
-        {project.unregistered ? (
-          // Where `source` (how it got into the registry) would go — it is not in the registry,
-          // and this is the row's whole story, so it says that instead.
-          <span data-slot="project-unregistered" className="ml-1 text-[11px] text-soft-foreground">{t('· not registered')}</span>
-        ) : project.status !== 'missing' ? (
+        {project.status !== 'missing' ? (
           <span className="ml-1 text-[11px] text-soft-foreground">· {project.source}</span>
         ) : null}
       </td>
       <td className="px-3 py-2">
-        {/* Every registry edit is meaningless for a folder that has no registry row: tags and
-            the per-project cap are stored ON the entry, and Remove would 404. The Add button in
-            the Actions cell is the only thing this row can honestly offer. */}
-        {project.unregistered ? (
-          <span className="text-[12px] text-soft-foreground">—</span>
-        ) : (
-          <ProjectTagsEditor project={project} vocabulary={vocabulary} />
-        )}
+        <ProjectTagsEditor project={project} vocabulary={vocabulary} />
       </td>
       <td className="px-3 py-2">
-        {project.unregistered ? (
-          <span className="text-[12px] text-soft-foreground">—</span>
-        ) : (
-          <MaxParallelStepper project={project} workspaceMax={workspaceMax} />
-        )}
+        <MaxParallelStepper project={project} workspaceMax={workspaceMax} />
       </td>
       <td className="px-3 py-2 tabular-nums text-soft-foreground">
-        {project.unregistered ? '—' : shortDate(project.addedAt)}
+        {shortDate(project.addedAt)}
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex justify-end [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-9 md:[&_button]:min-w-9">
@@ -464,10 +442,6 @@ function ProjectRowActions({
   disabled: boolean
   onRemove: () => void
 }) {
-  if (project.unregistered) {
-    return <AddBootProjectButton root={project.root} name={project.name} disabled={disabled} />
-  }
-
   return (
     <Button
       type="button"
@@ -478,47 +452,6 @@ function ProjectRowActions({
       disabled={disabled}
       onClick={onRemove}
     >{t('Remove')}</Button>
-  )
-}
-
-/**
- * The one gesture an unregistered boot row can offer: save the folder cezar is currently serving.
- * It goes through the ordinary `POST /api/v1/projects` — same guards, same 409 on a folder
- * already registered — so a root the server refuses (`$HOME`, a task worktree, which can also be
- * boot roots) answers with its own explanation and this button surfaces it verbatim rather than
- * pre-judging which folders qualify.
- *
- * Exported for the project's own General page, which faces the same row and must not invent a
- * second way to say this — the same reason `MaxParallelStepper` and `STATUS_LABEL` are shared.
- */
-export function AddBootProjectButton({
-  root,
-  name,
-  disabled = false,
-}: {
-  root: string
-  name: string
-  disabled?: boolean
-}) {
-  useLocale()
-
-  const register = useRegisterProject()
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      data-action="project-add-boot"
-      aria-label={t('Add {0} to your projects', { 0: name })}
-      title={t('cezar is serving this folder — save it to your projects')}
-      disabled={disabled || register.isPending}
-      onClick={() =>
-        register.mutate(root, {
-          onSuccess: () => toast(`${name} added to your projects`),
-          onError: (error: Error) => toast(error.message, { tone: 'danger' }),
-        })
-      }
-    >{t('Add project')}</Button>
   )
 }
 

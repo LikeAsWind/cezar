@@ -40,7 +40,8 @@ const AppearanceContext = React.createContext<AppearanceContextValue | null>(nul
  *  (step 3.5, spec §"Settings split"): accent and density describe the person at the keyboard,
  *  not a repo, and this provider sits ABOVE the router — it has no project scope to write to
  *  in the first place. Migration 001 copied the pre-existing per-repo value up, so upgrading
- *  keeps whatever the boot project had; the per-repo key is left alone and simply ignored.
+ *  keeps the prior per-repo value from the first explicitly migrated repo; the per-repo key is
+ *  left alone and simply ignored.
  *
  *  Writes go through `PUT /api/workspace/ui-state` with the FULL `appearance` object every
  *  time: the server merges ui-state shallowly (top-level keys), so a partial `{ accent }`

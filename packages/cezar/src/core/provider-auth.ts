@@ -508,9 +508,8 @@ export class ProviderAuthService {
     now?: () => number;
     platform?: NodeJS.Platform;
     createAuthFailureId?: () => string;
-    /** Working directory the junie ACP probe opens its session in. Defaults to `process.cwd()`,
-     *  but the server passes the boot project root so this agrees with the model catalog's own
-     *  discovery cwd (`server.ts`'s `bootRoot`) instead of silently diverging from it. */
+    /** Working directory the junie ACP probe opens its session in. Defaults to `process.cwd()`;
+     *  workspace discovery passes cezar's home so its probes share one stable context. */
     cwd?: string;
     probeJunie?: () => Promise<{ connected: boolean; hint?: string; notInstalled?: boolean }>;
   }) {

@@ -316,7 +316,6 @@ describe('dashboard workspace routes', () => {
       expect(automations.status).toBe(200);
       expect(dashboardAutomationsSchema.parse(await automations.json()).automations).toEqual([]);
       // The registry lists every registered project; no synthetic "unregistered" row.
-      expect(projectsWire.projects.find((p) => p.id === bootId)?.unregistered).toBeUndefined();
       expect(snapshot.coverage.projects.map((p) => p.projectId)).toEqual(
         otherId ? [bootId, otherId] : [bootId],
       );

@@ -22,8 +22,7 @@ import { toast } from '@/components/ui/toaster'
  * it names and the success toast all insist on the same fact: this DEREGISTERS.
  * `DELETE /api/v1/projects/:id` is a registry filter and touches nothing under the root (see the
  * route), and adding the folder back later finds its tasks and worktrees intact. It does NOT come
- * back on its own: boot registration is seed-once (`shouldAutoRegisterProject`), so serving the
- * folder again never re-registers it.
+ * back on its own: serving a folder never registers it.
  *
  * The refusals stay the server's: `DELETE /api/v1/projects/:id` 409s only on running tasks, whose
  * message is toasted verbatim. There is no boot-project refusal — every registered project is

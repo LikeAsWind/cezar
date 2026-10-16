@@ -429,10 +429,12 @@ describe('agent profiles API', () => {
       expect((await loadAgentAccounts()).selections[project.root]).toEqual({ codex: codex.profile.id });
     });
 
-    it('accepts the reserved `default` boot alias as the project', async () => {
-      const project = await registerProject(repoRoot);
+    it('accepts `default` only when it is an explicitly registered project ID', async () => {
+      const defaultRoot = join(repoRoot, 'default');
+      mkdirSync(defaultRoot);
+      const project = await registerProject(defaultRoot);
       const account = await create('work');
-      const { status } = await select('default', 'claude', account.id);
+      const { status } = await select(project.id, 'claude', account.id);
       expect(status).toBe(200);
       expect((await loadAgentAccounts()).selections[project.root]).toEqual({ claude: account.id });
     });

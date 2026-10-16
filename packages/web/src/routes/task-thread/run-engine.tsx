@@ -14,8 +14,7 @@ export function useRunEngine(run: ApiRun) {
   // `input.runner ?? config.defaultRunner` (`src/workflows/run.ts`). Mirror that resolution —
   // hardcoding 'claude' would name the wrong agent on a repo whose `defaultRunner` is
   // codex/opencode. 'claude' stays the last resort only while the active project's config is in
-  // flight. (`/api/health` describes the boot project and can name the wrong runner on scoped
-  // routes.)
+  // flight. (Workspace health does not describe the runner for scoped routes.)
   const config = useConfig()
   const profiles = useAgentProfiles()
   const runner = run.runner ?? config.data?.defaultRunner ?? 'claude'

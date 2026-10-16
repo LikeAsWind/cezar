@@ -141,7 +141,7 @@ export type AgentProfilesResponse = z.infer<typeof agentProfilesResponseSchema>;
  */
 export const selectAgentProfileInputSchema = z.object({
   /**
-   * Registry slug, or the reserved `default` boot alias. Resolved to a root server-side.
+   * Explicit registered project ID. Resolved to a root server-side.
    *
    * `null` targets the MACHINE-WIDE default instead of one repo — the account a repo that has
    * chosen nothing uses, so a second login is set up once rather than per checkout. A repo's own

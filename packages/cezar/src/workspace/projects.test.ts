@@ -15,14 +15,13 @@ import {
   probeProjectStatus,
   registerProject,
   removeProject,
-  shouldAutoRegisterProject,
   shouldRegisterProject,
 } from './projects.ts';
 
 /**
  * Project registry ops (spec 2026-07-20-multi-project-workspace, step 1.3):
  * realpath/symlink/trailing-slash dedupe, slug collision suffixes, the
- * reserved-slug skip (`default` → `default-2`), status probing
+ * route-name slug skip, status probing
  * (ok/missing/not-git + branch), and the promise that register/remove never
  * write a byte inside the repo itself.
  */
@@ -102,8 +101,9 @@ describe('workspace projects', () => {
       expect(c.id).toBe('web-3');
     });
 
-    it('never allocates a reserved slug — a repo named default/ becomes default-2', async () => {
-      for (const reserved of ['default', 'new', 'settings', 'api', 'p', 'assets']) {
+    it('allows default as an explicit project id and reserves cockpit route names', async () => {
+      expect((await registerProject(makeDir('reserved', 'default'))).id).toBe('default');
+      for (const reserved of ['new', 'settings', 'api', 'p', 'assets']) {
         const entry = await registerProject(makeDir('reserved', reserved));
         expect(entry.id).toBe(`${reserved}-2`);
       }
@@ -168,7 +168,7 @@ describe('workspace projects', () => {
       expect(await listProjects({ projectId: 'unknown' })).toEqual([]);
     });
 
-    it('keeps boot registration self-healing while reads are pinned', async () => {
+    it('allows an explicitly registered project to be read while other projects stay in the registry', async () => {
       const hidden = await registerProject(makeDir('hidden'));
       const boot = await registerProject(makeDir('boot'));
 
@@ -353,40 +353,6 @@ describe('workspace projects', () => {
       // The path-shape guard is what `cezar projects add` and POST /api/projects
       // ask — it must stay blind to how many projects already exist.
       expect(await shouldRegisterProject(makeRepo('second'))).toBe(true);
-    });
-  });
-
-  describe('shouldAutoRegisterProject (boot seeding)', () => {
-    const env = (single?: boolean): NodeJS.ProcessEnv =>
-      single ? { CEZ_SINGLE_PROJECT: '1' } : {};
-
-    it('seeds the very first project', async () => {
-      expect(await shouldAutoRegisterProject(makeRepo('first'), env())).toBe(true);
-    });
-
-    it('suppresses an unknown root once any project is registered', async () => {
-      await registerProject(makeRepo('first'));
-      expect(await shouldAutoRegisterProject(makeRepo('second'), env())).toBe(false);
-      expect((await loadWorkspaceConfig()).projects).toHaveLength(1);
-    });
-
-    it('still allows a root that is already registered, in any spelling', async () => {
-      const root = makeRepo('known');
-      await registerProject(root);
-      await registerProject(makeRepo('other'));
-      expect(await shouldAutoRegisterProject(root, env())).toBe(true);
-      expect(await shouldAutoRegisterProject(`${root}/`, env())).toBe(true);
-    });
-
-    it('keeps the path-shape guards ahead of the seeding rule', async () => {
-      expect(await shouldAutoRegisterProject(homedir(), env())).toBe(false);
-      const worktree = makeDir('host', '.ai', 'cezar', 'worktrees', 'abc12345');
-      expect(await shouldAutoRegisterProject(worktree, env())).toBe(false);
-    });
-
-    it('exempts single-project mode, where the launch context is the project', async () => {
-      await registerProject(makeRepo('first'));
-      expect(await shouldAutoRegisterProject(makeRepo('served'), env(true))).toBe(true);
     });
   });
 

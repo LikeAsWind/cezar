@@ -74,8 +74,8 @@ export function useResolvedEngine(pick: EnginePick): ResolvedEngine {
   const providers = useProviderStatus()
   const config = useConfig()
   const runners = usableRunners(providers.data)
-  // `/api/health` is deliberately boot-project-only. Runner policy is per project, so every
-  // scoped start surface must read the active project's `/api/config` instead (#699).
+  // Health is workspace-level. Runner policy is per project, so every scoped start surface reads
+  // the active project's `/api/config` instead (#699).
   const defaultRunner = config.data?.defaultRunner
   const runner = resolveRunner(pick.runner, runners, defaultRunner ?? runners[0] ?? 'claude')
   // Resolved first: each runner has its own host catalog (#794), so the fetch follows the pick.
@@ -205,7 +205,7 @@ function useEnginePickValidity(pick: EnginePick, onChange: (pick: EnginePick) =>
  * sent, and the server resolves the omitted field back to the disconnected default. Comparing
  * against the active project's authoritative config default preserves omission when it is safe
  * and explicitly sends the provider-status fallback when it is not. A sticky/user pick always
- * rides the request, so a boot-project snapshot can never erase that intent.
+ * rides the request, so an unrelated workspace snapshot can never erase that intent.
  */
 export function engineBody(resolved: ResolvedEngine): Pick<CreateRunInput, 'runner' | 'model'> {
   return {

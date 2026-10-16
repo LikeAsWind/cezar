@@ -143,10 +143,8 @@ const STORAGE_KEY = 'cez-new-task-draft'
  * Drafts are project state — a half-typed task for the shop frontend must not surface in the
  * cezar composer when the project pill swaps scope — so each project gets its own key.
  *
- * `null` (the argument's default) keeps the BARE legacy key. That is the same "unscoped means
- * byte-identical" invariant the rest of step 3.1 keeps (`apiPath`, `queryScope`): the boot
- * project mounts unscoped, so its draft stays exactly where it has always been and a task typed
- * before this upgrade is still there after it. Only non-boot projects pay the suffix.
+ * `null` (the argument's default) keeps the BARE legacy key for older unscoped drafts. Project
+ * routes use their explicit ID suffix, so separate projects cannot share draft contents.
  */
 function storageKey(projectId: string | null): string {
   return projectId === null ? STORAGE_KEY : `${STORAGE_KEY}:${projectId}`
@@ -268,8 +266,8 @@ export function clearStartedDraft(projectId: string | null = null): void {
  * storage cost, and — like every other module store here — starts empty on a real page load,
  * which is exactly the promise `/new` attachments have always made.
  *
- * Keyed by the same `storageKey` the draft uses, so the boot project's bare key and the suffixed
- * key of every other project cannot drift apart.
+ * Keyed by the same `storageKey` the draft uses, so an unscoped legacy draft and project-scoped
+ * attachments cannot drift apart.
  */
 const attachments = new Map<string, PendingAttachment[]>()
 

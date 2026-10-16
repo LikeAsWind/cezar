@@ -293,7 +293,7 @@ export interface ServerDeps {
     mergeWrite: typeof mergeWriteWorkspaceConfig;
   };
   /** Shared runtime rejection observer. The CLI injects the instance already
-   *  watching the boot store before recovery; createApp builds one for legacy
+   *  watching project stores before recovery; createApp builds one for legacy
    *  callers and tests. */
   providerRuntimeAuth?: ProviderRuntimeAuthObserver;
   /** Local terminal handoff for provider-owned login. */
@@ -389,14 +389,13 @@ const hostedProfileRefusal = {
 /**
  * Allocate a profile id from the label (or, with no label, the folder name).
  *
- * Reuses the project allocator's shape, and deliberately its reserved set too: `default` is the
- * discovered profile here exactly as it is the boot alias there, so a folder called `default/`
- * becomes `default-2` and can never shadow it.
+ * Reuses the project allocator's slug shape while reserving the discovered
+ * profile id in this separate namespace.
  */
 function allocateAgentProfileId(source: string, taken: Iterable<string>): string {
   // `allocateProjectSlug` already basenames its argument and enforces the shared
   // `^[a-z0-9][a-z0-9-]{0,63}$` shape, so `~/.claude-klaudiusz` slugs to `claude-klaudiusz`.
-  return allocateProjectSlug(source, taken);
+  return allocateProjectSlug(source, [...taken, 'default']);
 }
 
 const providerParamSchema = z.enum(PROVIDER_IDS);
@@ -1198,12 +1197,11 @@ async function probeWritableDir(dir: string, create: boolean): Promise<string | 
 // with nothing to offer. See the `routed` assembly at the end of the function.
 export function createApp(deps: ServerDeps) {
   const { version, update, bindHost, runtime } = deps;
-  // Boot singletons keep DELIBERATELY distinct names (`boot*`): every
+  // Project contexts are resolved only from explicit project routes: every
   // project-scoped handler must resolve its `{store, manager, root, dataDir,
   // launchKey}` from `c.get('project')` — a bare `store`/`repoRoot` in a
-  // handler body would silently pin it to the boot project, which the rename
-  // turns into a compile error instead.
-  // `cez serve` is project-neutral (Tasks 2–3): there is no boot root. Model
+  // handler body would silently pin it to a launch-directory project.
+  // `cez serve` is project-neutral: there is no boot root. Model
   // discovery and provider auth are workspace-level here, rooted at the cezar
   // home — per-project discovery happens through each project's own context.
   const workspaceRoot = cezarHomeDir();
@@ -5378,9 +5376,8 @@ export function createApp(deps: ServerDeps) {
 
     // Global SSE: run-summary updates for the list view + inbox changes.
     // Scoped `/p/:projectId/events` carries that project's stream in today's
-    // shape; the legacy unprefixed alias stays bound to the boot project ONLY
-    // (spec "Legacy aliases" — widening it would be a silent behavioral break;
-    // the all-project stream arrives as `/api/workspace/events` in step 2.8).
+    // shape; there is no project-wide stream alias. The all-project stream is
+    // served separately at `/api/v1/workspace/events`.
     .get('/events', (c) => {
       const { dataDir, store } = c.get('project');
       return streamSSENoBuffer(c, async (stream) => {
@@ -5587,8 +5584,8 @@ export function createApp(deps: ServerDeps) {
   // Spec 2026-10-10-project-secrets-vault-options. Write-only values: GET answers names and
   // metadata and never a value, masked or not. The write gate is the one `/tracker/connection`
   // has — the global request-origin guard (#426), no per-route capability — and the file is
-  // keyed by the same project id the run manager reads with, so the reserved boot alias of an
-  // unregistered boot project is refused rather than written somewhere nothing reads. The
+  // keyed by an explicit project id the run manager reads with, so an unknown id is refused rather
+  // than written somewhere nothing reads. The
   // workspace scope has its own single-mount family below (`workspaceSecretsRoutes`), the same
   // three handlers over the `workspace` scope.
   const secretStore = deps.secrets ?? new SecretStore();

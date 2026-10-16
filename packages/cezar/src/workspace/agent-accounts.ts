@@ -295,9 +295,8 @@ export function selectionFor(
  * one second.
  *
  * The keys come from the REGISTRY, which realpath-normalizes every root it stores
- * (`workspace/projects.ts` `normalizeRoot`); the readers hold whatever spelling their caller had —
- * `RunManager` is constructed with `repoInfo?.root ?? cwd` for the boot project, not with the
- * registry entry. `workspace/semaphore.ts` already normalizes at lookup for the per-project
+ * (`workspace/projects.ts` `normalizeRoot`); readers may hold another spelling of that registered
+ * root. `workspace/semaphore.ts` already normalizes at lookup for the per-project
  * concurrency map for exactly this reason. Doing it here too matters more, not less: a missed
  * concurrency override runs the task with the wrong ceiling, a missed account selection runs it on
  * the wrong subscription and says nothing.

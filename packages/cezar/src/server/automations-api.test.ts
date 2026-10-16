@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AutomationCoordinator } from '../automations/coordinator.ts';
 import { WorkspaceAutomationScheduler } from '../automations/scheduler.ts';
 import { AutomationStore } from '../automations/store.ts';
+import { registerProject } from '../workspace/projects.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -320,17 +321,16 @@ describe('automation API — kinds, run, templates (spec 2026-09-14)', () => {
   });
 
   it('lists the other registered projects\' automations as templates', async () => {
+    const mine = await registerProject(root);
     const server = app();
     await apiRequest(server, '/api/v1/p/boot/automations', json(schedule));
     const res = await apiRequest(server, '/api/v1/workspace/automation-templates?exclude=nobody');
     expect(res.status).toBe(200);
     const { templates } = (await res.json()) as any;
     expect(Array.isArray(templates)).toBe(true);
-    // The boot project is registered under CEZ_HOME; excluding it empties the palette.
-    const projects = (await (await apiRequest(server, '/api/v1/projects')).json()) as any;
-    const mine = projects.projects.find((project: { root: string }) => project.root === root)?.id ?? projects.bootProject;
-    const excluded = (await (await apiRequest(server, `/api/v1/workspace/automation-templates?exclude=${mine}`)).json()) as any;
-    expect(excluded.templates.some((template: { project: { id: string } }) => template.project.id === mine)).toBe(false);
+    // Excluding this explicitly registered project empties the palette.
+    const excluded = (await (await apiRequest(server, `/api/v1/workspace/automation-templates?exclude=${mine.id}`)).json()) as any;
+    expect(excluded.templates.some((template: { project: { id: string } }) => template.project.id === mine.id)).toBe(false);
   });
 
   it('is off only for CEZ_AUTOMATIONS=0', async () => {

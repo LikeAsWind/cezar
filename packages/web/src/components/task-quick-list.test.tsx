@@ -29,7 +29,6 @@ const HEALTH: HealthResponse = {
     costMetrics: true,
   },
   projects: [{ id: 'boot', name: 'cezar' }],
-  bootProject: 'boot',
 }
 
 let seq = 0

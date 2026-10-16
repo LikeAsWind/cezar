@@ -33,7 +33,7 @@ export interface WorkspaceMigration {
   /** Stable id for the warning line, e.g. `'001-workspace-config'`. */
   id: string;
   /** The migration body — MUST be idempotent (see module docs). */
-  run(ctx: { home: string; bootRepoRoot: string | null }): Promise<void>;
+  run(ctx: { home: string; repoRoot: string | null }): Promise<void>;
 }
 
 /** Tolerant raw-JSON read: missing/unreadable/malformed/non-object → null. */
@@ -83,7 +83,7 @@ async function readRepoResourceKeys(
  *
  * 1. Create `~/.cezar/config.json` with defaults if absent (the merge-write
  *    does this even when there is nothing to import).
- * 2. Booting inside a repo: import its `maxParallel`/`memoryLimitMb` into
+ * 2. Running from a repo: import its `maxParallel`/`memoryLimitMb` into
  *    workspace `resources`, and its `appearance`/`notifications` ui-state
  *    keys into `~/.cezar/ui-state.json`. Keys already set globally are NEVER
  *    overwritten — presence is checked against the RAW global file (before
@@ -98,13 +98,13 @@ async function readRepoResourceKeys(
 const migration001: WorkspaceMigration = {
   to: 1,
   id: '001-workspace-config',
-  async run({ bootRepoRoot }) {
+  async run({ repoRoot }) {
     // Raw presence check BEFORE the first write: after any merge-write the
     // global file contains every defaulted key, so "already set globally"
     // must be decided against what the user's file held coming in.
     const rawGlobal = await readRawObject(workspaceConfigPath());
     const rawResources = asObject(rawGlobal?.resources);
-    const imported = bootRepoRoot ? await readRepoResourceKeys(bootRepoRoot) : {};
+    const imported = repoRoot ? await readRepoResourceKeys(repoRoot) : {};
     await mergeWriteWorkspaceConfig((config) => {
       if (imported.maxParallel !== undefined && rawResources?.maxParallel === undefined) {
         config.resources.maxParallel = imported.maxParallel;
@@ -113,8 +113,8 @@ const migration001: WorkspaceMigration = {
         config.resources.memoryLimitMb = imported.memoryLimitMb;
       }
     });
-    if (!bootRepoRoot) return;
-    const repoUiState = await readUiState(bootRepoRoot);
+    if (!repoRoot) return;
+    const repoUiState = await readUiState(repoRoot);
     // The two prefs that went GLOBAL at step 3.5, read out of the per-repo bag and validated with
     // the DESTINATION's own field schemas. `notifications` is not named by the per-repo contract
     // at all (it left at 3.5), so it arrives through the open catchall as `unknown` — parsing it
@@ -155,7 +155,7 @@ export const WORKSPACE_MIGRATIONS: readonly WorkspaceMigration[] = [migration001
  * `migrations` is injectable for tests only; production callers pass nothing.
  */
 export async function runMigrations(
-  opts: { bootRepoRoot: string | null },
+  opts: { repoRoot: string | null },
   migrations: readonly WorkspaceMigration[] = WORKSPACE_MIGRATIONS,
 ): Promise<void> {
   const home = cezarHomeDir();
@@ -164,7 +164,7 @@ export async function runMigrations(
   for (const migration of ordered) {
     if (migration.to <= current) continue;
     try {
-      await migration.run({ home, bootRepoRoot: opts.bootRepoRoot });
+      await migration.run({ home, repoRoot: opts.repoRoot });
       const written = await mergeWriteWorkspaceConfig((config) => {
         config.schemaVersion = Math.max(config.schemaVersion, migration.to);
       });

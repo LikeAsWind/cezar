@@ -15,10 +15,9 @@
  * `CEZ_TODOS_FILE`), the Inbox nav item is gone and the inbox endpoints refuse.
  * The per-task handoff journal is independent and runs either way.
  *
- * `singleProject` (spec 2026-07-21-cez-single-project): the workspace is
- * deliberately constrained to the launch project when `CEZ_SINGLE_PROJECT=1`.
- * Like the other opt-in capabilities, activation is strict: no other spelling
- * enables it.
+ * `singleProject` (spec 2026-07-21-cez-single-project): registry mutations and
+ * folder browsing are disabled when `CEZ_SINGLE_PROJECT=1`. Activation is
+ * strict: no other spelling enables it.
  *
  * `automations` (spec 2026-07-25-github-automations, #801): GitHub automations
  * are **opt-in** via `CEZ_AUTOMATIONS=1` and off by default. Off, the

@@ -82,7 +82,7 @@ function serve({ browse = { '': json(HOME) }, projects = [], register }: Answers
       posted.push({ root })
       return register ? register(root) : json({ project: project({ id: 'added', root }) })
     }
-    if (url.pathname === '/api/v1/projects') return json({ projects, bootProject: 'cezar', projectsDir: '~/cezar/projects' })
+    if (url.pathname === '/api/v1/projects') return json({ projects, projectsDir: '~/cezar/projects' })
     if (url.pathname === '/api/v1/fs/browse') {
       const answer = browse[url.searchParams.get('path') ?? '']
       if (answer === undefined) return json({ error: 'unexpected browse path' }, 500)
@@ -189,21 +189,6 @@ describe('AddProjectDialog', () => {
     fireEvent.click(addButton())
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/p/cezar/'))
     expect(document.querySelector('[data-slot="add-project-error"]')).toBeNull()
-  })
-
-  it('does not mark the folder cezar is serving but has not registered', async () => {
-    serve({
-      browse: { '': json(PROJECTS) },
-      // What `GET /api/v1/projects` answers when the boot folder is not in the registry: the row
-      // is there so the cockpit can reach it, flagged so nothing reads it as saved. Badging it
-      // "already added" here would contradict Settings, which offers to add the same folder.
-      projects: [project({ id: 'cezar', root: '/home/me/Projects/cezar', unregistered: true })],
-    })
-    renderDialog([project({ id: 'cezar', root: '/home/me/Projects/cezar', unregistered: true })])
-    await waitFor(() => expect(rows().getByText('cezar')).toBeTruthy())
-    expect(
-      within(rows().getByText('cezar').closest('button') as HTMLElement).queryByText('already added'),
-    ).toBeNull()
   })
 
   it('shows a register refusal verbatim and stays put', async () => {

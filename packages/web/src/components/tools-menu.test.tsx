@@ -31,7 +31,6 @@ beforeEach(() => {
 const HEALTH: HealthResponse = {
   version: '0.1.3',
   projects: [],
-  bootProject: 'default',
   repoRoot: '/home/me/cezar',
   repo: { root: '/home/me/cezar', branch: 'main' },
   defaultRunner: 'claude',

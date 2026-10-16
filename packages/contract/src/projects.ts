@@ -51,12 +51,6 @@ export const projectListEntrySchema = z.object({
   /** Per-project cap on concurrently running tasks (spec 2026-07-22). Omitted = inherit the
    *  workspace `resources.maxParallel`; a number pins this project. */
   maxParallel: z.number().optional(),
-  /** Set ONLY on the synthetic entry for the folder this server was started in when that folder
-   *  is not in the registry — the ordinary state since boot registration became seed-once. The
-   *  server serves it like any project (it owns the boot context), so the cockpit must be able to
-   *  reach it; but it is not persisted, so the rows that edit the registry (Remove, Max parallel)
-   *  do not apply and Settings offers "Add project" instead. Never present on a registry entry. */
-  unregistered: z.literal(true).optional(),
   /**
    * Free-form labels grouping CONNECTED repositories — a `storefront` tag on the API, the web
    * app and the design system says those three are one piece of work spread over three repos.
@@ -96,8 +90,8 @@ export type RegisterProjectResponse = z.infer<typeof registerProjectResponseSche
 /**
  * `DELETE /api/v1/projects/:projectId` (multi-project spec, step 4.4) — Settings → Projects'
  * per-row Remove. Deregistration ONLY: the server never touches anything under the project root,
- * so this is a registry edit and nothing else. The interesting failures are 409s (the project has
- * running tasks, or it is the project this server booted in), whose `{ error }` the pane shows
+ * so this is a registry edit and nothing else. The interesting failure is a 409 (the project has
+ * running tasks), whose `{ error }` the pane shows
  * verbatim.
  */
 export const removeProjectResponseSchema = z.object({

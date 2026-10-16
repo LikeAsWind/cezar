@@ -51,14 +51,14 @@ const SINGLE_PROJECT_EDIT_ERROR = 'single-project mode is enabled; editing proje
  */
 export async function runProjectsCommand(
   args: string[],
-  opts: { defaultRoot: string; bootProjectId?: string; env?: NodeJS.ProcessEnv; io?: ProjectsCommandIo },
+  opts: { defaultRoot: string; env?: NodeJS.ProcessEnv; io?: ProjectsCommandIo },
 ): Promise<number> {
   const io = opts.io ?? defaultIo;
   const singleProject = (opts.env ?? process.env).CEZ_SINGLE_PROJECT === '1';
   const [sub = 'list', ...rest] = args;
   switch (sub) {
     case 'list':
-      return listCommand(io, singleProject, opts.bootProjectId);
+      return listCommand(io);
     case 'add':
       if (singleProject) {
         io.error(SINGLE_PROJECT_ADD_ERROR);
@@ -97,19 +97,11 @@ function statusMark(status: string): string {
   return status === 'missing' ? '✗' : status === 'not-git' ? '·' : '✓';
 }
 
-async function listCommand(
-  io: ProjectsCommandIo,
-  singleProject: boolean,
-  bootProjectId?: string,
-): Promise<number> {
-  const projects = bootProjectId
-    ? await listProjects({ projectId: bootProjectId })
-    : singleProject
-      ? []
-      : await listProjects();
+async function listCommand(io: ProjectsCommandIo): Promise<number> {
+  const projects = await listProjects();
   if (projects.length === 0) {
     io.log('\n  no projects registered yet');
-    io.log('  start the cockpit in a repo (npx cezar) or add one: cezar projects add <dir>\n');
+    io.log('  add one with: cezar projects add <dir>\n');
     return 0;
   }
   const idWidth = Math.max(...projects.map((p) => p.id.length));
@@ -153,13 +145,8 @@ async function removeCommand(id: string | undefined, io: ProjectsCommandIo): Pro
     io.error(USAGE);
     return 1;
   }
-  // Unlike `DELETE /api/v1/projects/:projectId`, there is no boot-project
-  // refusal here: that rule exists because a running server would break its own
-  // sidebar, and the CLI runs with no server and no boot project. Removing the
-  // repo you normally serve is therefore allowed — and, since boot registration
-  // became seed-once (`shouldAutoRegisterProject`), it STAYS removed: the next
-  // `cezar serve` in it will serve the folder without re-registering it. The
-  // line below says what was and was not touched; `add` puts it back.
+  // Removal only changes the registry. Serving from a project does not make it
+  // special or cause it to be re-registered.
   if (!(await removeProject(id))) {
     io.error(`unknown project: ${id}`);
     return 1;

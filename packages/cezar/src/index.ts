@@ -186,15 +186,8 @@ async function main(): Promise<void> {
       const repoInfo = await getRepoInfo(cwd);
       const repoRoot = repoInfo?.root ?? cwd;
       // Registry-only (no server, no HTTP) — see workspace/projects-cli.ts.
-      // In single-project mode a listing is a launch-context read: register
-      // the boot repo through the normal self-healing path and pin the output
-      // to that explicit identity. Mutations are left to their own guards.
       const projectArgs = positionals.slice(1);
-      const isList = projectArgs.length === 0 || projectArgs[0] === 'list';
-      const bootProjectId = process.env.CEZ_SINGLE_PROJECT === '1' && isList
-        ? await initWorkspace(repoRoot)
-        : undefined;
-      process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot, bootProjectId });
+      process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot });
       return;
     }
     case 'server-install': {
@@ -265,21 +258,13 @@ async function serveCommand(
   openBrowser: boolean,
   bindHost?: string,
 ): Promise<void> {
-  // Project-neutral boot (Task 2): the system runtime owns the ONE workspace
+  // Project-neutral boot: the system runtime owns the ONE workspace
   // semaphore, the lazy project-context map and the workspace event bus. No
   // `openStore`, no `RunManager`, no worktree prune/retention/recovery —
   // projects build lazily on first `/api/v1/p/:projectId/*` access, through
   // `runtime.contexts`.
   //
-  // Deliberate exception (F7): single-project mode is the constrained
-  // launch-repo deployment whose add/checkout/remove are 409'd, so it must
-  // register the launch directory or a project-neutral boot leaves it with an
-  // empty, unusable registry. Only under `CEZ_SINGLE_PROJECT=1`.
-  if (process.env.CEZ_SINGLE_PROJECT === '1') {
-    const cwd = resolve(process.cwd());
-    const repoRoot = (await getRepoInfo(cwd))?.root ?? cwd;
-    await initWorkspace(repoRoot);
-  }
+  await initWorkspace();
   const runtime = createSystemRuntime();
   await runtime.start();
 

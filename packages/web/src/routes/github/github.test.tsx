@@ -1489,7 +1489,6 @@ async function openDetail(entry = '/github/issues/142') {
 const health = (backends: readonly Runner[]): HealthResponse => ({
   version: '0.0.0-test',
   projects: [],
-  bootProject: 'default',
   repoRoot: '/repo',
   repo: { root: '/repo', branch: 'main' },
   checks: backends.map((name) => ({ name, available: true })),

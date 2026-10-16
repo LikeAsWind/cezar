@@ -38,7 +38,6 @@ afterEach(() => {
 const HEALTH: HealthResponse = {
   version: '0.1.3',
   projects: [],
-  bootProject: 'default',
   repoRoot: '/home/me/Projects/cezar',
   repo: { root: '/home/me/Projects/cezar', branch: 'feat/cockpit', remote: 'origin' },
   checks: [],
@@ -400,11 +399,10 @@ describe('sidebar wiring', () => {
     const bootRun = run({ id: 'boot-run', titleSummary: 'Boot task' })
     const shopRun = run({ id: 'shop-run', titleSummary: 'Shop task' })
     serve({
-      '/api/v1/health': { ...HEALTH, bootProject: 'cezar' },
+      '/api/v1/health': HEALTH,
       '/api/v1/p/cezar/todos': [],
       '/api/v1/projects': {
         projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-21T00:00:00.000Z' }],
-        bootProject: 'cezar',
         projectsDir: '/home/me/cezar/projects',
       },
       '/api/v1/p/cezar/runs': [bootRun],
@@ -520,10 +518,9 @@ describe('sidebar wiring', () => {
 describe('document title wiring', () => {
   const REGISTRY = {
     projects: [PROJECT],
-    bootProject: 'cezar',
     projectsDir: '/home/me/cezar/projects',
   }
-  const HEALTH_WITH_BOOT = { ...HEALTH, bootProject: 'cezar' }
+  const HEALTH_WITH_BOOT = HEALTH
 
   it('combines the selected project with scoped page context', async () => {
     serve({

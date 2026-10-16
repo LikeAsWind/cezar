@@ -62,28 +62,11 @@ const PROJECTS: ProjectListEntry[] = [
   },
 ]
 
-/** The folder cezar is serving without having saved it — `GET /api/v1/projects` leads the list
- *  with this since boot registration became seed-once. */
-const UNREGISTERED_BOOT: ProjectListEntry = {
-  id: 'scratch',
-  name: 'scratch',
-  root: '/home/piotr/tmp/scratch',
-  addedAt: '',
-  lastOpenedAt: '',
-  source: 'local',
-  status: 'ok',
-  unregistered: true,
-}
-
 type Answers = {
   /** What `PUT /api/v1/workspace/config` answers — a 400 stands in for the writability probe. */
   putConfig?: { status: number; payload: unknown }
   /** What `DELETE /api/v1/projects/:id` answers. */
   del?: { status: number; payload: unknown }
-  /** Serve the boot folder as an unregistered row. */
-  unregisteredBoot?: boolean
-  /** What `POST /api/v1/projects` answers — the unregistered row's Add button. */
-  post?: { status: number; payload: unknown }
 }
 
 function serve(answers: Answers = {}) {
@@ -91,9 +74,7 @@ function serve(answers: Answers = {}) {
   failPatches = null
   const registry: ProjectsResponse = {
     // Copies, not the shared PROJECTS objects: the PATCH handler mutates entries.
-    projects: answers.unregisteredBoot
-      ? [UNREGISTERED_BOOT, ...PROJECTS.map((p) => ({ ...p }))]
-      : PROJECTS.map((p) => ({ ...p })),
+    projects: PROJECTS.map((p) => ({ ...p })),
     projectsDir: '~/cezar/projects',
   }
   const config: WorkspaceConfigResponse = {
@@ -129,15 +110,6 @@ function serve(answers: Answers = {}) {
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined
       requests.push({ method, url, body })
       if (url === '/api/v1/projects' && method === 'GET') return json(registry)
-      if (url === '/api/v1/projects' && method === 'POST') {
-        if (answers.post) return json(answers.post.payload, answers.post.status)
-        // What the real route does: the folder joins the registry, so the next
-        // read of this list has it as an ordinary row.
-        const added = { ...UNREGISTERED_BOOT, addedAt: '2026-08-01T09:00:00.000Z' }
-        delete added.unregistered
-        registry.projects = [added, ...registry.projects.filter((p) => !p.unregistered)]
-        return json({ project: added })
-      }
       if (url === '/api/v1/workspace/config' && method === 'GET') return json(config)
       if (url === '/api/v1/workspace/config' && method === 'PUT') {
         if (answers.putConfig) return json(answers.putConfig.payload, answers.putConfig.status)
@@ -183,17 +155,17 @@ function serve(answers: Answers = {}) {
 }
 
 /** Seeds the step-3.2 route gates so the (unscoped) global settings shell renders immediately. */
-function gateSeededClient(unregisteredBoot = false) {
+function gateSeededClient() {
   const client = createQueryClient()
   client.setQueryData(workspaceQueryKeys.projects, {
-    projects: unregisteredBoot ? [UNREGISTERED_BOOT, ...PROJECTS] : PROJECTS,
+    projects: PROJECTS,
     projectsDir: '~/cezar/projects',
   })
   return client
 }
 
-function renderProjects(unregisteredBoot = false, entry = '/projects') {
-  const client = gateSeededClient(unregisteredBoot)
+function renderProjects(entry = '/projects') {
+  const client = gateSeededClient()
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
@@ -205,7 +177,7 @@ function renderProjects(unregisteredBoot = false, entry = '/projects') {
   return client
 }
 
-const renderStorageSettings = () => renderProjects(false, '/settings/global/projects')
+const renderStorageSettings = () => renderProjects('/settings/global/projects')
 
 const rows = () => document.querySelectorAll('[data-slot="project-row"]')
 const row = (id: string) => document.querySelector<HTMLElement>(`[data-slot="project-row"][data-project="${id}"]`)
@@ -723,45 +695,4 @@ describe('Global settings → Projects', () => {
     expect(removeButton('cezar')?.disabled).toBe(false)
   })
 
-  /**
-   * Starting cezar in a folder no longer registers it, so this pane is where that folder gets
-   * saved — and the only row whose registry edits (Remove, Max parallel) have nothing to act on.
-   */
-  it('offers Add — not Remove or a cap — for the folder cezar is serving but has not saved', async () => {
-    serve({ unregisteredBoot: true })
-    renderProjects(true)
-    await waitFor(() => expect(rows()).toHaveLength(4))
-
-    const scratch = row('scratch')!
-    expect(scratch.textContent).toContain('not registered')
-    expect(removeButton('scratch')).toBeNull()
-    expect(maxParallelSelect('scratch')).toBeNull()
-
-    const add = scratch.querySelector<HTMLButtonElement>('[data-action="project-add-boot"]')!
-    fireEvent.click(add)
-
-    await waitFor(() =>
-      expect(requests.filter((r) => r.method === 'POST')).toEqual([
-        { method: 'POST', url: '/api/v1/projects', body: { root: '/home/piotr/tmp/scratch' } },
-      ]),
-    )
-    // Registered now: the row becomes an ordinary one, Remove and the cap included.
-    await waitFor(() => expect(removeButton('scratch')).not.toBeNull())
-    expect(maxParallelSelect('scratch')).not.toBeNull()
-    expect(await screen.findByText(/scratch added to your projects/)).not.toBeNull()
-  })
-
-  it('surfaces the server’s refusal when the served folder is not addable', async () => {
-    // `$HOME` and cezar's own task worktrees are boot roots the register route refuses; the
-    // button does not pre-judge which folders qualify, it shows what the server said.
-    serve({
-      unregisteredBoot: true,
-      post: { status: 400, payload: { error: 'not a project folder: ~ is your home directory or a cezar task worktree' } },
-    })
-    renderProjects(true)
-    await waitFor(() => expect(rows()).toHaveLength(4))
-
-    fireEvent.click(row('scratch')!.querySelector<HTMLButtonElement>('[data-action="project-add-boot"]')!)
-    expect(await screen.findByText(/is your home directory or a cezar task worktree/)).not.toBeNull()
-  })
 })

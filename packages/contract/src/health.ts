@@ -95,9 +95,6 @@ export const healthResponseSchema = z.object({
   capabilities: capabilitiesSchema,
   // Always sent: the registry enumeration degrades to `projects: []` rather than to an absent key.
   projects: z.array(z.object({ id: z.string(), name: z.string() })),
-  // Deprecated: the folder THIS server was started in. Absent in workspace mode — there is no
-  // boot project; the authoritative project id is the one in a `/api/v1/p/:projectId/*` path.
-  bootProject: z.string().optional(),
   /** Random identity of the installed service, when server-install supplied one. */
   instanceId: z.string().optional(),
 });
