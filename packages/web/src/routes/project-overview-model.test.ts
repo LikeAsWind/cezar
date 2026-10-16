@@ -81,7 +81,7 @@ describe('buildProjectOverviewModel', () => {
       status: 'ready', name: 'Alpha', root: project.root, branch: 'main',
       registryStatus: 'ok', tags: ['storefront', 'api'], forge: 'github',
     })
-    expect(model.tasks).toMatchObject({ status: 'ready', running: 1, needsAttention: 1, failed: 1, worktrees: 0, to: '/p/alpha/tasks' })
+    expect(model.tasks).toMatchObject({ status: 'ready', running: 1, needsAttention: 1, failed: 1, completed: 1, worktrees: 0, to: '/p/alpha/tasks' })
     expect(model.git).toMatchObject({ status: 'ready', forgeStatus: 'ready', branch: 'main', to: '/p/alpha/git' })
     expect(model.tracker.status).toBe('unconfigured')
     expect(model.automations).toMatchObject({ status: 'ready', configured: 0, running: 0, to: '/p/alpha/automations' })
@@ -138,6 +138,20 @@ describe('buildProjectOverviewModel', () => {
     expect(model.skillsAndWorkflows).toMatchObject({ status: 'unavailable', skills: null, workflows: null })
   })
 
+  it('counts a failed run awaiting an answer as needs-attention, alongside waiting and review', () => {
+    const model = buildProjectOverviewModel({
+      project,
+      runs: [
+        run('waiting'),
+        { status: 'failed', awaitingAnswerSince: '2026-10-16T00:00:00Z' },
+        { status: 'failed' },
+      ],
+      worktrees: { worktrees: [], totalBytes: 0, keep: 4 },
+    })
+
+    expect(model.tasks).toMatchObject({ needsAttention: 2, failed: 2, running: 0, completed: 0 })
+  })
+
   it('summarizes non-Git projects without inventing branch or forge data', () => {
     const model = buildProjectOverviewModel({
       project: { ...project, status: 'not-git', branch: undefined, forge: undefined, repoUrl: undefined },
@@ -155,6 +169,6 @@ describe('buildProjectOverviewModel', () => {
       worktrees: { worktrees: [{ runId: '1', title: 'One', status: 'done', branch: null, sizeBytes: 1, finishedAt: null, reclaimable: true }], totalBytes: 1, keep: 4 },
     })
 
-    expect(model.tasks).toMatchObject({ running: 1, needsAttention: 1, failed: 1, worktrees: 1 })
+    expect(model.tasks).toMatchObject({ running: 1, needsAttention: 2, failed: 1, completed: 0, worktrees: 1 })
   })
 })

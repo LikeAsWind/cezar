@@ -9,9 +9,12 @@ import {
   useWorkflows,
   useWorktrees,
 } from '@/api/queries'
+import { Activity, CheckCheck, CircleAlert, CircleHelp } from 'lucide-react'
 import { OverviewLinkCard } from '@/components/overview-link-card'
 import { OverviewSection, PageContent, PageFrame, PageHeader } from '@/components/page-frame'
 import { t, useLocale } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
+import { metricAccents, metricSurface, MetricContent } from './dashboard/presentation'
 import { useAutomationsGate, useAutomationsQuery } from './automations/use-automations'
 import { buildProjectOverviewModel, type OverviewStatus } from './project-overview-model'
 
@@ -87,6 +90,26 @@ export function ProjectOverviewRoute() {
       <PageHeader title={t('Project overview')} />
       <PageContent>
         <h2 className="text-sm font-semibold">{project.name || project.id}</h2>
+
+        {/* Per-project status metrics — the same needs-you / running / completed / failed rungs
+            as the workspace home, scoped to THIS project, and (like that home) the first row. */}
+        <section aria-label={t('Project metrics')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {(
+            [
+              { slot: 'task-metric-needs-attention', label: t('Needs attention'), value: model.tasks.needsAttention, tint: metricAccents.violet, Icon: CircleHelp },
+              { slot: 'task-metric-running', label: t('Running'), value: model.tasks.running, tint: metricAccents.info, Icon: Activity },
+              { slot: 'task-metric-completed', label: t('Completed'), value: model.tasks.completed, tint: metricAccents.success, Icon: CheckCheck },
+              { slot: 'task-metric-failed', label: t('Failed'), value: model.tasks.failed, tint: metricAccents.danger, Icon: CircleAlert },
+            ] as const
+          ).map(({ slot, label, value, tint, Icon }) => (
+            <div key={slot} data-slot={slot} className={cn(metricSurface, value === null ? metricAccents.neutral : tint)}>
+              <MetricContent label={label} value={value === null ? '—' : value} icon={<Icon className="size-4" />}>
+                {t('In this project')}
+              </MetricContent>
+            </div>
+          ))}
+        </section>
+
         <div className="grid gap-5 lg:grid-cols-2">
           <OverviewSection title={t('Project identity')}>
             <OverviewLinkCard
@@ -111,10 +134,7 @@ export function ProjectOverviewRoute() {
               title={t('Tasks & Worktrees')}
               status={<Status status={model.tasks.status} />}
               metadata={(
-                <span className="block space-y-1 whitespace-normal">
-                  <span className="block">{t('{0} running · {1} needs attention · {2} failed', {
-                    0: model.tasks.running ?? '—', 1: model.tasks.needsAttention ?? '—', 2: model.tasks.failed ?? '—',
-                  })}</span>
+                <span className="block whitespace-normal">
                   <span className="block">{t('{0} worktrees', { 0: model.tasks.worktrees ?? '—' })}</span>
                 </span>
               )}

@@ -82,7 +82,13 @@ describe('ProjectOverviewRoute', () => {
     const destinations = ['/p/alpha/tasks', '/p/alpha/git', '/p/alpha/tracker', '/p/alpha/automations', '/p/alpha/skills', '/p/alpha/workflows']
     for (const destination of destinations) expect(document.querySelector(`a[href="${destination}"]`), destination).toBeTruthy()
     expect(screen.getAllByText('C:/projects/alpha')).toHaveLength(2)
-    expect(screen.getByText('1 running · 1 needs attention · 1 failed')).toBeTruthy()
+
+    // Four per-project status metrics (runs: running, review, failed). The card still links in.
+    const tile = (slot: string) => document.querySelector(`[data-slot="${slot}"]`) as HTMLElement
+    expect(tile('task-metric-needs-attention')?.textContent).toContain('1')
+    expect(tile('task-metric-running')?.textContent).toContain('1')
+    expect(tile('task-metric-completed')?.textContent).toContain('0')
+    expect(tile('task-metric-failed')?.textContent).toContain('1')
   })
 
   it('names unavailable integrations and does not query disabled automation details', () => {

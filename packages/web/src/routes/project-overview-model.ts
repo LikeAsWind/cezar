@@ -11,11 +11,13 @@ import type {
   WorkflowsResponse,
 } from '@open-mercato/cezar-api-client'
 
+import { isNeedsYouStatus } from '@/lib/attention'
+
 export type OverviewStatus = 'ready' | 'unconfigured' | 'unavailable' | 'disabled'
 
 export type ProjectOverviewInput = {
   project: ProjectListEntry
-  runs?: readonly Pick<ApiRun, 'status'>[]
+  runs?: readonly Pick<ApiRun, 'status' | 'awaitingAnswerSince'>[]
   worktrees?: WorktreesResponse
   repo?: RepoResponse
   trackerAssociation?: TrackerAssociationResponse
@@ -28,7 +30,7 @@ export type ProjectOverviewInput = {
 
 export type ProjectOverviewModel = {
   identity: { status: OverviewStatus; name: string; root: string; branch: string | null; registryStatus: ProjectListEntry['status']; registryStatusLabel: string; tags: readonly string[]; forge: ProjectListEntry['forge'] | null; to: string }
-  tasks: { status: OverviewStatus; running: number | null; needsAttention: number | null; failed: number | null; worktrees: number | null; to: string }
+  tasks: { status: OverviewStatus; running: number | null; needsAttention: number | null; completed: number | null; failed: number | null; worktrees: number | null; to: string }
   git: { status: OverviewStatus; forgeStatus: OverviewStatus; branch: string | null; to: string }
   tracker: { status: OverviewStatus; summary: { key: string; values: Record<string, string | number> }; to: string }
   automations: { status: OverviewStatus; configured: number | null; running: number | null; summary: { key: string; values: Record<string, string | number> }; to: string }
@@ -88,7 +90,10 @@ export function buildProjectOverviewModel(input: ProjectOverviewInput): ProjectO
     tasks: {
       status: runs === undefined || worktrees === undefined ? 'unavailable' : 'ready',
       running: runs?.filter((run) => run.status === 'running').length ?? null,
-      needsAttention: runs?.filter((run) => run.status === 'review').length ?? null,
+      // Same needs-you rung as the workspace overview and the dashboard's `needsYou` metric:
+      // waiting, review, and a failed run still awaiting an answer — not review alone.
+      needsAttention: runs?.filter((run) => isNeedsYouStatus(run)).length ?? null,
+      completed: runs?.filter((run) => run.status === 'done').length ?? null,
       failed: runs?.filter((run) => run.status === 'failed').length ?? null,
       worktrees: worktrees?.length ?? null,
       to: projectPath(project.id, '/tasks'),
