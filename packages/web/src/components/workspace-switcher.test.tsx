@@ -81,3 +81,19 @@ it('wraps ArrowUp from the search field to the registration action', () => {
   fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
   expect(onRegister).toHaveBeenCalledOnce()
 })
+
+it('keeps menu rows single interactive targets with mobile sizing and a visible focus ring', () => {
+  renderSwitcher()
+  fireEvent.click(screen.getByRole('button', { name: /Global workspace/ }))
+  for (const option of screen.getAllByRole('option')) {
+    expect(option.tagName).toBe('BUTTON')
+    expect(option.querySelector('button, a, input, [tabindex]')).toBeNull()
+    expect(option.className).toContain('min-h-11')
+    expect(option.className).toContain('min-w-11')
+    expect(option.className).toContain('md:min-h-9')
+    expect(option.className).toContain('focus-visible:ring-[3px]')
+    expect(option.className).toContain('focus-visible:ring-ring/50')
+  }
+  expect(screen.getByRole('searchbox').className).toContain('h-11')
+  expect(screen.getByRole('searchbox').className).toContain('md:h-9')
+})

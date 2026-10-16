@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { t, useLocale } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
+import { interactiveItemClasses } from './overview-link-card'
 
 export function WorkspaceSwitcher({ projects, activeProjectId, onSelectGlobal, onSelectProject, onRegister }: {
   projects: readonly ProjectListEntry[]
@@ -52,7 +53,7 @@ export function WorkspaceSwitcher({ projects, activeProjectId, onSelectGlobal, o
       <PopoverContent align="start" className="w-80 p-1.5">
         <input type="search" role="searchbox" aria-label={t('Search projects')} value={search}
           aria-controls={listId} aria-activedescendant={selected < 0 ? undefined : `${listId}-${selected}`}
-          className="mb-1.5 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="mb-1.5 h-11 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:h-9"
           onChange={(event) => { setSearch(event.target.value); setSelected(-1) }}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -70,7 +71,7 @@ export function WorkspaceSwitcher({ projects, activeProjectId, onSelectGlobal, o
             <button key={row.id} id={`${listId}-${index}`} ref={selected === index ? selectedRow : undefined} type="button" role="option" tabIndex={-1}
               aria-selected={selected === index} onClick={() => choose(index)}
               onMouseMove={() => setSelected(index)}
-              className={cn('block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted', selected === index && 'bg-muted')}>
+              className={cn('block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted', interactiveItemClasses, selected === index && 'bg-muted')}>
               <span className="block truncate font-medium">{row.name}</span>
               {'project' in row && row.project ? <>
                 <span className="block truncate font-mono text-[10.5px] text-muted-foreground" title={row.project.root}>{row.project.root}</span>
