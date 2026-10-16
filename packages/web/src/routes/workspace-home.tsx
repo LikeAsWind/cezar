@@ -6,96 +6,63 @@ import {
   CircleHelp,
   CpuIcon,
   GaugeIcon,
-  LayoutDashboardIcon,
 } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { useDashboardOverview } from '@/api/dashboard-overview'
 import { useHostUsage } from '@/api/host-usage'
-import { useProjects, useWorkspaceConfig } from '@/api/queries'
-import { CenteredState } from '@/components/centered-state'
+import { useProjects, useRunsIndex, useWorkspaceConfig } from '@/api/queries'
 import { Button } from '@/components/ui/button'
+import { OverviewLinkCard } from '@/components/overview-link-card'
+import { OverviewSection, PageContent, PageFrame, PageHeader } from '@/components/page-frame'
 import { effectiveHostView, formatCpuCores, formatMemPair } from '@/lib/host-effective'
 import { readStoredLastLocation, recentProjectLocation } from '@/lib/last-location'
 import { cn } from '@/lib/utils'
 import { metricAccents, metricSurface, MetricContent } from './dashboard/presentation'
+import { buildWorkspaceProjectSummaries } from './workspace-overview-model'
 
-/**
- * The fixed global workspace home — the one page outside every `/p/:projectId`.
- *
- * It is a dashboard over data that already exists at the workspace level: the cross-project
- * outcome metrics (`useDashboardOverview`), the machine's resource usage (`useHostUsage`), the
- * workspace configuration (`useWorkspaceConfig`) and the project registry (`useProjects`). No
- * second polling loop — the overview and host-usage hooks already own their freshness.
- *
- * Every project action is an explicit `/p/:projectId/` link. This page renders outside every
- * project scope, so the scope-aware `Link` (which would prefix the active project) is never used;
- * a remembered recent project is offered only as an explicit link too.
- *
- * It wears the same page frame as every other global page (tasks, projects, settings): the sticky
- * `h-14` header with a `text-base` title beside its description, and `rounded-lg border bg-card`
- * cards. The Dashboard's `metricSurface` hairline tiles and centered `max-w-[…]` layout stay on
- * the Dashboard — this is a cockpit page, not a landing page.
- */
 export function WorkspaceHomeRoute() {
   useLocale()
 
   const projects = useProjects()
   const overview = useDashboardOverview({}, true)
+  const runsIndex = useRunsIndex()
   const host = useHostUsage()
   const config = useWorkspaceConfig()
 
-  const recent = recentProjectLocation(readStoredLastLocation(), projects.data)
-  const recentProject = projects.data?.projects.find((project) => project.id === recent?.projectId)
   const registered = projects.data?.projects ?? []
-
-  // Zero-project: the one state that is not a dashboard, because there is nothing to summarize.
-  // Gated on the registry having answered — an empty cache (still loading) is not "no projects".
-  if (projects.data !== undefined && registered.length === 0) {
-    return (
-      <div data-route="workspace-home" className="flex min-h-full flex-col">
-        <CenteredState
-          icon={<LayoutDashboardIcon />}
-          tone="primary"
-          title={t('Workspace')}
-          subtitle={t('No projects registered')}
-          backdrop
-          actions={
-            <Button asChild>
-              <Link to="/projects?register=1">{t('Register project')}</Link>
-            </Button>
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            {t('This home is not bound to the directory that started Cezar.')}
-          </p>
-        </CenteredState>
-      </div>
-    )
-  }
-
+  const summaries = buildWorkspaceProjectSummaries({
+    projects: registered,
+    dashboardProjects: overview.data?.projects,
+    runs: runsIndex.data?.runs,
+  })
+  const recent = recentProjectLocation(readStoredLastLocation(), projects.data)
+  const recentProject = registered.find((project) => project.id === recent?.projectId)
   const metrics = overview.data?.metrics
   const hostView = host === undefined ? null : effectiveHostView(host)
 
   return (
-    <div data-route="workspace-home" className="flex min-h-full flex-col">
-      {/* The shared global-page header. Below `md` it is hidden and the shell's top bar owns the
-          title, exactly like the other global pages. */}
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">{t('Workspace')}</h1>
-        <p className="text-[13px] text-soft-foreground">
-          {t('Every project in one place. Open a project from the sidebar, or start a task in one.')}
-        </p>
-        {recent && recentProject ? (
-          <Button asChild variant="outline" size="sm" className="ml-auto">
-            <Link to={`${recent.pathname}${recent.search ?? ''}${recent.hash ?? ''}`}>
-              {t('Recent project: {0}', { 0: recentProject.name || recentProject.id })}
-            </Link>
-          </Button>
-        ) : null}
-      </header>
+    <PageFrame data-route="workspace-home">
+      <PageHeader
+        title={t('Workspace')}
+        description={t('This home is not bound to the directory that started Cezar.')}
+        actions={(
+          <>
+            {recent && recentProject ? (
+              <Button asChild variant="outline" size="sm">
+                <Link to={`${recent.pathname}${recent.search ?? ''}${recent.hash ?? ''}`}>
+                  {t('Recent project: {0}', { 0: recentProject.name || recentProject.id })}
+                </Link>
+              </Button>
+            ) : null}
+            <Button asChild size="sm">
+              <Link to="/projects?register=1">{t('Register project')}</Link>
+            </Button>
+          </>
+        )}
+      />
 
-      <div className="flex flex-1 flex-col gap-4 p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
+      <PageContent>
         <section aria-label={t('Workspace metrics')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {(
             [
@@ -105,10 +72,7 @@ export function WorkspaceHomeRoute() {
               { key: 'failed', label: t('Failed'), value: metrics?.failed, tint: metricAccents.danger, Icon: CircleAlert },
             ] as const
           ).map(({ key, label, value, tint, Icon }) => (
-            <div
-              key={key}
-              className={cn(metricSurface, value === undefined ? metricAccents.neutral : tint)}
-            >
+            <div key={key} className={cn(metricSurface, value === undefined ? metricAccents.neutral : tint)}>
               <MetricContent
                 label={label}
                 value={value === undefined ? '—' : value}
@@ -122,10 +86,10 @@ export function WorkspaceHomeRoute() {
 
         <section aria-label={t('Workspace resources')} className="grid gap-3 md:grid-cols-2">
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
-            <div className="flex items-center gap-2 text-sm font-medium">
+            <h2 className="flex items-center gap-2 text-sm font-medium">
               <CpuIcon className="size-4 text-soft-foreground" aria-hidden="true" />
               {t('Machine')}
-            </div>
+            </h2>
             {hostView === null ? (
               <p className="text-sm text-muted-foreground">{t('Sampling…')}</p>
             ) : (
@@ -147,10 +111,10 @@ export function WorkspaceHomeRoute() {
             )}
           </div>
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-xs">
-            <div className="flex items-center gap-2 text-sm font-medium">
+            <h2 className="flex items-center gap-2 text-sm font-medium">
               <GaugeIcon className="size-4 text-soft-foreground" aria-hidden="true" />
               {t('Workspace configuration')}
-            </div>
+            </h2>
             {config.data === undefined ? (
               <p className="text-sm text-muted-foreground">{t('Loading…')}</p>
             ) : (
@@ -171,39 +135,63 @@ export function WorkspaceHomeRoute() {
           </div>
         </section>
 
-        <section aria-label={t('Projects')} className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">{t('Projects')}</h2>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/projects?register=1">{t('Register project')}</Link>
-            </Button>
-          </div>
+        <OverviewSection
+          title={t('Projects')}
+          description={t('Every project in one place. Open a project from the sidebar, or start a task in one.')}
+        >
           {!projects.data ? (
             <p className="text-sm text-muted-foreground">{t('Loading projects…')}</p>
+          ) : summaries.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-card px-4 py-8 text-center">
+              <p className="text-sm font-medium">{t('No projects registered')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t('Register a project to see its status and tasks here.')}</p>
+            </div>
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {registered.map((project) => (
-                <li key={project.id}>
-                  <Link
-                    to={`/p/${encodeURIComponent(project.id)}/`}
-                    className="flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3 shadow-xs transition-colors hover:bg-card-2"
-                  >
-                    <span className="text-sm font-medium text-foreground">
-                      {t('Open {0}', { 0: project.name || project.id })}
-                    </span>
-                    <span
-                      className="truncate font-mono text-[11px] text-soft-foreground"
-                      title={project.root}
-                    >
-                      {project.root}
-                    </span>
-                  </Link>
+              {summaries.map((project) => (
+                <li key={project.projectId}>
+                  <OverviewLinkCard
+                    to={`/p/${encodeURIComponent(project.projectId)}/`}
+                    title={project.name || project.projectId}
+                    description={project.root}
+                    status={(
+                      <span className={cn(
+                        'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                        project.status === 'ok' && 'bg-success/10 text-success',
+                        project.status === 'missing' && 'bg-destructive/10 text-destructive',
+                        project.status === 'not-git' && 'bg-muted text-muted-foreground',
+                      )}>
+                        {project.status === 'ok'
+                          ? t('Available')
+                          : project.status === 'missing'
+                            ? t('Missing')
+                            : t('Not a Git repository')}
+                      </span>
+                    )}
+                    metadata={(
+                      <span className="block whitespace-normal">
+                        <span className="block truncate">{t('Branch: {0}', { 0: project.branch ?? '—' })}</span>
+                        <span className="block truncate">
+                          {t('{0} running · {1} needs attention · {2} failed', {
+                            0: project.running ?? '—',
+                            1: project.needsAttention ?? '—',
+                            2: project.failed ?? '—',
+                          })}
+                        </span>
+                        {project.latestActivity ? (
+                          <span className="block truncate">
+                            {t('Latest activity: {0}', { 0: new Date(project.latestActivity).toLocaleString() })}
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
+                  />
                 </li>
               ))}
             </ul>
           )}
-        </section>
-      </div>
-    </div>
+        </OverviewSection>
+      </PageContent>
+    </PageFrame>
   )
 }
