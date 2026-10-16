@@ -1,8 +1,8 @@
 # 全局工作区与项目空间 UI 设计
 
-日期：2026-10-14  
-状态：设计已确认，尚未实施  
-交互原型：`.superpowers/brainstorm/17408-1791968398/content/ide-current-scopes-v5.html`  
+日期：2026-10-14
+状态：设计已确认，尚未实施
+交互原型：`.superpowers/brainstorm/17408-1791968398/content/ide-current-scopes-v5.html`
 关联架构：`docs/superpowers/specs/2026-10-14-system-project-workspace-design.md`
 
 ## 1. 背景
