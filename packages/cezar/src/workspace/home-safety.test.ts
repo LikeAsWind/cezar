@@ -8,6 +8,19 @@ import { assertCezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.t
 import { atomicWriteJsonSync, loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 
 /**
+ * Point `os.homedir()` at `dir` on every platform Node honours. Windows reads
+ * `USERPROFILE` (then `HOMEDRIVE`+`HOMEPATH`) before `HOME`, so redirecting `HOME`
+ * alone never moves the home there — which is how a "leaked" write landed in the
+ * developer's real `~/.cezar` while the guard's assertions still went green.
+ */
+function pointHomeAt(dir: string): void {
+  process.env.HOME = dir;
+  process.env.USERPROFILE = dir;
+  delete process.env.HOMEDRIVE;
+  delete process.env.HOMEPATH;
+}
+
+/**
  * The registry-clobber regression. A cezar test run used to be able to replace
  * the developer's real `~/.cezar/config.json` with a fixture's projects: the
  * `CEZ_HOME` pin lives in `process.env`, a timing-out test drops it in
@@ -19,6 +32,9 @@ import { atomicWriteJsonSync, loadWorkspaceConfig, mergeWriteWorkspaceConfig } f
 describe('cezar home write safety', () => {
   const originalCezHome = process.env.CEZ_HOME;
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalHomeDrive = process.env.HOMEDRIVE;
+  const originalHomePath = process.env.HOMEPATH;
   let pinned: string;
   let elsewhere: string;
   let fakeUserHome: string;
@@ -29,6 +45,7 @@ describe('cezar home write safety', () => {
     elsewhere = mkdtempSync(join(base, 'cez-home-safety-elsewhere-'));
     fakeUserHome = mkdtempSync(join(base, 'cez-home-safety-user-'));
     process.env.CEZ_HOME = pinned;
+    pointHomeAt(fakeUserHome);
   });
 
   afterEach(() => {
@@ -36,6 +53,12 @@ describe('cezar home write safety', () => {
     else process.env.CEZ_HOME = originalCezHome;
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalHomeDrive === undefined) delete process.env.HOMEDRIVE;
+    else process.env.HOMEDRIVE = originalHomeDrive;
+    if (originalHomePath === undefined) delete process.env.HOMEPATH;
+    else process.env.HOMEPATH = originalHomePath;
     for (const dir of [pinned, elsewhere, fakeUserHome]) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -76,7 +99,7 @@ describe('cezar home write safety', () => {
   });
 
   it('refuses a write into the real cezar home while running under vitest', () => {
-    process.env.HOME = fakeUserHome;
+    pointHomeAt(fakeUserHome);
     delete process.env.CEZ_HOME;
     const target = workspaceConfigPath();
 
@@ -86,7 +109,7 @@ describe('cezar home write safety', () => {
   });
 
   it('leaves an existing real-home registry byte-for-byte intact when a leaked write is refused', () => {
-    process.env.HOME = fakeUserHome;
+    pointHomeAt(fakeUserHome);
     delete process.env.CEZ_HOME;
     const target = workspaceConfigPath();
     const existing = '{"projects":[{"id":"real","root":"/repos/real"}]}\n';
@@ -112,14 +135,23 @@ describe('cezar home write safety', () => {
     // not touch the user's registry. The per-layer cases above are what fail if
     // any single defence is removed.
     const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
-    const vitestBin = join(packageRoot, '..', '..', 'node_modules', '.bin', 'vitest');
-    const env: NodeJS.ProcessEnv = { ...process.env, HOME: fakeUserHome };
+    const vitestEntry = join(packageRoot, '..', '..', 'node_modules', 'vitest', 'vitest.mjs');
+    // Spawn `node vitest.mjs` directly: the `.bin/vitest` shim is a POSIX shell
+    // script that `spawnSync` cannot exec on Windows (ENOENT), and the `.cmd`
+    // twin needs a shell. The `.mjs` entry is the same program, runnable everywhere.
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: fakeUserHome,
+      USERPROFILE: fakeUserHome,
+    };
+    delete env.HOMEDRIVE;
+    delete env.HOMEPATH;
     delete env.CEZ_HOME;
     delete env.VITEST;
 
     const run = spawnSync(
-      vitestBin,
-      ['run', 'src/workspace/projects-cli.test.ts', '--testTimeout=15', '-t', 'remove'],
+      process.execPath,
+      [vitestEntry, 'run', 'src/workspace/projects-cli.test.ts', '--testTimeout=15', '-t', 'remove'],
       { cwd: packageRoot, env, encoding: 'utf8' },
     );
 
@@ -130,7 +162,7 @@ describe('cezar home write safety', () => {
   }, 180_000);
 
   it('allows writes outside the real cezar home, and is inert outside vitest', () => {
-    process.env.HOME = fakeUserHome;
+    pointHomeAt(fakeUserHome);
     const sandboxed = join(pinned, 'config.json');
 
     expect(() => assertCezarHomeWriteIsSandboxed(sandboxed)).not.toThrow();
