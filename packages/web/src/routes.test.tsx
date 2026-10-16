@@ -500,11 +500,11 @@ describe('global workspace routes', () => {
   })
 
   it.each([
-    ['/', 'Workspace'],
-    ['/tasks', 'All tasks'],
-    ['/projects', 'Projects'],
-    ['/p/boot/', 'Project overview'],
-  ])('gives %s one visible page heading and a shared page frame', (entry, title) => {
+    ['/', 'Workspace', 1],
+    ['/tasks', 'All tasks', 1],
+    ['/projects', 'Projects', 1],
+    ['/p/boot/', 'Project overview', 0],
+  ])('gives %s one visible page heading and a shared page frame', (entry, title, expectedActionRegions) => {
     renderAt(entry)
     const route = document.querySelector('[data-route]')!
     expect(route.querySelectorAll('h1')).toHaveLength(1)
@@ -512,6 +512,15 @@ describe('global workspace routes', () => {
     expect(heading.closest('[hidden], [aria-hidden="true"], .hidden')).toBeNull()
     expect(route.querySelector('[data-slot="page-header"]')).not.toBeNull()
     expect(route.querySelector('[data-slot="page-content"]')).not.toBeNull()
+    const actionRegions = route.querySelectorAll('[data-slot="page-actions"]')
+    expect(actionRegions.length).toBeLessThanOrEqual(1)
+    expect(actionRegions).toHaveLength(expectedActionRegions)
+  })
+
+  it('leaves project overview actions to its shell and detail cards', () => {
+    renderAt('/p/boot/')
+    const route = document.querySelector('[data-route="project-overview"]')!
+    expect(route.querySelectorAll('[data-slot="page-actions"]')).toHaveLength(0)
   })
 
   it('keeps global task page actions in one accessible region with mobile-sized targets', () => {
