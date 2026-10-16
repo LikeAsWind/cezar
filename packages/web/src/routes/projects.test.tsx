@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
+import { workspaceQueryKeys } from '@/api/queries'
 import { ProjectsRoute } from '@/routes/projects'
 
 const projects = {
@@ -49,13 +50,15 @@ function renderProjects(path = '/projects') {
     const payload = url === '/api/v1/projects' ? projects : config
     return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
   }))
+  const client = createQueryClient()
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <ProjectsRoute />
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return client
 }
 
 afterEach(() => {
@@ -72,6 +75,13 @@ describe('Projects registry page', () => {
     expect(document.querySelector('[data-route="projects"] [data-slot="projects-checkout-root"]')).toBeNull()
     expect(screen.getByRole('link', { name: 'cezar' }).getAttribute('href')).toBe('/p/cezar/')
     expect(screen.getByRole('button', { name: 'Register project' })).toBeTruthy()
+  })
+
+  it('has a single projects query owner across the registry and registration dialog', async () => {
+    const client = renderProjects()
+
+    await waitFor(() => expect(document.querySelector('[data-slot="project-row"]')).not.toBeNull())
+    expect(client.getQueryCache().find({ queryKey: workspaceQueryKeys.projects })?.getObserversCount()).toBe(1)
   })
 
   it('opens the registration dialog from the register query deep link', async () => {

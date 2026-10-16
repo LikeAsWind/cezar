@@ -662,7 +662,7 @@ function SidebarContent({
             >{t('C')}</kbd>
           </RouterLink>
         </Button> : <Button disabled variant="contrast" className="flex-1" aria-describedby={newTaskReasonId}>{t('New task')}</Button>}
-        {singleProject ? null : <AddProjectMenu />}
+        {singleProject ? null : <AddProjectMenu projects={projects} />}
       </div>
 
       {projectId === null ? <p id={newTaskReasonId} className="px-3.5 pb-2 text-xs text-muted-foreground">{t('Select a project before creating a task')}</p> : null}
@@ -839,7 +839,7 @@ function GlobalSettingsLink({
  * places that mount it without a QueryClient. The cost is no close animation, which is the
  * cheaper half of the trade.
  */
-function AddProjectMenu() {
+function AddProjectMenu({ projects }: { projects: readonly ProjectListEntry[] }) {
   useLocale()
 
   const [browsing, setBrowsing] = React.useState(false)
@@ -885,7 +885,7 @@ function AddProjectMenu() {
       </DropdownMenuContent>
       {browsing ? (
         <DialogErrorBoundary label={t('Open local folder')} onError={() => setBrowsing(false)}>
-          <AddProjectDialog open onOpenChange={setBrowsing} />
+          <AddProjectDialog open onOpenChange={setBrowsing} projects={projects} />
         </DialogErrorBoundary>
       ) : null}
       {cloning ? (

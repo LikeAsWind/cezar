@@ -3,15 +3,7 @@ import { useSearchParams } from 'react-router'
 import { t, useLocale } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { PageContent, PageFrame, PageHeader } from '@/components/page-frame'
-import { AddProjectDialog } from '@/components/add-project-dialog'
 import { ProjectsRegistry } from '@/routes/settings/projects-section'
-
-export function RegisterProjectDialog({ open, onOpenChange }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return <AddProjectDialog open={open} onOpenChange={onOpenChange} />
-}
 
 export function ProjectsRoute() {
   useLocale()
@@ -36,9 +28,8 @@ export function ProjectsRoute() {
         actions={<Button onClick={() => setOpen(true)}>{t('Register project')}</Button>}
       />
       <PageContent className="p-0">
-        <ProjectsRegistry />
+        <ProjectsRegistry registerDialogOpen={open} onRegisterDialogOpenChange={setOpen} />
       </PageContent>
-      <RegisterProjectDialog open={open} onOpenChange={setOpen} />
     </PageFrame>
   )
 }

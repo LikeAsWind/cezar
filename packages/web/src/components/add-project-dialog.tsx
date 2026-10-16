@@ -2,8 +2,8 @@ import { t, useLocale } from '@/lib/i18n'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { useProjects, useRegisterProject } from '@/api/queries'
-import type { FsBrowseDir } from '@open-mercato/cezar-api-client'
+import { useRegisterProject } from '@/api/queries'
+import type { FsBrowseDir, ProjectListEntry } from '@open-mercato/cezar-api-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,9 +34,11 @@ import { FolderBrowser, useBrowseTarget } from '@/components/folder-browser'
 export function AddProjectDialog({
   open,
   onOpenChange,
+  projects,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projects: readonly ProjectListEntry[]
 }) {
   useLocale()
 
@@ -44,7 +46,6 @@ export function AddProjectDialog({
   // — it only ever echoes what it was told.
   const [path, setPath] = useState<string | null>(null)
   const [selected, setSelected] = useState<FsBrowseDir | null>(null)
-  const projects = useProjects()
   const register = useRegisterProject()
   const navigate = useNavigate()
 
@@ -56,7 +57,7 @@ export function AddProjectDialog({
   // started in when it is NOT registered, and badging that one "already added" would contradict
   // Settings → Projects, which offers to add the very same folder.
   const registered = new Set(
-    (projects.data?.projects ?? [])
+    projects
       .filter((project) => !project.unregistered)
       .map((project) => project.root),
   )

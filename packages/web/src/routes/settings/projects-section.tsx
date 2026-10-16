@@ -22,6 +22,7 @@ import {
 import { CenteredState } from '@/components/centered-state'
 import { IntegerStepper } from '@/components/integer-stepper'
 import { OverviewSection } from '@/components/page-frame'
+import { AddProjectDialog } from '@/components/add-project-dialog'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
@@ -144,7 +145,13 @@ function ProjectStoragePane({ config }: { config: WorkspaceConfigResponse }) {
   )
 }
 
-export function ProjectsRegistry() {
+export function ProjectsRegistry({
+  registerDialogOpen,
+  onRegisterDialogOpenChange,
+}: {
+  registerDialogOpen: boolean
+  onRegisterDialogOpenChange: (open: boolean) => void
+}) {
   useLocale()
 
   const projects = useProjects()
@@ -164,7 +171,28 @@ export function ProjectsRegistry() {
       />
     )
   }
-  return <RegistryTable registry={projects.data} workspaceMax={config.data.resources.maxParallel} />
+  return (
+    <>
+      <RegistryTable registry={projects.data} workspaceMax={config.data.resources.maxParallel} />
+      <RegisterProjectDialog
+        open={registerDialogOpen}
+        onOpenChange={onRegisterDialogOpenChange}
+        projects={projects.data.projects}
+      />
+    </>
+  )
+}
+
+export function RegisterProjectDialog({
+  open,
+  onOpenChange,
+  projects,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  projects: readonly ProjectListEntry[]
+}) {
+  return <AddProjectDialog open={open} onOpenChange={onOpenChange} projects={projects} />
 }
 
 /** A workspace folder — edited locally, saved explicitly, and validated by the SERVER. */

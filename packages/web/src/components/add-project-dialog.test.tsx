@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
+import { useProjects } from '@/api/queries'
 import type { FsBrowseResponse, ProjectListEntry } from '@open-mercato/cezar-api-client'
 import { AddProjectDialog } from '@/components/add-project-dialog'
 
@@ -96,17 +97,24 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>
 }
 
-function renderDialog() {
+function renderDialog(projects: ProjectListEntry[] = [], observeRegistry = false) {
   const onOpenChange = vi.fn()
+  const client = createQueryClient()
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/p/cezar/']}>
-        <AddProjectDialog open onOpenChange={onOpenChange} />
+        {observeRegistry ? <ProjectsQueryConsumer /> : null}
+        <AddProjectDialog open onOpenChange={onOpenChange} projects={projects} />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   )
-  return { onOpenChange }
+  return { onOpenChange, client }
+}
+
+function ProjectsQueryConsumer() {
+  useProjects()
+  return null
 }
 
 const rows = () => within(document.querySelector('[data-slot="fs-listing"]') as HTMLElement)
@@ -174,7 +182,7 @@ describe('AddProjectDialog', () => {
       register: (root) =>
         json({ project: project({ id: 'cezar', root }), error: 'already registered as cezar' }, 409),
     })
-    renderDialog()
+    renderDialog([project({ id: 'cezar', root: '/home/me/Projects/cezar' })])
     await waitFor(() => expect(rows().getByText('cezar')).toBeTruthy())
     expect(within(rows().getByText('cezar').closest('button') as HTMLElement).getByText('already added')).toBeTruthy()
     fireEvent.click(rows().getByText('cezar'))
@@ -191,7 +199,7 @@ describe('AddProjectDialog', () => {
       // "already added" here would contradict Settings, which offers to add the same folder.
       projects: [project({ id: 'cezar', root: '/home/me/Projects/cezar', unregistered: true })],
     })
-    renderDialog()
+    renderDialog([project({ id: 'cezar', root: '/home/me/Projects/cezar', unregistered: true })])
     await waitFor(() => expect(rows().getByText('cezar')).toBeTruthy())
     expect(
       within(rows().getByText('cezar').closest('button') as HTMLElement).queryByText('already added'),
@@ -296,7 +304,7 @@ describe('AddProjectDialog', () => {
 
   it('refetches the project registry after a successful add so the sidebar picks it up', async () => {
     serve({ browse: { '': json(PROJECTS) } })
-    renderDialog()
+    renderDialog([], true)
     await waitFor(() => expect(addButton().disabled).toBe(false))
     const listCalls = () =>
       fetchMock.mock.calls.filter(
