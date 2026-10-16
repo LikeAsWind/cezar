@@ -192,11 +192,11 @@ function gateSeededClient(unregisteredBoot = false) {
   return client
 }
 
-function renderProjects(unregisteredBoot = false) {
+function renderProjects(unregisteredBoot = false, entry = '/projects') {
   const client = gateSeededClient(unregisteredBoot)
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/settings/global/projects']}>
+      <MemoryRouter initialEntries={[entry]}>
         <AppRoutes />
         <Toaster />
       </MemoryRouter>
@@ -204,6 +204,8 @@ function renderProjects(unregisteredBoot = false) {
   )
   return client
 }
+
+const renderStorageSettings = () => renderProjects(false, '/settings/global/projects')
 
 const rows = () => document.querySelectorAll('[data-slot="project-row"]')
 const row = (id: string) => document.querySelector<HTMLElement>(`[data-slot="project-row"][data-project="${id}"]`)
@@ -239,6 +241,17 @@ afterEach(() => {
 })
 
 describe('Global settings → Projects', () => {
+  it('owns storage defaults and links to project management without rendering the registry', async () => {
+    serve()
+    renderStorageSettings()
+
+    await waitFor(() => expect(rootInput()).not.toBeNull())
+    expect(browseInput()).not.toBeNull()
+    expect(rows()).toHaveLength(0)
+    expect(screen.getByRole('link', { name: 'Manage projects' }).getAttribute('href')).toBe('/projects')
+    expect(requests.filter((request) => request.method === 'GET' && request.url === '/api/v1/projects')).toHaveLength(0)
+  })
+
   it('lists every registered project with its status, source and path', async () => {
     serve()
     renderProjects()
@@ -254,7 +267,7 @@ describe('Global settings → Projects', () => {
     // The exact shape `PUT /api/v1/workspace/config` answers with when the probe fails (step 2.7).
     const reason = 'not writable: EACCES: permission denied, mkdir \'/opt/checkouts\''
     serve({ putConfig: { status: 400, payload: { error: reason } } })
-    renderProjects()
+    renderStorageSettings()
     await waitFor(() => expect(rootInput()).not.toBeNull())
     fireEvent.change(rootInput()!, { target: { value: '/opt/checkouts' } })
     fireEvent.click(saveRoot()!)
@@ -275,7 +288,7 @@ describe('Global settings → Projects', () => {
 
   it('clears the inline error as soon as the value changes again', async () => {
     serve({ putConfig: { status: 400, payload: { error: 'not writable: /opt/checkouts' } } })
-    renderProjects()
+    renderStorageSettings()
     await waitFor(() => expect(rootInput()).not.toBeNull())
     fireEvent.change(rootInput()!, { target: { value: '/opt/checkouts' } })
     fireEvent.click(saveRoot()!)
@@ -288,7 +301,7 @@ describe('Global settings → Projects', () => {
   it('shows a missing browse-folder warning inline and keeps the typed path', async () => {
     const reason = 'browse folder does not exist: ~/missing'
     serve({ putConfig: { status: 400, payload: { error: reason } } })
-    renderProjects()
+    renderStorageSettings()
     await waitFor(() => expect(browseInput()).not.toBeNull())
     fireEvent.change(browseInput()!, { target: { value: '~/missing' } })
     fireEvent.click(saveBrowse()!)
@@ -300,7 +313,7 @@ describe('Global settings → Projects', () => {
 
   it('saves a valid checkout root through PUT /api/v1/workspace/config', async () => {
     serve()
-    renderProjects()
+    const client = renderStorageSettings()
     await waitFor(() => expect(rootInput()).not.toBeNull())
     expect(saveRoot()!.disabled).toBe(true) // unchanged
     fireEvent.change(rootInput()!, { target: { value: '~/code' } })
@@ -310,17 +323,16 @@ describe('Global settings → Projects', () => {
         { method: 'PUT', url: '/api/v1/workspace/config', body: { projectsDir: '~/code' } },
       ]),
     )
-    // The clone dialog reads projectsDir from this response, not workspace/config. Refreshing
-    // it here keeps the next Add project opening coherent without a whole-app reload (#567).
-    await waitFor(() =>
-      expect(requests.filter((r) => r.method === 'GET' && r.url === '/api/v1/projects')).toHaveLength(1),
-    )
+    // The storage pane does not own the registry query. It marks the clone dialog's cache stale;
+    // the next consumer refetches it when mounted.
+    await waitFor(() => expect(client.getQueryState(workspaceQueryKeys.projects)?.isInvalidated).toBe(true))
+    expect(requests.filter((r) => r.method === 'GET' && r.url === '/api/v1/projects')).toHaveLength(0)
     expect(inlineError()).toBeNull()
   })
 
   it('saves the browse folder independently without refreshing the clone destination', async () => {
     serve()
-    const client = renderProjects()
+    const client = renderStorageSettings()
     client.setQueryData(workspaceQueryKeys.fsBrowse(null), {
       path: '/home/piotr',
       parent: null,

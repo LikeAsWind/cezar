@@ -1,18 +1,44 @@
+import { useSearchParams } from 'react-router'
+
 import { t, useLocale } from '@/lib/i18n'
+import { Button } from '@/components/ui/button'
+import { PageContent, PageFrame, PageHeader } from '@/components/page-frame'
+import { AddProjectDialog } from '@/components/add-project-dialog'
+import { ProjectsRegistry } from '@/routes/settings/projects-section'
 
-import { ProjectsSection } from '@/routes/settings/projects-section'
+export function RegisterProjectDialog({ open, onOpenChange }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  return <AddProjectDialog open={open} onOpenChange={onOpenChange} />
+}
 
-/** Global entry to the existing project registry surface. */
 export function ProjectsRoute() {
   useLocale()
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const open = searchParams.get('register') === '1'
+
+  const setOpen = (nextOpen: boolean) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (nextOpen) next.set('register', '1')
+      else next.delete('register')
+      return next
+    })
+  }
+
   return (
-    <div data-route="projects" className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">{t('Projects')}</h1>
-        <p className="text-[13px] text-soft-foreground">{t('The workspace registry and where GitHub checkouts land.')}</p>
-      </header>
-      <ProjectsSection />
-    </div>
+    <PageFrame data-route="projects">
+      <PageHeader
+        title={t('Projects')}
+        description={t('Manage registered projects, status and project settings.')}
+        actions={<Button onClick={() => setOpen(true)}>{t('Register project')}</Button>}
+      />
+      <PageContent className="p-0">
+        <ProjectsRegistry />
+      </PageContent>
+      <RegisterProjectDialog open={open} onOpenChange={setOpen} />
+    </PageFrame>
   )
 }

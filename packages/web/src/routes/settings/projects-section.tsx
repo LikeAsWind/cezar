@@ -2,6 +2,7 @@ import { t, useLocale, getLocale } from '@/lib/i18n'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FoldersIcon, XIcon } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router'
 
 import { putWorkspaceConfig } from '@/api/client'
 import {
@@ -20,6 +21,7 @@ import {
 } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { IntegerStepper } from '@/components/integer-stepper'
+import { OverviewSection } from '@/components/page-frame'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
@@ -29,9 +31,7 @@ import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
 import { SettingsField } from './settings-field'
 
 /**
- * Global settings → Projects (multi-project spec, step 4.4; mockup
- * `settings-global.html`): the two things that describe the WORKSPACE rather than any one repo —
- * where "Clone from GitHub" puts new checkouts, and the registry itself.
+ * Project storage settings: workspace-wide locations for folder browsing and new checkouts.
  *
  * Two deliberate decisions live here:
  *
@@ -79,47 +79,40 @@ function shortDate(iso: string): string {
 }
 
 export function ProjectsSection() {
+  return <ProjectStorageSettings />
+}
+
+export function ProjectStorageSettings() {
   useLocale()
 
   const config = useWorkspaceConfig()
-  const projects = useProjects()
 
-  if (config.isPending || projects.isPending) {
+  if (config.isPending) {
     return (
       <p data-slot="projects-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading projects…')}</p>
     )
   }
-  if (config.isError || projects.isError) {
+  if (config.isError) {
     return (
       <CenteredState
         icon={<FoldersIcon />}
         tone="danger"
         title={t('Project settings did not load')}
-        subtitle={(config.error ?? projects.error)?.message}
+        subtitle={config.error.message}
         heading="h2"
       />
     )
   }
-  return <ProjectsPane config={config.data} registry={projects.data} />
+  return <ProjectStoragePane config={config.data} />
 }
 
-function ProjectsPane({
-  config,
-  registry,
-}: {
-  config: WorkspaceConfigResponse
-  registry: ProjectsResponse
-}) {
+function ProjectStoragePane({ config }: { config: WorkspaceConfigResponse }) {
   useLocale()
 
   return (
     <div
       data-slot="projects-section"
-      // `max-w-4xl`, not the `max-w-2xl` the other settings panes use: this is the one section
-      // whose content is a six-column TABLE rather than a stack of form fields, and 2xl left the
-      // Tags cell narrow enough to break `open-mercato` across two lines. The fields above keep
-      // their own `max-w-sm`, so widening the column costs them nothing.
-      className="mx-auto flex w-full max-w-4xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       <WorkspaceRootField
         configKey="browseRoot"
@@ -142,9 +135,36 @@ function ProjectsPane({
         footer={t('Only affects new checkouts; projects already registered keep their location.')}
         refreshProjects
       />
-      <RegistryTable registry={registry} workspaceMax={config.resources.maxParallel} />
+      <OverviewSection title={t('Project registry')} description={t('Manage registered projects, status and project settings.')}>
+        <Button asChild variant="outline" className="self-start">
+          <Link to="/projects">{t('Manage projects')}</Link>
+        </Button>
+      </OverviewSection>
     </div>
   )
+}
+
+export function ProjectsRegistry() {
+  useLocale()
+
+  const projects = useProjects()
+  const config = useWorkspaceConfig()
+
+  if (projects.isPending || config.isPending) {
+    return <p data-slot="projects-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading projects…')}</p>
+  }
+  if (projects.isError || config.isError) {
+    return (
+      <CenteredState
+        icon={<FoldersIcon />}
+        tone="danger"
+        title={t('Could not load projects')}
+        subtitle={(projects.error ?? config.error)?.message}
+        heading="h2"
+      />
+    )
+  }
+  return <RegistryTable registry={projects.data} workspaceMax={config.data.resources.maxParallel} />
 }
 
 /** A workspace folder — edited locally, saved explicitly, and validated by the SERVER. */
@@ -271,10 +291,11 @@ function RegistryTable({
   }
 
   return (
-    <SettingsField
-      title={t('Registered projects')}
-      hint={t('The folders you have added. While this list is empty the folder cezar is serving is listed as “not registered” with an Add button; once you have projects, starting cezar somewhere new neither registers nor lists that folder — use “Add project” when you want to keep it. “Tags” group connected repositories — give the API, the web app and the design system a shared “storefront” tag and the global Tasks page can show all three as one piece of work. “Max parallel” caps how many of that project\'s tasks run at once (leave it empty to inherit the workspace limit); the workspace limit ({0}) still applies as an overall ceiling, so a per-project value above it has no extra effect until the workspace limit is raised. Removing a project only unregisters it — no files on disk are deleted.', { 0: workspaceMax })}
-    >
+    <div data-slot="projects-registry" className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
+      <OverviewSection
+        title={t('Registered projects')}
+        description={t('Project tags group work across repositories. Max parallel is a per-project task cap; an empty value inherits the workspace limit. Removing a project only unregisters it — no files on disk are deleted.')}
+      >
       {/* Defensive: `GET /api/v1/projects` names at least the folder this server is serving
           whenever the registry is empty (the unregistered row), and the registry's own rows
           otherwise — so today this branch cannot render. Kept because an empty table with
@@ -330,7 +351,8 @@ function RegistryTable({
         onOpenChange={(open) => !open && setConfirming(null)}
         onConfirm={confirmRemoval}
       />
-    </SettingsField>
+      </OverviewSection>
+    </div>
   )
 }
 
@@ -352,7 +374,9 @@ function ProjectRow({
   return (
     <tr data-slot="project-row" data-project={project.id} className="border-b border-border last:border-0">
       <th scope="row" className="max-w-0 px-3 py-2 text-left font-normal">
-        <span className="block truncate text-foreground">{project.name}</span>
+        <Button asChild variant="ghost" size="sm" className="h-auto min-h-11 max-w-full justify-start px-0 py-0 text-left font-normal md:min-h-9">
+          <Link to={`/p/${encodeURIComponent(project.id)}/`} className="truncate">{project.name}</Link>
+        </Button>
         <span className="block truncate font-mono text-[11px] text-soft-foreground" title={project.root}>
           {project.root}
         </span>
@@ -393,25 +417,37 @@ function ProjectRow({
         {project.unregistered ? '—' : shortDate(project.addedAt)}
       </td>
       <td className="px-3 py-2 text-right">
-        {project.unregistered ? (
-          <AddBootProjectButton root={project.root} name={project.name} disabled={disabled} />
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-action="project-remove"
-            // Names the gesture precisely for a screen reader, where the row context that makes a
-            // bare "Remove" safe-sounding isn't read out with it — but LEADS with the button's own
-            // word, so the accessible name contains the visible one (WCAG 2.5.3 Label in Name) and
-            // speech input still reaches the control. Same shape as the General page's button.
-            aria-label={t('Remove {0} from the workspace — unregisters it, no files are deleted', { 0: project.name })}
-            disabled={disabled}
-            onClick={onRemove}
-          >{t('Remove')}</Button>
-        )}
+        <div className="flex justify-end [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-9 md:[&_button]:min-w-9">
+          <ProjectRowActions project={project} disabled={disabled} onRemove={onRemove} />
+        </div>
       </td>
     </tr>
+  )
+}
+
+function ProjectRowActions({
+  project,
+  disabled,
+  onRemove,
+}: {
+  project: ProjectListEntry
+  disabled: boolean
+  onRemove: () => void
+}) {
+  if (project.unregistered) {
+    return <AddBootProjectButton root={project.root} name={project.name} disabled={disabled} />
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      data-action="project-remove"
+      aria-label={t('Remove {0} from the workspace — unregisters it, no files are deleted', { 0: project.name })}
+      disabled={disabled}
+      onClick={onRemove}
+    >{t('Remove')}</Button>
   )
 }
 

@@ -247,13 +247,16 @@ describe('the settings shell', () => {
     )
   })
 
-  it('/settings/global is the global registry as an index', () => {
+  it('/settings/global keeps Project storage settings in the global index', () => {
     renderAt('/settings/global')
     const index = document.querySelector('[data-slot="settings-index"]')!
     const ids = [...index.querySelectorAll('[data-section]')].map((el) => el.getAttribute('data-section'))
     expect(ids).toEqual(GLOBAL_SECTIONS)
     expect(index.querySelector('[data-section="projects"]')?.getAttribute('href')).toBe(
       '/settings/global/projects',
+    )
+    expect(index.querySelector('[data-section="projects"]')?.textContent).toContain(
+      'Default folders for browsing and new GitHub checkouts.',
     )
   })
 

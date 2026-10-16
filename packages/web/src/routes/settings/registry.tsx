@@ -231,7 +231,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     id: 'projects',
     get title() { return t('Projects') },
-    get description() { return t('The workspace registry and where GitHub checkouts land.') },
+    get description() { return t('Default folders for browsing and new GitHub checkouts.') },
     icon: FoldersIcon,
     component: ProjectsSection,
     scope: 'global',
