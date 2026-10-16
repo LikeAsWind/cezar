@@ -5,7 +5,6 @@ import { Link } from '@/lib/project-router'
 
 import { useHealth, useLaunchKey, useProjects } from '@/api/queries'
 import type { Skill } from '@open-mercato/cezar-api-client'
-import { repoChipOf } from '@/components/app-shell-container'
 import { BookmarkletRow } from '@/components/bookmarklet-row'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
@@ -184,7 +183,6 @@ function SkillBookmarkletInner({ skill, projectId }: { skill: Skill; projectId: 
   const origin = window.location.origin
   const repoName =
     projects.data?.projects.find((project) => project.id === projectId)?.name ??
-    repoChipOf(health.data)?.name ??
     null
   const url = bookmarkletUrl(skill.name, auto, key, origin, projectId)
   return (

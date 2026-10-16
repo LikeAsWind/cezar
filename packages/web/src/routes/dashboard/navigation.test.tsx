@@ -71,7 +71,6 @@ function setup(view = 'costs', restoredScroll?: number) {
       metrics: { running: 0, needsYou: 0, completed: 0, failed: 0, timedTasks: 0, medianCycleHours: null },
       projects: [], page: { rows: [], total: 0, nextOffset: null },
     })
-    if (url.includes('/projects')) return Response.json({ projects: [], bootProject: 'shop' })
     return Response.json({})
   }))
   const client = createQueryClient()

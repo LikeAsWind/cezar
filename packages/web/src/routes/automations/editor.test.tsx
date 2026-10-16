@@ -19,14 +19,12 @@ afterEach(() => {
 
 const health = (dispatch = true) => ({
   version: '0.0.0-test',
-  repoRoot: '/repo',
   repo: { root: '/repo', branch: 'main' },
   forge: null,
   capabilities: { localHandoff: true, followups: true, singleProject: false, automations: true, dispatch, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true },
   defaultRunner: 'claude',
   checks: [{ name: 'claude', available: true }],
   projects: [],
-  bootProject: 'p1',
 })
 
 const PROVIDERS = {

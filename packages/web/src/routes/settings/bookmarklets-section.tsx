@@ -4,7 +4,6 @@ import { useState } from 'react'
 
 import { useHealth, useLaunchKey, useProjects, useSkills } from '@/api/queries'
 import type { Skill } from '@open-mercato/cezar-api-client'
-import { repoChipOf } from '@/components/app-shell-container'
 import { BookmarkletRow } from '@/components/bookmarklet-row'
 import { CenteredState } from '@/components/centered-state'
 import { Input } from '@/components/ui/input'
@@ -88,7 +87,6 @@ function BookmarkletPanelInner({ projectId, skills }: { projectId: string; skill
   // repo, so it is only the fallback for the registry-unavailable case.
   const repoName =
     projects.data?.projects.find((project) => project.id === projectId)?.name ??
-    repoChipOf(health.data)?.name ??
     null
   const needle = filter.trim().toLowerCase()
   const shown = skills.filter((skill) => skill.name.toLowerCase().includes(needle))

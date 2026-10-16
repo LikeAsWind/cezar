@@ -48,7 +48,6 @@ const OPEN_TARGETS = [
 function seededClient() {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, {
-    bootProject: 'boot',
     capabilities: { localHandoff: true, followups: true, singleProject: false, automations: false },
   })
   client.setQueryData(workspaceQueryKeys.projects, {
@@ -63,7 +62,6 @@ function seededClient() {
         status: 'ok',
       },
     ],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   return client

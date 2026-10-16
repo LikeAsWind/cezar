@@ -62,14 +62,11 @@ afterEach(() => {
 
 const HEALTH: HealthResponse = {
   version: '0.1.3',
-  repoRoot: '/home/u/cezar',
-  repo: { root: '/home/u/cezar', branch: 'main' },
   defaultRunner: 'claude',
   checks: [
     { name: 'claude', available: true, version: '2.0.44' },
     { name: 'git', available: true, version: '2.43.0' },
   ],
-  forge: null,
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false, dispatch: false },
   projects: [
     { id: BOOT, name: 'cezar' },

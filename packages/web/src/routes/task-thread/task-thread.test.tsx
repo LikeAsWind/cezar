@@ -1330,7 +1330,6 @@ describe('ThreadView', () => {
         thread={reduceThread(EVENTS)}
       />,
       undefined,
-      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' } },
     )
     await waitFor(() => {
       expect(document.querySelector('[data-slot="issue-link"]')).not.toBeNull()
@@ -1351,10 +1350,7 @@ describe('ThreadView', () => {
    */
   it('a task in a non-boot project synthesizes no issue link — health names the wrong repo (#526)', async () => {
     const issueRun = run('done', { markerRefs: { issue: 524 } })
-    const health = {
-      bootProject: 'cezar',
-      repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' },
-    }
+    const health = {}
 
     // Control — unscoped IS the boot project, so health's remote really is this task's repo.
     renderView(<ThreadView run={issueRun} thread={reduceThread(EVENTS)} />, undefined, health)
@@ -1385,7 +1381,6 @@ describe('ThreadView', () => {
         thread={reduceThread(EVENTS)}
       />,
       undefined,
-      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' } },
     )
     const footer = document.querySelector('[data-slot="thread-footer"]')
     expect(footer?.querySelector('[data-slot="pr-link"]')?.getAttribute('href')).toBe(

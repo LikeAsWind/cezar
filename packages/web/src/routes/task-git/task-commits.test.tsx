@@ -34,11 +34,8 @@ const RUN: ApiRun = {
 const HEALTH: HealthResponse = {
   version: '0.0.0-test',
   projects: [],
-  repoRoot: '/repo',
-  repo: { root: '/repo', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
-  forge: null,
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: false, singleProject: false, automations: false, dispatch: false },
 }
 

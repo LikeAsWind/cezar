@@ -824,7 +824,6 @@ describe('useGlobalEvents — project scoping (multi-project spec, step 3.1)', (
     expect(client.getQueryData<ApiRun[]>(queryKeys.runs.list())).toEqual([])
 
     // Health answered — from here on the boot project's events flow.
-    client.setQueryData(queryKeys.health, { bootProject: BOOT })
     source.emit('run', stampedRun(runRecord('r1')))
     await flushRunEvents()
     expect(client.getQueryData<ApiRun[]>(queryKeys.runs.list())).toHaveLength(1)

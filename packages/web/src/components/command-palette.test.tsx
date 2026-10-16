@@ -102,11 +102,8 @@ function health(forgeAvailable: boolean, automations = false): HealthResponse {
   return {
     version: '0.0.0-test',
     projects: [],
-    repoRoot: '/repo',
-    repo: { root: '/repo', branch: 'main' },
     checks: [],
     defaultRunner: 'claude',
-    forge: forgeAvailable ? { kind: 'github', available: true } : null,
     capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations, dispatch: false },
   }
 }
@@ -162,7 +159,6 @@ function renderPalette({
       [`/api/v1/p/${projectId}/ui-state`, uiState],
     ])),
     '/api/v1/health': health(forge, automations),
-    '/api/v1/projects': { projects, bootProject: projects[0]?.id ?? 'default', projectsDir: '/repos' },
     '/api/v1/workspace/runs-index': { runs: indexed, perProjectLimit: 200, truncated },
   })
   render(

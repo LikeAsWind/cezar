@@ -39,7 +39,6 @@ function fileOf(over: Partial<AgentConfigFile> & Pick<AgentConfigFile, 'id' | 'l
 
 const HEALTH = {
   version: '0.0.0',
-  repoRoot: '/repo',
   repo: null,
   checks: [{ name: 'claude', available: true }],
   defaultRunner: 'claude',

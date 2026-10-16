@@ -72,7 +72,6 @@ function serve(
     }
     if (url.pathname === '/api/v1/projects/github-owners') return json(owners)
     if (url.pathname === '/api/v1/projects') {
-      return json({ projects: [], bootProject: 'cezar', projectsDir: '~/cezar/projects' })
     }
     return json({ error: `unexpected ${String(init?.method ?? 'GET')} ${url.pathname}` }, 404)
   })

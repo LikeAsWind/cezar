@@ -52,7 +52,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * The boot repo's `.ai/cezar/config.json` resource keys, read RAW (not through
+ * A repo's `.ai/cezar/config.json` resource keys, read RAW (not through
  * `loadConfig`) so only values the user explicitly set are imported — a
  * defaulted value must not masquerade as a preference. Bounds mirror the
  * workspace `resources` schema; out-of-range values are simply not imported.
@@ -92,8 +92,8 @@ async function readRepoResourceKeys(
  * 3. Every per-repo file is left untouched in place, so an older cezar run in
  *    the same repo keeps working off its local copies.
  *
- * Registering the boot repo is NOT part of the migration — the normal boot
- * flow owns registration (single owner, no divergent `addedAt`/`source`).
+ * Registry registration is NOT part of the migration — project registration is
+ * always an explicit user action.
  */
 const migration001: WorkspaceMigration = {
   to: 1,

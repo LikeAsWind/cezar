@@ -148,10 +148,8 @@ function serve({
 function gateSeededClient() {
   const client = createQueryClient()
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } })
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [{ id: 'boot', name: 'repo', root: '/repo', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' }],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   return client
@@ -326,7 +324,6 @@ describe('the catalog list and skill preview', () => {
           status: 'ok',
         },
       ],
-      bootProject: 'boot',
       projectsDir: '~/cezar/projects',
     })
     renderAt('/p/other/skills', client)
@@ -371,7 +368,6 @@ describe('the catalog list and skill preview', () => {
           status: 'ok',
         },
       ],
-      bootProject: 'boot',
       projectsDir: '~/cezar/projects',
     })
     renderAt('/p/other/skills', client)
@@ -448,7 +444,6 @@ describe('the catalog list and skill preview', () => {
           status: 'ok',
         },
       ],
-      bootProject: 'boot',
       projectsDir: '~/cezar/projects',
     })
     let navigate!: ReturnType<typeof useNavigate>

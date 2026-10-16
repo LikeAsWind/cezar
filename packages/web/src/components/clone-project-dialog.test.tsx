@@ -69,7 +69,6 @@ function serve(checkout: () => Promise<Response> = async () => json({ project: P
       return checkout()
     }
     if (url.pathname === '/api/v1/projects') {
-      return json({ projects: [], bootProject: 'cezar', projectsDir: '~/cezar/projects' })
     }
     return json({ error: `unexpected ${String(init?.method ?? 'GET')} ${url.pathname}` }, 404)
   })

@@ -4,12 +4,13 @@ import { CheckIcon, GitBranchIcon, GitPullRequestIcon, PlusIcon } from 'lucide-r
 import { useState, type FormEvent } from 'react'
 
 import { createRepoBranch, putConfig } from '@/api/client'
-import { queryKeys, useGithub, useHealth } from '@/api/queries'
-import type { GithubItem, HealthResponse, RepoInfo, RepoResponse } from '@open-mercato/cezar-api-client'
+import { queryKeys, useGithub, useProjects } from '@/api/queries'
+import type { GithubItem, RepoInfo, RepoResponse } from '@open-mercato/cezar-api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { cn, isHttpUrl } from '@/lib/utils'
+import { useActiveProjectId } from '@/lib/project-router'
 
 /**
  * The repo view's Branches segment (R5 Step 1.7): the branch list `GET /api/repo` already
@@ -18,15 +19,17 @@ import { cn, isHttpUrl } from '@/lib/utils'
  * danger toast. The agents' base-branch picker rides the same payload's `baseBranch` +
  * `PUT /api/config`, exactly like the legacy Repo tab did.
  *
- * Forge-specific rows (open PRs with checks badges) render ONLY when `/api/health` reports
- * the forge driver available — no driver, no PR surface, per the forge-seam doctrine. The
- * component gate doubles as the fetch gate: `<ForgePullRequests>` mounts (and so queries
- * `/api/github`) only behind it.
+ * Forge-specific rows (open PRs with checks badges) render only when this registered project is
+ * classified as GitHub — no driver, no PR surface, per the forge-seam doctrine. The component
+ * gate doubles as the fetch gate: `<ForgePullRequests>` mounts (and queries `/api/github`) only
+ * behind it.
  */
 export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: RepoInfo }) {
   useLocale()
 
-  const health = useHealth()
+  const projectId = useActiveProjectId()
+  const projects = useProjects().data?.projects
+  const hasGithub = projects?.find((project) => project.id === projectId)?.forge === 'github'
   const queryClient = useQueryClient()
   const onError = (error: Error) => toast(error.message, { tone: 'danger' })
 
@@ -38,16 +41,9 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
       // checkout result even if a read races and briefly returns the previous HEAD.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.repo }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.health }),
       ])
       queryClient.setQueryData<RepoResponse>(queryKeys.repo, (current) =>
         current?.info ? { ...current, info: { ...current.info, branch: result.branch } } : current,
-      )
-      // Health is workspace-level, so only patch it when it describes this repo.
-      queryClient.setQueryData<HealthResponse>(queryKeys.health, (current) =>
-        current?.repo?.root === info.root
-          ? { ...current, repo: { ...current.repo, branch: result.branch } }
-          : current,
       )
     },
     onError,
@@ -165,7 +161,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
         <p className="mt-1 text-[11px] text-soft-foreground">{t('New task worktrees branch from this.')}</p>
       </div>
 
-      {health.data?.forge?.available ? <ForgePullRequests /> : null}
+      {hasGithub ? <ForgePullRequests /> : null}
     </section>
   )
 }

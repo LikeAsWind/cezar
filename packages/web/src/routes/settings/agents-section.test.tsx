@@ -195,7 +195,6 @@ function serve({
         return json({ selections })
       }
       if (url === '/api/v1/projects' && method === 'GET') {
-        return json({ projects: [PROJECT], bootProject: 'boot', projectsDir: '~/cezar/projects' })
       }
       // One catalog per discovery runner (#794): this screen renders a row per runner, so it
       // asks each host CLI separately rather than reusing Codex's answer everywhere.
@@ -214,14 +213,12 @@ function gateSeededClient() {
   client.setDefaultOptions({
     queries: { ...client.getDefaultOptions().queries, retry: false },
   })
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   // Seeded WITH the boot project, not an empty list: the client's staleTime is 5 minutes, so an
   // empty seed is never refetched and `project` stays undefined for the whole test — which renders
   // the Account picker disabled and let its assertions pass only because `fireEvent` ignores
   // `disabled`. This is the state the cockpit is really in by the time Settings paints.
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [PROJECT],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   return client

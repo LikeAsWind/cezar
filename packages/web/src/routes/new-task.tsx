@@ -259,10 +259,8 @@ export function NewTaskRoute() {
   }, [providersReady])
 
   // Parallel variants need a worktree per variant, hence git (the server 409s without it).
-  // Read it from the PROJECT-scoped `/repo` above, never from `/api/health.repo`: health is bound
-  // to the boot folder, so booting outside a git repo hid the worktree controls for every
-  // registered project (#791) — the same per-project sweep as #700 (forge) and #699 (runner
-  // defaults). Loading still assumes git so the controls do not flicker.
+  // Read it from the PROJECT-scoped `/repo` above. Loading still assumes git so the controls do
+  // not flicker while this explicit project context is being resolved.
   const hasGit = repo.data === undefined || repo.data.info !== null
   const variants = hasGit ? draft.variants : 1
 

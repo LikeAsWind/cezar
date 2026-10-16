@@ -36,11 +36,8 @@ const RUN: ApiRun = {
 const HEALTH: HealthResponse = {
   version: '0.0.0-test',
   projects: [],
-  repoRoot: '/repo',
-  repo: { root: '/repo', branch: 'main', remote: 'git@github.com:acme/demo.git' },
   checks: [],
   defaultRunner: 'claude',
-  forge: { kind: 'github', available: true },
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: false, singleProject: false, automations: false, dispatch: false },
 }
 

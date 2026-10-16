@@ -65,7 +65,6 @@ function seedProjects(client: QueryClient, ids: string[]) {
       source: 'local',
       status: 'ok',
     })),
-    bootProject: ids[0] ?? 'cezar',
     projectsDir: '~/cezar/projects',
   })
 }

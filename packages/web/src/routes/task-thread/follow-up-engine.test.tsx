@@ -50,15 +50,12 @@ afterEach(() => {
 const HEALTH_MULTI: HealthResponse = {
   version: '0.1.5',
   projects: [],
-  repoRoot: '/repo',
-  repo: { root: '/repo', branch: 'main' },
   defaultRunner: 'claude',
   checks: [
     { name: 'claude', available: true },
     { name: 'codex', available: true },
     { name: 'git', available: true },
   ],
-  forge: null,
   // `followups` became a required capability in #471 (merged from main): irrelevant to the
   // Continue pills these tests drive, but the shape must be whole.
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false, dispatch: false },

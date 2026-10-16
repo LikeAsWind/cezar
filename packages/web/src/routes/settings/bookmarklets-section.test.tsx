@@ -27,11 +27,8 @@ const fetchMock = vi.fn<typeof fetch>()
 const HEALTH: HealthResponse = {
   version: '0.1.5',
   projects: [],
-  repoRoot: '/home/me/Projects/cezar',
-  repo: { root: '/home/me/Projects/cezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
-  forge: null,
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: false, singleProject: false, automations: false, dispatch: false },
 }
 

@@ -84,12 +84,6 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 export const healthResponseSchema = z.object({
   version: z.string(),
   latestVersion: z.string().optional(),
-  // Deprecated compatibility fields, absent in workspace mode. `repoRoot`/`repo`/`forge` described
-  // the single repo this server booted in; a project-neutral `cez serve` has no such repo, so the
-  // workspace-mode answer omits them (BACKWARD_COMPATIBILITY.md §2).
-  repoRoot: z.string().optional(),
-  repo: repoInfoSchema.nullable().optional(),
-  forge: forgeInfoSchema.nullable().optional(),
   checks: z.array(backendCheckSchema),
   defaultRunner: runnerSchema,
   capabilities: capabilitiesSchema,

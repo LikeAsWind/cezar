@@ -91,7 +91,6 @@ function stubServer(kind: 'issue' | 'pr') {
       if (path === '/api/v1/health') {
         return json({
           version: '0.0.0-test',
-          repoRoot: '/r',
           repo: { root: '/r', branch: 'main' },
           defaultRunner: 'claude',
           checks: [],
@@ -106,11 +105,9 @@ function stubServer(kind: 'issue' | 'pr') {
             automations: false,
           },
           projects: [{ id: 'boot', name: 'r' }],
-          bootProject: 'boot',
         })
       }
       if (path === '/api/v1/projects') {
-        return json({ projects: [{ id: 'boot', name: 'r', root: '/r' }], bootProject: 'boot' })
       }
       if (path === '/api/v1/github' || path.startsWith('/api/v1/github?')) {
         return json({

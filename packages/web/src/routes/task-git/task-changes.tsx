@@ -60,9 +60,8 @@ function ChangesView({ run }: { run: ApiRun }) {
   useLocale()
 
   const health = useHealth()
-  // The remote that decides whether Push is offered comes from the PROJECT-scoped `/repo`, not
-  // from `/api/health.repo`: health is bound to the boot folder, so a cezar booted outside a git
-  // repo reported no remote for every project (#791).
+  // The remote that decides whether Push is offered comes from this route's explicit project
+  // scope, not workspace health.
   const repo = useRepo()
   // Poll while the run is active so writes appear as the agent makes them.
   const changes = useRunChanges(run.id, isRunActive(run.status))

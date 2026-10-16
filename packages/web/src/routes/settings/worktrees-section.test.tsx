@@ -63,10 +63,8 @@ function serve(config: Partial<ConfigResponse> = {}) {
 /** Seeds the registry with the explicit project id used by these component tests. */
 function gateSeededClient() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [{ id: 'boot', name: 'repo', root: '/repo', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' }],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   return client

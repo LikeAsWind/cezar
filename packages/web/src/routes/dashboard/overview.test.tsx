@@ -39,7 +39,6 @@ function setup(active = true, entry = '', initial = fixture) {
       calls.push(url)
       if (expired && url.searchParams.has('snapshotId')) return new Response('{}', { status: 409 })
       if (url.pathname.endsWith('/projects'))
-        return new Response(JSON.stringify({ projects: [], bootProject: 'alpha' }))
       return new Response(JSON.stringify({ ...initial, page: url.searchParams.get('offset') === '20' ? { ...initial.page, nextOffset: null } : initial.page }))
     }),
   )

@@ -130,7 +130,6 @@ function serve({
       if (url === '/api/v1/providers/status' && method === 'GET') return json(PROVIDERS)
       // The accounts page also paints per-agent facts from health; an empty answer is a real state
       // (it renders "Checking…") and keeps this file about the defaults block.
-      if (url === '/api/v1/health' && method === 'GET') return json({ checks: [], bootProject: 'boot' })
       if (url.startsWith('/api/v1/open-targets')) return json({ targets: [] })
       if (url.startsWith('/api/v1/models?runner=')) {
         const runner = url.includes('cursor') ? 'cursor' : 'codex'
@@ -143,10 +142,8 @@ function serve({
 
 function renderAccounts() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   render(
@@ -217,7 +214,6 @@ describe('Agent accounts → Defaults for new projects', () => {
         }
         if (url === '/api/v1/workspace/agent-profiles') return json(older)
         if (url === '/api/v1/providers/status') return json(PROVIDERS)
-        if (url === '/api/v1/health') return json({ checks: [], bootProject: 'boot' })
         if (url.startsWith('/api/v1/open-targets')) return json({ targets: [] })
         return new Promise<never>(() => {})
       }),

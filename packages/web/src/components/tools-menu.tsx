@@ -65,19 +65,6 @@ export function toolsTooltip(health: HealthResponse): string {
   return missing.length ? t('{0} · optional: {1} not installed', { 0: base, 1: missing.join(', ') }) : base
 }
 
-/**
- * Why the GitHub tab is absent (R6 Step 1.1) — the env-chips popover is where the spec's
- * degradation table says the hint lives. Null while the forge works: a working forge needs
- * no explaining. Exported for the tests — the two sentences are a small contract.
- */
-export function forgeNote(health: HealthResponse): string | null {
-  if (health.forge?.available) return null
-  if (!health.forge) {
-    return t('No GitHub remote detected — the GitHub tab is hidden. Every plain-git feature still works.')
-  }
-  return t('GitHub is unreachable — {0}. The GitHub tab is hidden until it comes back.', { 0: health.forge.reason ?? 'unknown reason' })
-}
-
 export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
   useLocale()
 
@@ -111,14 +98,6 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
         {health.checks.map((check) =>
           check.available ? <AvailableToolRow key={check.name} check={check} /> : <UnavailableToolRow key={check.name} check={check} />
         )}
-        {forgeNote(health) ? (
-          <>
-            <DropdownMenuSeparator />
-            <p data-slot="forge-note" className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-              {forgeNote(health)}
-            </p>
-          </>
-        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link

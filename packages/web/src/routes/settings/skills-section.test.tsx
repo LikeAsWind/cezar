@@ -63,10 +63,8 @@ function serve(overrides: Partial<WorkspaceConfigResponse> = {}) {
 
 function renderSkills() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   render(

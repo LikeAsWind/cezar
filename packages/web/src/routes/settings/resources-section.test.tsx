@@ -71,10 +71,8 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
  *  unscoped, but the gates still answer for the chrome rendered around it. */
 function gateSeededClient() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   return client

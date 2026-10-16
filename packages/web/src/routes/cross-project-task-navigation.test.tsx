@@ -34,14 +34,12 @@ const RUN_ID = 'r1'
 
 const HEALTH = {
   version: '0.0.0-test',
-  repoRoot: '/home/u/cezar',
   repo: null,
   checks: [],
   defaultRunner: 'claude',
   forge: null,
   capabilities: { localHandoff: true, followups: true, singleProject: false, automations: false },
   projects: [{ id: BOOT, name: 'cezar' }],
-  bootProject: BOOT,
 }
 
 const REGISTRY: ProjectsResponse = {

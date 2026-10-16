@@ -3,12 +3,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
 import { ApiError, createRunPr, pushRun } from '@/api/client'
-import { queryKeys, useHealth, useRepo, useRunGitStatus } from '@/api/queries'
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import { queryKeys, useGithub, useRepo, useRunGitStatus } from '@/api/queries'
+import type { ApiRun, ForgeInfo } from '@open-mercato/cezar-api-client'
 import { useReferenceStatus } from '@/components/reference-status'
 import { toast } from '@/components/ui/toaster'
 import { gitActionPolicy, type GitAction, type GitActionId } from '@/lib/git-actions'
 import { ownedTaskPr } from '@/lib/tasks-table'
+import { useActiveProjectId } from '@/lib/project-router'
 
 import { useAskAnswer } from '../task-thread/ask-answer'
 import { fixChecksPrompt, isRunActive, resolveConflictsPrompt, updateBranchPrompt } from '../task-thread/run-actions'
@@ -42,9 +43,11 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
   const prEntry = useReferenceStatus('PR', prNumber)
   const prStatus = prEntry.status
   const finished = prStatus === 'merged' || prStatus === 'closed'
-  const health = useHealth()
-  // The remote that decides whether Push is offered comes from the PROJECT-scoped `/repo`, not
-  // from `/api/health.repo`: health is bound to the boot folder (#791).
+  const projectId = useActiveProjectId()
+  const github = useGithub({ limit: 1 }, projectId !== null)
+  const forge: ForgeInfo | null = github.data
+    ? { kind: 'github', available: github.data.available, ...(github.data.reason ? { reason: github.data.reason } : {}) }
+    : null
   const repo = useRepo()
   const status = useRunGitStatus(run.id, Boolean(run.worktreePath) && !finished, isRunActive(run.status))
   const [commitOpen, setCommitOpen] = useState(false)
@@ -103,7 +106,7 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
     unpushed: status.data?.unpushed,
     behind: status.data?.behind,
     remote: repo.data?.info?.remote,
-    forge: health.data?.forge ?? null,
+    forge,
     prUrl,
     prStatus,
     prConflicting: prEntry.conflicting,

@@ -479,7 +479,7 @@ Useful environment variables:
 | `CEZ_AUTONOMOUS_DEFAULT=0` | Seed the New Task Autonomous default (`0` or `1`). Without a seed, skills default on and workflows off; a saved global Resources setting overrides it. |
 | `CEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `CEZ_DISABLE_REPO_LOCK=1` | **Dangerous escape hatch:** allow any run executing in the repository root — an explicit `worktree=false` run, non-Git degradation, or a continuation whose worktree cannot be restored — to proceed without Cezar’s repository-root lease. Agents can overwrite each other’s files or Git state; isolated worktree runs are unaffected. Off by default; only the exact value `1` enables it. |
-| `CEZ_SINGLE_PROJECT=1` | Opt into a launch-project-only cockpit: only the exact value `1` enables it. Project add, edit, checkout, folder browsing, and removal are refused and only the launch project is shown. Off by default; stored registry rows are retained, so unsetting it and restarting restores the full multi-project workspace without migration or data loss. |
+| `CEZ_SINGLE_PROJECT=1` | Restrict project add/edit/checkout/create/remove/tag mutations and filesystem folder browsing. Only exact `1` enables it. It does not infer or register the launch directory, filter registered projects, or change explicit project contexts; an empty registry remains a healthy workspace. Existing registry rows are retained. |
 | `CEZ_HIDE_TOKEN_USAGE=1` | Hide raw input/output token counts throughout the browser cockpit while leaving backend-reported cost visible. Only the exact value `1` enables it; API payloads are unchanged, and a restart is required after changing it. |
 | `CEZ_HIDE_COST=1` | Hide backend-reported monetary cost throughout the browser cockpit while leaving raw input/output token counts visible. Only the exact value `1` enables it; API payloads are unchanged, and a restart is required after changing it. |
 | `CEZ_HIDE_TOKEN_METRICS=1` | Legacy master switch that hides both token usage and cost. It takes precedence over the two independent flags; only the exact value `1` enables it, payloads are unchanged, and a restart is required. |
@@ -540,13 +540,14 @@ the agent. From your own terminal, set the address yourself:
 
 ```bash
 export CEZ_API_URL=http://127.0.0.1:4321
+export CEZ_PROJECT_ID="<registered-id>"   # from `cezar projects list`
 cez runs list                       # this project's tasks, newest first
 cez runs list --status running,review --json
 cez automation list                 # automations, with state and counts
 cez task tree <run id>              # a dispatch tree
 ```
 
-Set `CEZ_PROJECT_ID=<id>` for every command (`cezar projects` lists the IDs).
+Set `CEZ_PROJECT_ID=<registered-id>` for the project context you intend to use (`cezar projects list` lists the IDs).
 `CEZ_PROJECT_ID` is mandatory for `cez runs`, `cez task`, and `cez automation`;
 without it the command exits with status 2 and sends no request. Workspace
 operations such as listing or registering projects remain unscoped.
@@ -563,8 +564,8 @@ the API below.
 ### The HTTP API
 
 - **Everything is under `/api/v1`.** The unversioned `/api/*` spelling was
-  removed on purpose and answers `404` — `GET /api/v1/runs` is right,
-  `GET /api/runs` is not.
+  removed on purpose and answers `404` — project task history is
+  `GET /api/v1/p/<projectId>/runs`; `GET /api/runs` is not valid.
 - **Project scope.** Project routes require an explicit project ID, for example
   `GET /api/v1/p/<projectId>/runs`; project routes have no unscoped alias.
   Workspace-wide routes (`/api/v1/projects`, `/api/v1/workspace/…`) stay
@@ -574,8 +575,8 @@ the API below.
 - **Routes and shapes.** The route inventory is section 2 of
   [BACKWARD_COMPATIBILITY.md](../BACKWARD_COMPATIBILITY.md); every request and
   response is a zod schema in [`packages/contract`](../packages/contract/src).
-  The common ones: `GET/POST /runs`, `GET /runs/:id`,
-  `POST /runs/:id/{cancel,messages,continue,archive}`, `GET /automations`.
+  The common project-scoped ones: `GET/POST /p/<projectId>/runs`,
+  `GET /p/<projectId>/runs/:id`, and `POST /p/<projectId>/runs/:id/{cancel,messages,continue,archive}`.
 - **No built-in auth.** The cockpit binds `127.0.0.1` and trusts the machine;
   see [Remote access](#remote-access-host-cezar-on-a-server) before exposing it.
 

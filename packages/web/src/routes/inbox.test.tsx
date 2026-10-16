@@ -83,7 +83,6 @@ interface SentRequest {
  *  no cards at all, which is that feature's own test, not this file's. */
 const health = (backends: readonly string[] = ['claude']) => ({
   version: '0.0.0-test',
-  repoRoot: '/repo',
   repo: { root: '/repo', branch: 'main' },
   forge: null,
   capabilities: { localHandoff: true, followups: true },
@@ -900,7 +899,6 @@ describe('Add instructions', () => {
 const healthResponse = (followups: boolean) =>
   jsonResponse({
     version: '0.0.0-test',
-    repoRoot: '/repo',
     repo: null,
     checks: [],
     forge: null,

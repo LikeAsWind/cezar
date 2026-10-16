@@ -111,7 +111,6 @@ function setup(options: {
           { status: options.error ? 503 : 200 },
         )
       if (url.includes('/projects'))
-        return new Response(JSON.stringify({ projects: [], bootProject: 'shop' }))
       return new Response(
         JSON.stringify({
           asOf: at,
@@ -241,7 +240,6 @@ it('renders usage alone when action and feed tiles are hidden, then unmounts on 
           }),
         )
       if (url.includes('/projects'))
-        return new Response(JSON.stringify({ projects: [], bootProject: 'shop' }))
       return new Response('{}', { status: 503 })
     }),
   )

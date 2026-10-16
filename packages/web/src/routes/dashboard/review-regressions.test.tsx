@@ -35,7 +35,6 @@ it('keeps outcome navigation mounted and focuses the loaded page', async () => {
     vi.fn(async (input: unknown) => {
       const u = new URL(String(input), 'http://localhost')
       if (u.pathname.endsWith('/projects'))
-        return Response.json({ projects: [], bootProject: 'alpha' })
       if (u.searchParams.get('offset') === '20')
         return new Promise<Response>((resolve) => {
           resolvePage = resolve
@@ -97,7 +96,6 @@ function setupRoute(error = false, partialOperations = false, partialCosts = fal
           },
         })
       if (u.pathname.endsWith('/projects'))
-        return Response.json({ projects: [], bootProject: 'alpha' })
       if (u.pathname.endsWith('/overview')) return Response.json(fixture)
       if (u.pathname.endsWith('/feed'))
         return Response.json({

@@ -40,16 +40,12 @@ const RUN: ApiRun = {
 const HEALTH: HealthResponse = {
   version: '0.0.0-test',
   projects: [],
-  repoRoot: '/repo',
-  repo: { root: '/repo', branch: 'main', remote: 'git@github.com:acme/demo.git' },
   checks: [],
   defaultRunner: 'claude',
-  forge: { kind: 'github', available: true },
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: false, singleProject: false, automations: false, dispatch: false },
 }
 
-/** The PROJECT-scoped `/repo` answer. The remote that gates Push is read from here rather than
- *  from `health.repo`, which describes the boot folder only (#791). */
+/** The PROJECT-scoped `/repo` answer. The remote that gates Push is read from this route. */
 const REPO: RepoResponse = {
   info: { root: '/repo', branch: 'main', remote: 'git@github.com:acme/demo.git' },
   status: [],

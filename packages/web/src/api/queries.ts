@@ -137,7 +137,7 @@ import { subscribeTopic } from './ws'
  * invalidate.
  *
  * Every project key leads with [project, projectId, ...] — an EXPLICIT project id, never a
- * 'default' sentinel or a health-derived boot alias. The queryKeys object below is the
+ * sentinel or an ID inferred from workspace health. The queryKeys object below is the
  * "active project" convenience: it reads the mounted scope via requireProjectScope() (and
  * throws outside a project route), so a project view can keep spelling queryKeys.runs.list()
  * while the explicit projectQueryKeys spell the same key for surfaces that name a project
@@ -416,7 +416,7 @@ export const workspaceQueryKeys = {
   models: (runner: string) => ['workspace', 'models', runner] as const,
   providerStatus: ['workspace', 'providers', 'status'] as const,
   projects: ['workspace', 'projects'] as const,
-  /** Version, repo/branch and tool probes — workspace-level, no project owns the machine's boot. */
+  /** Version, capabilities, and host tool probes — workspace-level metadata. */
   health: ['workspace', 'health'] as const,
   /** The cross-project task index — keyed by filters so a change of filter is a different cache. */
   tasks: (filters: GlobalTaskFilters) => ['workspace', 'tasks', filters] as const,
@@ -567,8 +567,7 @@ export function useRetryProviderAuth() {
 }
 
 /** The workspace project registry (`GET /api/projects`): the `/p/:projectId` route gate's
- *  known/unknown answer, the boot slug behind the `/p/default` alias, and the list the
- *  unknown-project screen offers. Step 3.3's sidebar reads it too. */
+ *  known/unknown answer and the list the unknown-project screen offers. The sidebar reads it too. */
 export function useProjects() {
   return useQuery({
     queryKey: workspaceQueryKeys.projects,

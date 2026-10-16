@@ -324,7 +324,6 @@ describe('useResolvedEngine agent accounts', () => {
       providers: { providers: [{ provider: 'claude', status: 'connected', enabled: true }] },
       profiles: TWO_CLAUDE_LOGINS,
       selections: { '/repo': { claude: 'klaudiusz' } },
-      repoRoot: '/repo',
     })
 
     const { result } = renderResolved()

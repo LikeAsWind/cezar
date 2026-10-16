@@ -18,7 +18,6 @@ import { HostUsageWidget, HOST_WIDGET_STALE_MS } from './host-usage-widget'
 
 const HEALTH_LOCAL = {
   version: '0.1.3',
-  repoRoot: '/srv/cezar',
   repo: { root: '/srv/cezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',

@@ -43,7 +43,6 @@ const BOOT = 'boot'
 /** Routes read capability flags from the global health cache. */
 const HEALTH = {
   version: '0.0.0-test',
-  repoRoot: '/home/u/cezar',
   repo: null,
   checks: [],
   defaultRunner: 'claude',

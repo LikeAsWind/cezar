@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/queries'
+import { ProjectScopeProvider } from '@/api/project-scope-context'
 import type {
   ChangesPayload,
   GithubData,
@@ -40,11 +41,8 @@ const REPO: RepoResponse = {
 const HEALTH: HealthResponse = {
   version: '0.0.0-test',
   projects: [],
-  repoRoot: '/repo',
-  repo: { root: '/repo', branch: 'main', remote: 'git@github.com:acme/demo.git' },
   checks: [],
   defaultRunner: 'claude',
-  forge: { kind: 'github', available: true },
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: false, singleProject: false, automations: false, dispatch: false },
 }
 
@@ -129,7 +127,7 @@ function stubFetch(overrides: Record<string, () => Response> = {}): SentRequest[
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
-      const path = String(input)
+      const path = String(input).replace('/api/v1/p/demo', '/api/v1')
       const method = init.method ?? 'GET'
       sent.push({ path, method, body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined })
       const override = overrides[`${method} ${path}`]
@@ -139,6 +137,7 @@ function stubFetch(overrides: Record<string, () => Response> = {}): SentRequest[
       if (method === 'GET' && path === '/api/v1/repo/tree') return jsonResponse(TREE)
       if (method === 'GET' && path === '/api/v1/repo/commit/abc1234?structured=1') return jsonResponse(COMMIT)
       if (method === 'GET' && path === '/api/v1/health') return jsonResponse(HEALTH)
+      if (method === 'GET' && path === '/api/v1/projects') return jsonResponse({ projects: [{ id: 'demo', name: 'demo', root: '/repo', status: 'ok', source: 'local', lastOpenedAt: '', forge: 'github' }], projectsDir: '/repos' })
       if (method === 'GET' && path === '/api/v1/github?limit=20') return jsonResponse(GITHUB)
       return jsonResponse({})
     }),
@@ -151,17 +150,19 @@ function renderAt(entry: string) {
   const client = createQueryClient()
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/git" element={<RepoGitRoute tab="changes" />} />
-          <Route path="/git/commits" element={<RepoGitRoute tab="commits" />} />
-          <Route path="/git/commits/:sha" element={<RepoGitRoute tab="commits" />} />
-          <Route path="/git/branches" element={<RepoGitRoute tab="branches" />} />
-          <Route path="/git/files" element={<RepoGitRoute tab="files" />} />
-          <Route path="/git/files/*" element={<RepoGitRoute tab="files" />} />
-        </Routes>
-        <Toaster />
-      </MemoryRouter>
+      <ProjectScopeProvider projectId="demo">
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/git" element={<RepoGitRoute tab="changes" />} />
+            <Route path="/git/commits" element={<RepoGitRoute tab="commits" />} />
+            <Route path="/git/commits/:sha" element={<RepoGitRoute tab="commits" />} />
+            <Route path="/git/branches" element={<RepoGitRoute tab="branches" />} />
+            <Route path="/git/files" element={<RepoGitRoute tab="files" />} />
+            <Route path="/git/files/*" element={<RepoGitRoute tab="files" />} />
+          </Routes>
+          <Toaster />
+        </MemoryRouter>
+      </ProjectScopeProvider>
     </QueryClientProvider>,
   )
   return client
@@ -380,7 +381,7 @@ describe('the repo view Branches segment', () => {
     })
     await waitFor(() => expect(document.body.textContent).toContain('Switched to feature'))
     await waitFor(() => expect(document.querySelector('[data-slot="branch-chip"]')?.textContent).toBe('feature'))
-    await waitFor(() => expect(client.getQueryData<HealthResponse>(queryKeys.health)?.repo?.branch).toBe('feature'))
+    await waitFor(() => expect(client.getQueryData<RepoResponse>(queryKeys.repo)?.info?.branch).toBe('feature'))
   })
 
   it('filters branch rows without narrowing the base-branch picker', async () => {

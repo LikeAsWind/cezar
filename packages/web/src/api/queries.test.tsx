@@ -74,8 +74,6 @@ function wrapper() {
 
 const HEALTH = {
   version: '0.1.3',
-  repoRoot: '/home/me/cezar',
-  repo: { root: '/home/me/cezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
   capabilities: { localHandoff: true, followups: false, singleProject: false, automations: false },
@@ -650,7 +648,6 @@ describe('useHealth', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.version).toBe('0.1.3')
-    expect(result.current.data?.repo?.branch).toBe('main')
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/v1/health')
   })
 
@@ -703,7 +700,6 @@ describe('useHealth', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
       // Read `.data` BEFORE the push: v5 result props are tracked on access, and an observer
       // that never had `data` read would not re-render when only `data` changes.
-      expect(result.current.data?.repo?.branch).toBe('main')
 
       const ws = FakeHealthSocket.instances.at(-1)
       if (!ws) throw new Error('useHealthSubscription never opened the topic socket')
@@ -714,12 +710,11 @@ describe('useHealth', () => {
         ws.message({
           type: 'event',
           topic: 'health',
-          data: { ...HEALTH, repo: { ...HEALTH.repo, branch: 'feature' } },
+          data: HEALTH,
         }),
       )
       // Flush react-query's batched notify (scheduled, so fake timers hold it) before reading.
       await act(() => vi.advanceTimersByTimeAsync(0))
-      expect(result.current.data?.repo?.branch).toBe('feature')
 
       // The old refetchInterval cadence passes with no further request — pushed, not polled.
       await act(() => vi.advanceTimersByTimeAsync(5000))

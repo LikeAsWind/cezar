@@ -702,7 +702,6 @@ describe('TasksOverview — usage cells', () => {
     const client = createQueryClient()
     // The workspace stream stamps every frame with its owner (step 3.1); unscoped, the filter
     // compares stamps against health's bootProject — seed what the first fetch would establish.
-    client.setQueryData(queryKeys.health, { bootProject: 'boot' })
     render(
       <QueryClientProvider client={client}>
         <GlobalEventsProvider>

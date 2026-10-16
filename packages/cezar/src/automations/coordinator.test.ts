@@ -99,7 +99,7 @@ describe('AutomationCoordinator', () => {
     expect(coordinator.ids()).toEqual(['my-repo']);
   });
 
-  it('schedules a doubly-addressed root once under a registered id', async () => {
+  it('deduplicates scheduling for two explicitly registered ids at the same root', async () => {
     const root = await project();
     await mkdir(join(root, '.ai/cezar'), { recursive: true });
     AutomationStore.open(join(root, '.ai/cezar')).create(
@@ -114,11 +114,16 @@ describe('AutomationCoordinator', () => {
       'review-prs',
     );
     const coordinator = new AutomationCoordinator({
-      listProjects: async () => [{ id: 'my-repo', root, status: 'ok' }],
+      listProjects: async () => [
+        { id: 'alpha', root, status: 'ok' },
+        { id: 'my-repo', root, status: 'ok' },
+      ],
     });
     await coordinator.refresh();
 
-    expect(coordinator.enabledProjectIds()).toEqual(['my-repo']);
+    expect(coordinator.store('alpha')).toBe(coordinator.store('my-repo'));
+    expect(coordinator.ids()).toEqual(['alpha', 'my-repo']);
+    expect(coordinator.enabledProjectIds()).toEqual(['alpha']);
   });
 
   it('keeps the surviving id its store when its twin is removed', async () => {

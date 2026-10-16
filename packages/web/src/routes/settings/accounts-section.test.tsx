@@ -142,7 +142,6 @@ function serve(
         })
       }
       if (url === '/api/v1/projects' && method === 'GET') {
-        return json({ projects: [], bootProject: 'boot', projectsDir: '~/cezar/projects' })
       }
       if (String(input).startsWith('/api/v1/models?runner=')) {
         const runner = String(input).includes('cursor') ? 'cursor' : 'codex'
@@ -157,7 +156,6 @@ function renderAccounts() {
   const client = createQueryClient()
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } })
   client.setQueryData(queryKeys.health, {
-    bootProject: 'boot',
     // The install/version rows come from the health probe — the one place a version can honestly
     // come from. Codex is present but UNAVAILABLE, which is "not installed"; an agent missing
     // from `checks` entirely is a different state ("Checking…") and must not be conflated.
@@ -168,7 +166,6 @@ function renderAccounts() {
   })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
-    bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
   render(

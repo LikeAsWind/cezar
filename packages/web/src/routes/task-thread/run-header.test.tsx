@@ -488,7 +488,6 @@ describe('action bar visibility per status (the legacy rules, rendered)', () => 
     ['failing CI', { prs: { 1311: 'checks-failing' }, conflicts: [] }, 'Fix errors', fixChecksPrompt(1311)],
   ] as const)('a %s PR turns the git button into its fix, sent to the task’s own agent', async (_name, forge, label, prompt) => {
     const sent = stubFetch({
-      '/api/v1/health': () => jsonResponse({ bootProject: 'acme', forge: { kind: 'github', available: true } }),
       '/api/v1/p/acme/github/ref-status?prs=1311': () =>
         jsonResponse({ available: true, issues: {}, recheckAfterMs: null, ...forge }),
       '/api/v1/runs/r1/git/status': () => jsonResponse({ uncommitted: 0, unpushed: 0 }),
@@ -538,7 +537,6 @@ describe('action bar visibility per status (the legacy rules, rendered)', () => 
 
   it('a merged PR leaves nothing to commit or push — the git button goes, the PR chip stays', async () => {
     stubFetch({
-      '/api/v1/health': () => jsonResponse({ bootProject: 'acme', forge: { kind: 'github', available: true } }),
       '/api/v1/p/acme/github/ref-status?prs=1283': () =>
         jsonResponse({ available: true, prs: { 1283: 'merged' }, issues: {}, conflicts: [], recheckAfterMs: null }),
       '/api/v1/runs/r1/git/status': () => jsonResponse({ uncommitted: 1, unpushed: 1 }),
@@ -1394,7 +1392,6 @@ describe('meta line, tabs, pill and resume hint', () => {
   // else in the cockpit.
   it('sends the resolve-conflicts prompt into this task’s own conversation', async () => {
     const sent = stubFetch({
-      '/api/v1/health': () => jsonResponse({ bootProject: 'acme' }),
       '/api/v1/p/acme/github/ref-status?prs=534': () =>
         jsonResponse({ available: true, prs: { 534: 'ready' }, issues: {}, conflicts: [534], recheckAfterMs: null }),
     })
@@ -1451,7 +1448,7 @@ describe('meta line, tabs, pill and resume hint', () => {
   // as it is on All tasks — the two pages must not disagree about the same reference.
   it('links a PR known only by number, using the project registry repo', async () => {
     stubFetch({
-      '/api/v1/health': () => jsonResponse({ bootProject: 'boot-id', repo: {} }),
+      '/api/v1/health': () => jsonResponse({}),
       '/api/v1/projects': () =>
         jsonResponse({
           projects: [
@@ -1470,7 +1467,7 @@ describe('meta line, tabs, pill and resume hint', () => {
   // painted from `taskPrUrl` — and must still be painted when a number-only chip exists beside it
   // (#847: a forge whose PR URLs are not `…/pull/N`).
   it('keeps a non-numeric PR link beside a chip known only by number', async () => {
-    stubFetch({ '/api/v1/health': () => jsonResponse({ repo: {} }) })
+    stubFetch({ '/api/v1/health': () => jsonResponse({}) })
     renderHeader(
       run('done', {
         branch: 'cez/r1',
@@ -1486,7 +1483,7 @@ describe('meta line, tabs, pill and resume hint', () => {
   })
 
   it('shows a PR known only by number, with no repository to link it to', async () => {
-    stubFetch({ '/api/v1/health': () => jsonResponse({ repo: {} }) })
+    stubFetch({ '/api/v1/health': () => jsonResponse({}) })
     renderHeader(
       run('done', {
         branch: 'cez/r1',

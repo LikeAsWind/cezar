@@ -12,7 +12,7 @@ import type {
   RunRecord,
   SkillsUpdateState,
 } from '@open-mercato/cezar-api-client'
-import { AppShellContainer, repoChipOf, skillsUpdateMarkerOf } from '@/components/app-shell-container'
+import { AppShellContainer, skillsUpdateMarkerOf } from '@/components/app-shell-container'
 import { ThemeProvider } from '@/components/theme-provider'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -38,11 +38,8 @@ afterEach(() => {
 const HEALTH: HealthResponse = {
   version: '0.1.3',
   projects: [],
-  repoRoot: '/home/me/Projects/cezar',
-  repo: { root: '/home/me/Projects/cezar', branch: 'feat/cockpit', remote: 'origin' },
   checks: [],
   defaultRunner: 'claude',
-  forge: null,
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false, dispatch: false },
 }
 
@@ -156,23 +153,6 @@ function run(overrides: Partial<RunRecord> = {}): RunRecord {
 const repoChip = () => document.querySelector('[data-slot="repo-chip"]')
 const versionChip = () => document.querySelector('[data-slot="version-chip"]')
 const navBadge = () => document.querySelector('[data-slot="nav-badge"]')
-
-describe('repoChipOf', () => {
-  it.each([
-    { name: 'a plain root', root: '/home/me/Projects/cezar', expected: 'cezar' },
-    { name: 'a trailing slash', root: '/home/me/cezar/', expected: 'cezar' },
-    { name: 'a windows path', root: 'C:\\Users\\me\\cezar', expected: 'cezar' },
-    { name: 'the filesystem root as a repo', root: '/', expected: null },
-  ])('takes the basename of $name', ({ root, expected }) => {
-    const chip = repoChipOf({ ...HEALTH, repo: { root, branch: 'main' } })
-    expect(chip?.name ?? null).toBe(expected)
-  })
-
-  it('is null while health is unknown, and outside a git repo', () => {
-    expect(repoChipOf(undefined)).toBeNull()
-    expect(repoChipOf({ ...HEALTH, repo: null })).toBeNull()
-  })
-})
 
 const UPDATE: SkillsUpdateState = {
   status: 'available', available: true, autoUpdateEnabled: true, inherited: true,
