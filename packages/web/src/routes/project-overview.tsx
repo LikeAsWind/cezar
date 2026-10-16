@@ -1,10 +1,38 @@
-import { Link as GlobalLink } from 'react-router'
-
 import { useProjectScope } from '@/api/project-scope-context'
-import { useProjects } from '@/api/queries'
-import { Button } from '@/components/ui/button'
+import {
+  useProjectRuns,
+  useProjects,
+  useRepo,
+  useSkills,
+  useTrackerAssociation,
+  useTrackerConnection,
+  useWorkflows,
+  useWorktrees,
+} from '@/api/queries'
+import { OverviewLinkCard } from '@/components/overview-link-card'
+import { OverviewSection, PageContent, PageFrame, PageHeader } from '@/components/page-frame'
 import { t, useLocale } from '@/lib/i18n'
-import { Link } from '@/lib/project-router'
+import { useAutomationsGate, useAutomationsQuery } from './automations/use-automations'
+import { buildProjectOverviewModel, type OverviewStatus } from './project-overview-model'
+
+const statusLabels: Record<OverviewStatus, string> = {
+  ready: 'Ready',
+  unconfigured: 'Not configured',
+  unavailable: 'Unavailable',
+  disabled: 'Disabled',
+}
+
+function Status({ status }: { status: OverviewStatus }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+      status === 'ready' ? 'bg-success/10 text-success'
+        : status === 'unavailable' ? 'bg-destructive/10 text-destructive'
+          : 'bg-muted text-muted-foreground'
+    }`}>
+      {t(statusLabels[status])}
+    </span>
+  )
+}
 
 export function ProjectOverviewRoute() {
   useLocale()
@@ -12,25 +40,136 @@ export function ProjectOverviewRoute() {
   const { projectId } = useProjectScope()
   const projects = useProjects()
   const project = projects.data?.projects.find((entry) => entry.id === projectId)
+  const projectAvailable = project !== undefined && project.status !== 'missing'
+  const runs = useProjectRuns(projectId ?? '', projectId !== null && projectAvailable)
+  const worktrees = useWorktrees()
+  const repo = useRepo()
+  const trackerAssociation = useTrackerAssociation()
+  const trackerConnection = useTrackerConnection()
+  const skills = useSkills(projectId !== null && projectAvailable, projectId)
+  const workflows = useWorkflows({ enabled: projectId !== null && projectAvailable })
+  const automationGate = useAutomationsGate()
+  const automations = useAutomationsQuery(automationGate.known && !automationGate.off && projectId !== null && projectAvailable)
+
+  if (!projects.data) {
+    return (
+      <PageFrame data-route="project-overview">
+        <PageHeader title={t('Project overview')} />
+        <PageContent><p className="text-sm text-muted-foreground">{t('Loading projects…')}</p></PageContent>
+      </PageFrame>
+    )
+  }
+
+  if (!project) {
+    return (
+      <PageFrame data-route="project-overview">
+        <PageHeader title={t('Project overview')} />
+        <PageContent><p className="text-sm text-muted-foreground">{t('Project is not registered')}</p></PageContent>
+      </PageFrame>
+    )
+  }
+
+  const model = buildProjectOverviewModel({
+    project,
+    runs: runs.data,
+    worktrees: worktrees.data,
+    repo: repo.data,
+    trackerAssociation: trackerAssociation.data,
+    trackerConnection: trackerConnection.data,
+    automations: automations.data,
+    automationsEnabled: automationGate.known ? !automationGate.off : undefined,
+    skills: skills.data,
+    workflows: workflows.data,
+  })
 
   return (
-    <div data-route="project-overview" className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">{t('Project overview')}</h1>
-        <div className="flex-1" />
-        <Button asChild variant="outline" size="sm">
-          <GlobalLink to="/">{t('Back to global workspace')}</GlobalLink>
-        </Button>
-      </header>
-      <section className="flex flex-col items-start gap-4 p-5">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{project?.name || projectId}</h2>
-          <p className="break-all font-mono text-xs text-muted-foreground">{project?.root}</p>
+    <PageFrame data-route="project-overview">
+      <PageHeader title={t('Project overview')} description={project.name || project.id} />
+      <PageContent>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <OverviewSection title={t('Project identity')}>
+            <OverviewLinkCard
+              to={model.identity.to}
+              title={model.identity.name}
+              description={model.identity.root}
+              status={<Status status={model.identity.status} />}
+              metadata={(
+                <span className="block space-y-1 whitespace-normal">
+                  <span className="block">{t('Registry status: {0}', { 0: t(model.identity.registryStatusLabel) })}</span>
+                  <span className="block">{t('Branch: {0}', { 0: model.identity.branch ?? '—' })}</span>
+                  <span className="block">{t('Forge: {0}', { 0: model.identity.forge ?? t('Not configured') })}</span>
+                  {model.identity.tags.length > 0 ? <span className="block">{t('Tags: {0}', { 0: model.identity.tags.join(', ') })}</span> : null}
+                </span>
+              )}
+            />
+          </OverviewSection>
+
+          <OverviewSection title={t('Tasks & Worktrees')}>
+            <OverviewLinkCard
+              to={model.tasks.to}
+              title={t('Tasks & Worktrees')}
+              status={<Status status={model.tasks.status} />}
+              metadata={(
+                <span className="block space-y-1 whitespace-normal">
+                  <span className="block">{t('{0} running · {1} needs attention · {2} failed', {
+                    0: model.tasks.running ?? '—', 1: model.tasks.needsAttention ?? '—', 2: model.tasks.failed ?? '—',
+                  })}</span>
+                  <span className="block">{t('{0} worktrees', { 0: model.tasks.worktrees ?? '—' })}</span>
+                </span>
+              )}
+            />
+          </OverviewSection>
+
+          <OverviewSection title={t('Git / GitHub')}>
+            <OverviewLinkCard
+              to={model.git.to}
+              title={t('Repository')}
+              status={<Status status={model.git.status} />}
+              metadata={(
+                <span className="block space-y-1 whitespace-normal">
+                  <span className="block">{t('Branch: {0}', { 0: model.git.branch ?? '—' })}</span>
+                  <span className="block">{t('Forge status: {0}', { 0: t(statusLabels[model.git.forgeStatus]) })}</span>
+                </span>
+              )}
+            />
+          </OverviewSection>
+
+          <OverviewSection title={t('Tracker')}>
+            <OverviewLinkCard
+              to={model.tracker.to}
+              title={t('Tracker')}
+              status={<Status status={model.tracker.status} />}
+              metadata={t(model.tracker.summary.key, model.tracker.summary.values)}
+            />
+          </OverviewSection>
+
+          <OverviewSection title={t('Automations')}>
+            <OverviewLinkCard
+              to={model.automations.to}
+              title={t('Automations')}
+              status={<Status status={model.automations.status} />}
+              metadata={t(model.automations.summary.key, model.automations.summary.values)}
+            />
+          </OverviewSection>
+
+          <OverviewSection title={t('Skills & workflows')}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <OverviewLinkCard
+                to={model.skillsAndWorkflows.skillsTo}
+                title={t('Skills')}
+                status={<Status status={model.skillsAndWorkflows.status} />}
+                metadata={t(model.skillsAndWorkflows.skillsSummary.key, model.skillsAndWorkflows.skillsSummary.values)}
+              />
+              <OverviewLinkCard
+                to={model.skillsAndWorkflows.workflowsTo}
+                title={t('Workflows')}
+                status={<Status status={model.skillsAndWorkflows.status} />}
+                metadata={t(model.skillsAndWorkflows.workflowsSummary.key, model.skillsAndWorkflows.workflowsSummary.values)}
+              />
+            </div>
+          </OverviewSection>
         </div>
-        <Button asChild>
-          <Link to="/tasks">{t('Tasks & Worktrees')}</Link>
-        </Button>
-      </section>
-    </div>
+      </PageContent>
+    </PageFrame>
   )
 }
