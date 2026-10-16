@@ -116,6 +116,8 @@ npx cezar-run
 
 这会在 `http://localhost:4321` 打开驾驶舱。`cez serve` 启动的是一个**全局工作区**——它不会注册你启动时所在的目录。先注册或选择一个项目，再输入任务、选择工作流，然后点击 **Start**。每个任务都会在自己所选项目内创建独立的 git worktree。
 
+工作区只有两种 URL 作用域：工作区页面（`/`、`/tasks`、`/projects`、`/settings/global/*`）和项目页面（`/p/<projectId>/*`）。项目 API 使用 `/api/v1/p/<projectId>/*`，工作区 API 位于 `/api/v1` 下。没有项目时，工作区概览仍可使用并提供注册入口。`cez runs`、`cez task` 和 `cez automation` 都必须设置 `CEZ_PROJECT_ID`；详见[CLI 与 HTTP API 参考](docs/reference.md#talking-to-a-running-cockpit)。
+
 ```bash
 npx cezar-run run "add a --json flag to the export command"   # headless, no browser
 npx cezar-run run "…" --repo ~/other-repo                     # 显式指定无界面运行的仓库

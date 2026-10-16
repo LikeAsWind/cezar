@@ -26,12 +26,13 @@ function setup(options: { status?: E2eStatus; runStatus?: string; postStatus?: n
     if (url.includes('/runs/')) return new Response(JSON.stringify({ id: status.setup?.runId, status: runStatus ?? status.setup?.status, branch: 'cez/run-1', ...(prUrl ? { pullRequestUrl: prUrl } : {}) }), { status: 200 })
     return new Response(JSON.stringify(status), { status: 200 })
   }))
+  setApiScope('acme')
   render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={['/settings']}>
+        <MemoryRouter initialEntries={['/p/acme/settings']}>
         <Routes>
-          <Route path="/settings" element={<TesterArmyE2eCard />} />
-          <Route path="/p/:projectId/tasks/:id" element={<p>task page</p>} />
+          <Route path="/p/acme/settings" element={<TesterArmyE2eCard />} />
+          <Route path="/p/acme/tasks/:id" element={<p>task page</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -81,7 +82,7 @@ describe('TesterArmy e2e card', () => {
     expect(screen.getByText('AI_GATEWAY_API_KEY')).toBeTruthy()
     expect((screen.getByLabelText('Model provider') as HTMLSelectElement).value).toBe('AI_GATEWAY_API_KEY')
     expect(screen.getByRole('button', { name: 'Set up again' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Open the setup task' }).getAttribute('href')).toBe('/p/default/tasks/run-1')
+    expect(screen.getByRole('link', { name: 'Open the setup task' }).getAttribute('href')).toBe('/p/acme/tasks/run-1')
   })
 
   it('tells the user to merge a finished setup whose config has not landed (review gate off by default)', async () => {

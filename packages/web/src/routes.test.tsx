@@ -437,10 +437,11 @@ describe('the global settings area (/settings/global)', () => {
     expect(routeName()).toBe('settings-instructions')
   })
 
-  it('the legacy flat /settings/prompt-templates lands there too', () => {
+  it('an old flat project settings path asks for an explicit project', () => {
     renderAt('/settings/prompt-templates', { registry: SINGLE_PROJECT })
-    expect(currentPathname()).toBe(`/p/${BOOT}/settings/instructions`)
-    expect(currentHash()).toBe('#prompt-templates')
+    expect(currentPathname()).toBe('/settings/prompt-templates')
+    expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
+    expect(getApiScope()).toBeNull()
   })
 
   // A moved section's old URL, in both spellings a bookmark can have it.
@@ -451,19 +452,19 @@ describe('the global settings area (/settings/global)', () => {
       expect(routeName()).toBe(`settings-global-${id}`)
     })
 
-    it(`the legacy flat /settings/${id} lands on the global twin too`, () => {
+    it(`the old flat /settings/${id} path asks for a project`, () => {
       renderAt(`/settings/${id}`, { registry: SINGLE_PROJECT })
-      expect(currentPathname()).toBe(`/settings/global/${id}`)
+      expect(currentPathname()).toBe(`/settings/${id}`)
+      expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
+      expect(getApiScope()).toBeNull()
     })
 
-    it(`/settings/${id} carries query AND hash through BOTH redirect hops`, () => {
-      // The legacy flat URL takes two hops — `LegacyPathRedirect` into the sole project, then
-      // the moved-section redirect out to the global twin. `settingsSectionPath` returns a bare
-      // pathname, so the second hop is exactly where a bookmark's `?…#…` used to disappear.
+    it(`/settings/${id} keeps query AND hash while asking for a project`, () => {
       renderAt(`/settings/${id}?tab=x&y=a%2Fb#anchor`, { registry: SINGLE_PROJECT })
-      expect(currentPathname()).toBe(`/settings/global/${id}`)
+      expect(currentPathname()).toBe(`/settings/${id}`)
       expect(currentSearch()).toBe('?tab=x&y=a%2Fb')
       expect(currentHash()).toBe('#anchor')
+      expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
     })
 
     it(`/p/${BOOT}/settings/${id} carries query AND hash on the single hop`, () => {
@@ -573,20 +574,12 @@ describe('global workspace routes', () => {
   })
 })
 
-describe('legacy project URLs', () => {
-  for (const [url, route] of ROUTE_CASES.filter(([url]) => url !== '/' && url !== '/tasks')) {
-    it(`${url} resolves when there is exactly one candidate`, () => {
-      renderAt(url, { registry: SINGLE_PROJECT })
-      expect(routeName()).toBe(route)
-      expect(currentPathname()).toBe(`/p/${BOOT}${url}`)
-    })
-  }
-
+describe('project routes require an explicit registered id', () => {
   it.each([
     ['zero projects', { ...REGISTRY, projects: [] }],
+    ['one project', SINGLE_PROJECT],
     ['multiple projects', REGISTRY],
-    ['only missing projects', { ...REGISTRY, projects: REGISTRY.projects.map((p) => ({ ...p, status: 'missing' as const })) }],
-  ])('asks for a selection with %s', (_label, registry) => {
+  ])('asks the user to choose with %s instead of guessing', (_label, registry) => {
     renderAt('/new?ref=task#anchor', { registry })
     expect(currentPathname()).toBe('/new')
     expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
@@ -594,11 +587,23 @@ describe('legacy project URLs', () => {
     expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
   })
 
-  it('preserves a query and hash byte-for-byte across the redirect', () => {
+  it('preserves the entered path, query, and hash while showing project choices', () => {
     renderAt('/skills?skill=om-code-review&x=a%2Fb#usage', { registry: SINGLE_PROJECT })
-    expect(currentPathname()).toBe('/p/boot/skills')
+    expect(currentPathname()).toBe('/skills')
     expect(currentSearch()).toBe('?skill=om-code-review&x=a%2Fb')
     expect(currentHash()).toBe('#usage')
+    expect(screen.getByRole('link', { name: /cezar/ }).getAttribute('href')).toBe('/p/boot/')
+    expect(getApiScope()).toBeNull()
+  })
+
+  it('does not resolve the default segment to the only registered project', () => {
+    renderAt('/p/default/tasks/x?tab=a%2Fb#tool', { registry: SINGLE_PROJECT })
+    expect(currentPathname()).toBe('/p/default/tasks/x')
+    expect(currentSearch()).toBe('?tab=a%2Fb')
+    expect(currentHash()).toBe('#tool')
+    expect(screen.getByRole('heading', { name: '“default” isn’t registered here' })).not.toBeNull()
+    expect(screen.getByRole('link', { name: /cezar/ }).getAttribute('href')).toBe('/p/boot/')
+    expect(getApiScope()).toBeNull()
   })
 
   it('does not guess from health when the registry fails', async () => {
@@ -608,9 +613,9 @@ describe('legacy project URLs', () => {
       }
       return new Promise<never>(() => {})
     }))
-    renderAt('/new', { registry: null })
+    renderAt('/p/boot/new', { registry: null })
     await screen.findByRole('button', { name: 'Retry' })
-    expect(currentPathname()).toBe('/new')
+    expect(currentPathname()).toBe('/p/boot/new')
     expect(getApiScope()).toBeNull()
   })
 
@@ -620,56 +625,10 @@ describe('legacy project URLs', () => {
     expect(currentPathname()).toBe('/tasks/abc123')
   })
 
-  it('an unknown legacy path still ends at the scoped 404', () => {
+  it('an unknown path offers project choices without changing the URL', () => {
     renderAt('/definitely-not-a-route', { registry: SINGLE_PROJECT })
-    expect(routeName()).toBe('not-found')
-    expect(currentPathname()).toBe('/p/boot/definitely-not-a-route')
-  })
-
-  it('a bare /p names no project and resolves only an unambiguous project', () => {
-    renderAt('/p', { registry: SINGLE_PROJECT })
-    expect(routeName()).toBe('project-overview')
-    expect(currentPathname()).toBe('/p/boot/')
-  })
-
-  it('preserves old skill redirects through both hops', () => {
-    renderAt('/settings/skills?skill=om-code-review#usage', { registry: SINGLE_PROJECT })
-    expect(currentPathname()).toBe('/p/boot/skills')
-    expect(currentSearch()).toBe('?skill=om-code-review')
-    expect(currentHash()).toBe('#usage')
-  })
-
-  it('keeps the old bookmarklet pseudo-skill link', () => {
-    renderAt('/settings/skills?skill=__bm#saved', { registry: SINGLE_PROJECT })
-    expect(currentPathname()).toBe('/p/boot/settings/bookmarklets')
-    expect(currentSearch()).toBe('')
-    expect(currentHash()).toBe('#saved')
-  })
-})
-
-describe('the /p/default compatibility alias', () => {
-  it('excludes missing directories from compatibility candidates', () => {
-    renderAt('/p/default/skills', {
-      registry: { ...REGISTRY, projects: [REGISTRY.projects[0]!, { ...REGISTRY.projects[1]!, status: 'missing' }] },
-    })
-    expect(currentPathname()).toBe('/p/boot/skills')
-    expect(getApiScope()).toBe('boot')
-  })
-
-  it.each([
-    ['/p/default/tasks/x?tab=a%2Fb#tool', '/p/boot/tasks/x', '?tab=a%2Fb', '#tool'],
-    ['/p/default', '/p/boot/', '', ''],
-  ])('normalizes %s only with one candidate', (entry, pathname, search, hash) => {
-    renderAt(entry, { registry: SINGLE_PROJECT })
-    expect(currentPathname()).toBe(pathname)
-    expect(currentSearch()).toBe(search)
-    expect(currentHash()).toBe(hash)
-    expect(getApiScope()).toBe('boot')
-  })
-
-  it.each([REGISTRY, { ...REGISTRY, projects: [] }])('asks for a project when ambiguous', (registry) => {
-    renderAt('/p/default/tasks/x', { registry })
-    expect(currentPathname()).toBe('/p/default/tasks/x')
+    expect(routeName()).toBe('unknown-project')
+    expect(currentPathname()).toBe('/definitely-not-a-route')
     expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
     expect(getApiScope()).toBeNull()
   })
@@ -743,13 +702,13 @@ describe('unknown project ids', () => {
 /** The bookmarklet contract (spec 011), protected by BACKWARD_COMPATIBILITY.md:
  *  `/new?skill=&ref=&auto=1&key=`. Since R4 Step 1.3 `auto=1` arms the real unattended start
  *  (the full matrix lives in routes/new-task.test.tsx); this file keeps the URL contract —
- *  through the legacy redirect, exactly as a saved bookmarklet arrives. */
+ *  through the explicit project URL, exactly as a generated bookmarklet arrives. */
 describe('/new query params', () => {
   const textarea = () =>
     screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
 
   it('prefills the composer from a non-auto deep link', () => {
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1', { registry: SINGLE_PROJECT })
+    renderAt(`/p/${BOOT}/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1`, { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(textarea().value).toBe('https://github.com/o/r/pull/1')
   })
@@ -757,7 +716,7 @@ describe('/new query params', () => {
   it('an armed auto=1 link shows the starting surface, never the composer mid-flight', () => {
     // fetch never answers here, so the key check is honestly in flight: no composer to type
     // into, no run POSTed, and the key nowhere in the DOM.
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret', { registry: SINGLE_PROJECT })
+    renderAt(`/p/${BOOT}/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret`, { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
     expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()
@@ -765,13 +724,13 @@ describe('/new query params', () => {
   })
 
   it('renders an empty composer without params', () => {
-    renderAt('/new', { registry: SINGLE_PROJECT })
+    renderAt(`/p/${BOOT}/new`, { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(textarea().value).toBe('')
   })
 
   it('never prints the launch key anywhere on the page', () => {
-    renderAt('/new?key=s3cret', { registry: SINGLE_PROJECT })
+    renderAt(`/p/${BOOT}/new?key=s3cret`, { registry: SINGLE_PROJECT })
     expect(routeName()).toBe('new')
     expect(document.body.textContent).not.toContain('s3cret')
     expect(textarea().value).toBe('')

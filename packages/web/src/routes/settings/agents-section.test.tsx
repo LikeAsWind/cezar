@@ -137,21 +137,22 @@ function serve({
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      const routeUrl = url.replace(/^\/api\/v1\/p\/boot\//, '/api/v1/')
       const method = init?.method ?? 'GET'
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined
       requests.push({ method, url, body })
-      if (url === '/api/v1/config' && method === 'GET') return json(state)
-      if (url === '/api/v1/providers/status' && method === 'GET') {
+      if (routeUrl === '/api/v1/config' && method === 'GET') return json(state)
+      if (routeUrl === '/api/v1/providers/status' && method === 'GET') {
         if (providerStatusPending) return new Promise<never>(() => {})
         if (providerStatusReads++ > 0 && providerStatusAfterFirstError) {
           return json({ error: providerStatusAfterFirstError }, 500)
         }
         return json(providerStatus, providerStatusCode)
       }
-      if (url === '/api/v1/providers/status?refresh=1' && method === 'GET') {
+      if (routeUrl === '/api/v1/providers/status?refresh=1' && method === 'GET') {
         return json(providerStatus, providerStatusCode)
       }
-      if (url === '/api/v1/config' && method === 'PUT') {
+      if (routeUrl === '/api/v1/config' && method === 'PUT') {
         if (putStatus !== 200) return json({ error: putError }, putStatus)
         // The server's merge semantics, mimicked: null clears, defaultModels merges per runner.
         if (body?.defaultRunner !== undefined) state.defaultRunner = body.defaultRunner as Runner
@@ -176,7 +177,7 @@ function serve({
         }
         return json(state)
       }
-      if (url === '/api/v1/repo' && method === 'GET') return json(REPO)
+      if (routeUrl === '/api/v1/repo' && method === 'GET') return json(REPO)
       if (url === '/api/v1/workspace/agent-profiles' && method === 'GET' && agentProfiles) {
         // Served from the mutable copy, so a PUT is visible to the refetch the mutation triggers —
         // which is how the real store behaves, and the only way to assert what the pane shows AFTER
@@ -207,9 +208,7 @@ function serve({
   )
 }
 
-/** Seeds the step-3.2 route gates — boot id (legacy redirect) + registry (known-check) — so a
- *  flat entry URL lands scoped immediately. The boot project mounts UNSCOPED, so the exact
- *  `/api/v1/*` paths this file's fetch stub matches stay byte-identical. */
+/** Seeds the registry with the explicit project id used by these component tests. */
 function gateSeededClient() {
   const client = createQueryClient()
   client.setDefaultOptions({
@@ -230,9 +229,10 @@ function gateSeededClient() {
 
 function renderAt(entry: string) {
   const client = gateSeededClient()
+  const projectEntry = entry.startsWith('/p/') || entry.startsWith('/settings/global') ? entry : `/p/boot${entry}`
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={[projectEntry]}>
         <AppRoutes />
         <Toaster />
       </MemoryRouter>
@@ -241,7 +241,7 @@ function renderAt(entry: string) {
   return client
 }
 
-const puts = () => requests.filter((r) => r.method === 'PUT' && r.url === '/api/v1/config')
+const puts = () => requests.filter((r) => r.method === 'PUT' && r.url === '/api/v1/p/boot/config')
 const form = () => document.querySelector('[data-slot="agents-section"]')
 const instructions = () => document.querySelector('[data-slot="instructions-section"]')
 const tasks = () => document.querySelector('[data-slot="tasks-section"]')

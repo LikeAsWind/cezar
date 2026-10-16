@@ -86,7 +86,7 @@ describe('Link', () => {
     expect(screen.getByRole('link', { name: 'New task' }).getAttribute('href')).toBe('/p/cezar/new')
   })
 
-  it('is the plain react-router Link on a flat URL (component tests, mid-redirect)', () => {
+  it('does not invent a project scope for links on a workspace URL', () => {
     render(
       <MemoryRouter initialEntries={['/git']}>
         <Link to="/new">New task</Link>

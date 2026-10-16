@@ -107,11 +107,13 @@ const BOOT_PROJECT: ProjectListEntry = {
 }
 
 function renderAt(entry: string, { singleProject = false }: { singleProject?: boolean } = {}) {
+  // Component tests enter project pages with an explicit registered fixture id.
+  const projectEntry = entry.startsWith('/p/') || entry.startsWith('/settings/global') ? entry : `/p/boot${entry}`
   render(
     <QueryClientProvider client={gateSeededClient(singleProject)}>
       <ThemeProvider>
         <AppearanceProvider>
-          <MemoryRouter initialEntries={[entry]}>
+          <MemoryRouter initialEntries={[projectEntry]}>
             <AppRoutes />
           </MemoryRouter>
         </AppearanceProvider>
@@ -282,10 +284,9 @@ describe('the settings shell', () => {
     expect(document.querySelector('[data-section="resources"]')).not.toBeNull()
   })
 
-  it('a moved section keeps its old URL working: /settings/appearance → the global twin', async () => {
+  it('a moved section keeps its scoped project URL working: /settings/appearance → the global twin', async () => {
     renderAt('/settings/appearance')
-    // Legacy flat URL → boot project → the section's new global home. Two redirects, one hop
-    // each, and the address bar ends up naming the real place.
+    // The explicit project URL redirects to the section's new global home.
     await waitFor(() => {
       expect(document.querySelector('[data-route="settings-global-appearance"]')).not.toBeNull()
     })

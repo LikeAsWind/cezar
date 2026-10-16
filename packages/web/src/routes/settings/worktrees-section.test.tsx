@@ -44,11 +44,12 @@ function serve(config: Partial<ConfigResponse> = {}) {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      const routeUrl = url.replace(/^\/api\/v1\/p\/boot\//, '/api/v1/')
       const method = init?.method ?? 'GET'
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined
       requests.push({ method, url, body })
-      if (url === '/api/v1/config' && method === 'GET') return json(state)
-      if (url === '/api/v1/config' && method === 'PUT') {
+      if (routeUrl === '/api/v1/config' && method === 'GET') return json(state)
+      if (routeUrl === '/api/v1/config' && method === 'PUT') {
         if (body?.worktreeRetention !== undefined) {
           state.worktreeRetention = body.worktreeRetention as number
         }
@@ -59,14 +60,12 @@ function serve(config: Partial<ConfigResponse> = {}) {
   )
 }
 
-/** Seeds the step-3.2 route gates — boot id (legacy redirect) + registry (known-check) — so a
- *  flat entry URL lands scoped immediately. The boot project mounts UNSCOPED, so the exact
- *  `/api/v1/*` paths this file's fetch stub matches stay byte-identical. */
+/** Seeds the registry with the explicit project id used by these component tests. */
 function gateSeededClient() {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
-    projects: [],
+    projects: [{ id: 'boot', name: 'repo', root: '/repo', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' }],
     bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
@@ -74,9 +73,10 @@ function gateSeededClient() {
 }
 
 function renderAt(entry: string) {
+  const projectEntry = entry.startsWith('/p/') || entry.startsWith('/settings/global') ? entry : `/p/boot${entry}`
   render(
     <QueryClientProvider client={gateSeededClient()}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={[projectEntry]}>
         <AppRoutes />
         <Toaster />
       </MemoryRouter>
@@ -90,7 +90,7 @@ const saveButton = () =>
   document.querySelector<HTMLButtonElement>('[data-action="resources-save-retention"]')
 const puts = () =>
   requests.filter(
-    (r) => r.method === 'PUT' && r.url === '/api/v1/config' && (r.body as { worktreeRetention?: unknown })?.worktreeRetention !== undefined,
+    (r) => r.method === 'PUT' && r.url === '/api/v1/p/boot/config' && (r.body as { worktreeRetention?: unknown })?.worktreeRetention !== undefined,
   )
 
 afterEach(() => {

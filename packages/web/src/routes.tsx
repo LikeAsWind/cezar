@@ -15,7 +15,7 @@ import {
 import { useHealth, useProjects } from './api/queries'
 import { ProjectScopeProvider } from './api/project-scope-context'
 import { Button } from './components/ui/button'
-import { Navigate as ScopedNavigate, resolveLegacyProjectId, stripProjectPrefix } from './lib/project-router'
+import { Navigate as ScopedNavigate, stripProjectPrefix } from './lib/project-router'
 import { AutomationsLoading } from './routes/automations/automations-loading'
 import { CompareLoading } from './routes/compare-loading'
 import { GithubLoading } from './routes/github/github-loading'
@@ -135,9 +135,8 @@ function SettingsSkillsRedirect() {
 
 /** A settings section that MOVED from the project area to the global one. Its own hop, not an
  *  inline `<Navigate>`, because `settingsSectionPath` returns a bare pathname: only a component
- *  can read `useLocation` and carry the query and hash across. Legacy flat URLs reach here on a
- *  SECOND hop (`LegacyPathRedirect` first), and dropping either half there would silently undo
- *  what that hop just preserved. Plain Navigate — the target is outside every project. */
+ *  can read `useLocation` and carry the query and hash across. Plain Navigate — the target is
+ *  outside every project. */
 function MovedSettingsSectionRedirect({ sectionId }: { sectionId: SettingsSectionId }) {
   useLocale()
 
@@ -187,19 +186,11 @@ function ProjectScopeRoute() {
   useLocale()
 
   const { projectId = '' } = useParams()
-  const location = useLocation()
   const projects = useProjects()
 
   if (!projects.data) {
     if (projects.isError) return <ProjectRegistryError retry={() => void projects.refetch()} />
     return <ScopeResolving />
-  }
-
-  if (projectId === 'default') {
-    const resolved = resolveLegacyProjectId(projects.data)
-    if (resolved === null) return <UnknownProjectRoute registry={projects.data} />
-    const rest = stripProjectPrefix(location.pathname)
-    return <Navigate to={`/p/${encodeURIComponent(resolved)}${rest}${location.search}${location.hash}`} replace />
   }
 
   const project = projects.data.projects.find((entry) => entry.id === projectId)
@@ -234,11 +225,10 @@ function NewTaskProjectRoute() {
   return <NewTaskRoute key={projectId} />
 }
 
-/** Old flat URLs resolve only through the registry's one-available-project compatibility rule. */
-function LegacyPathRedirect() {
+/** Unrecognized paths offer project choices without selecting one on the user's behalf. */
+function ProjectSelectionRoute() {
   useLocale()
 
-  const location = useLocation()
   const projects = useProjects()
 
   if (!projects.data) {
@@ -246,18 +236,7 @@ function LegacyPathRedirect() {
     return <ScopeResolving />
   }
 
-  const projectId = resolveLegacyProjectId(projects.data)
-  if (projectId === null) return <UnknownProjectRoute registry={projects.data} />
-
-  // A bare `/p` (or `/p/`) names no project — send it to the project's home rather than
-  // minting a nonsense `/p/<id>/p` path.
-  const path = location.pathname === '/p' || location.pathname === '/p/' ? '/' : location.pathname
-  return (
-    <Navigate
-      to={`/p/${encodeURIComponent(projectId)}${path}${location.search}${location.hash}`}
-      replace
-    />
-  )
+  return <UnknownProjectRoute registry={projects.data} />
 }
 
 export interface PageTitleContext {
@@ -306,9 +285,8 @@ export function pageTitleContext(pathname: string): PageTitleContext {
  *  every non-/api GET (src/server/static-ui.ts `resolveGetRequest`), so each of
  *  these cold-loads and survives a refresh — `/p/…` paths included.
  *
- *  Every path lives under `/p/:projectId/` (multi-project spec, step 3.2) via the one
- *  `ProjectScopeRoute` layout above; the flat spellings below are relative to that prefix and
- *  stay stable — they are what teammates paste, and the legacy flat URLs redirect onto them.
+ *  Project paths live under `/p/:projectId/` via the `ProjectScopeRoute` layout; the flat
+ *  spellings below are route-relative definitions, not standalone project URLs.
  */
 export const AppRoutes = memo(function AppRoutes() {
   useLocale()
@@ -589,10 +567,8 @@ export const AppRoutes = memo(function AppRoutes() {
             element={<SettingsSectionRoute section={section} scope="project" capabilities={capabilities} />}
           />
         ))}
-        {/* A section that MOVED out of the project area keeps its old URL working: every
-            pre-3.5 bookmark and every legacy flat `/settings/appearance` (which the redirect
-            below turns into `/p/<boot>/settings/appearance`) lands on the global twin instead
-            of a 404 — query and hash intact across both hops. */}
+        {/* A section that MOVED out of the project area keeps its scoped URL working: older
+            bookmarks land on the global twin instead of a 404 — query and hash intact. */}
         {visibleSettingsSections('global', capabilities).map((section) => (
           <Route
             key={section.id}
@@ -609,9 +585,8 @@ export const AppRoutes = memo(function AppRoutes() {
           is a contradiction. Its data is the workspace-level run index, which is never
           scope-prefixed.
 
-          EXACTLY `/tasks`, never `/tasks/*`: `/tasks/:id` is a legacy flat task link and must
-          resolve through the legacy project-selection rule (`LegacyPathRedirect` below owns it).
-          React Router ranks this static segment above that `*`, so the two never compete. */}
+          EXACTLY `/tasks`, never `/tasks/*`: task detail pages require an explicit project
+          prefix. React Router ranks this static segment above the workspace catch-all. */}
       <Route path="/tasks" element={<GlobalTasksRoute />} />
       <Route
         path="/projects"
@@ -627,8 +602,8 @@ export const AppRoutes = memo(function AppRoutes() {
           the registry. No `ProjectScopeProvider` above it, so its sections must read/write the
           workspace routes (`/api/workspace/*`), which are never scope-prefixed.
 
-          Static segments outrank the `*` legacy redirect below in React Router's ranking, so
-          these win regardless of order — listed here for readability. */}
+          Static segments outrank the `*` project-selection fallback in React Router's ranking,
+          so these win regardless of order — listed here for readability. */}
       <Route path="/settings/global" element={<SettingsIndexRoute scope="global" capabilities={capabilities} />} />
       {visibleSettingsSections('global', capabilities).map((section) => (
         <Route
@@ -638,10 +613,8 @@ export const AppRoutes = memo(function AppRoutes() {
         />
       ))}
 
-      {/* Everything else IS a legacy flat URL, resolved through the one-unambiguous-project rule.
-          The workspace home (`/`), global tasks, the dashboard and global settings are matched by
-          the static segments above, so `/` never reaches this redirect. */}
-      <Route path="*" element={<LegacyPathRedirect />} />
+      {/* Unmatched paths show project choices. A project is opened only from its explicit URL. */}
+      <Route path="*" element={<ProjectSelectionRoute />} />
     </Routes>
   )
 })

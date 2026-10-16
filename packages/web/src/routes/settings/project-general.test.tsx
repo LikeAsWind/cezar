@@ -114,13 +114,16 @@ function seededClient({
   return client
 }
 
-function renderAt(entry: string, seed?: Parameters<typeof seededClient>[0]) {
+function renderAt(entry: string, seed?: Parameters<typeof seededClient>[0], explicitProject = true) {
+  const projectEntry = explicitProject && !entry.startsWith('/p/') && !entry.startsWith('/settings/global')
+    ? `/p/boot${entry}`
+    : entry
   render(
     <QueryClientProvider client={seededClient(seed)}>
       {/* The app shell normally provides it; the removal test navigates onto the tasks overview,
           which reads it. */}
       <ListViewProvider>
-        <MemoryRouter initialEntries={[entry]}>
+        <MemoryRouter initialEntries={[projectEntry]}>
           <AppRoutes />
         </MemoryRouter>
       </ListViewProvider>
@@ -277,7 +280,7 @@ describe('the General page', () => {
     renderAt('/settings', {
       singleProject: true,
       registry: [{ ...project('boot'), status: 'missing' }],
-    })
+    }, false)
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Select a project' })).not.toBeNull()
     })

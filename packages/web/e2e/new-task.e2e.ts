@@ -300,7 +300,7 @@ describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () 
     const before = await runCount()
 
     browser.goto(
-      `${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=${encodeURIComponent(key)}`,
+      `${baseUrl}${scoped('/new')}?skill=lint-fix&ref=hello&auto=1&key=${encodeURIComponent(key)}`,
     )
     // Unattended: no clicks from here — the cockpit takes us to the thread by itself.
     browser.waitForFunction(`location.pathname.startsWith('${scoped('/tasks/')}')`)
@@ -320,7 +320,7 @@ describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () 
   it('a wrong key only prefills — the composer, a toast, and NOT one run more', async () => {
     const before = await runCount()
 
-    browser.goto(`${baseUrl}/new?skill=lint-fix&ref=hello&auto=1&key=definitely-wrong`)
+    browser.goto(`${baseUrl}${scoped('/new')}?skill=lint-fix&ref=hello&auto=1&key=definitely-wrong`)
     browser.waitForFunction(`document.querySelector('[data-route="new"] [data-slot="composer"]') !== null`)
 
     // Prefilled, blocked, and honest about it.
@@ -334,15 +334,15 @@ describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () 
 
     // The key (right or wrong) never survives in the URL, and no run started.
     browser.waitForFunction(`location.search === ''`)
-    // The legacy flat `/new?…` the bookmarklet grammar guarantees landed on the scoped twin —
-    // the redirect BACKWARD_COMPATIBILITY.md's bookmarklet contract now rests on.
     expect(browser.url()).toBe(`${baseUrl}${scoped('/new')}`)
     expect(await runCount()).toBe(before)
   }, 90_000)
 
-  it('/new?legacy=1 serves the React shell on this server too — the hatch retired in R7', () => {
+  it('a flat /new URL serves the React shell but asks for a project instead of guessing', () => {
     browser.goto(`${baseUrl}/new?legacy=1`)
     browser.waitForFunction(`document.getElementById('root') !== null`)
     expect(browser.evaluate(`document.getElementById('brand') === null`)).toBe(true)
+    browser.waitForFunction(`document.querySelector('[data-slot="registered-projects"]') !== null`)
+    expect(browser.url()).toBe(`${baseUrl}/new?legacy=1`)
   })
 })

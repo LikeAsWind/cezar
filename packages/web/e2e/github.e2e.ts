@@ -46,7 +46,7 @@ let forgeAvailable = false
 let bootProject: string
 
 /** A flat route target under this server's own project prefix (multi-project spec, step 3.2):
- *  every cockpit link is scoped, and every legacy flat URL redirects onto its scoped twin. */
+ *  every project cockpit link names its project explicitly. */
 const scoped = (path: string) => `/p/${bootProject}${path}`
 
 beforeAll(async () => {

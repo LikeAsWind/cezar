@@ -29,7 +29,7 @@ export function missingCockpitMessage(message: MissingCockpitMessage, env: { CEZ
     `${message.command}: CEZ_API_URL is not set, so there is no cockpit to talk to.`,
     `Point it at a running cockpit — the address it printed after "cockpit →" when it started (${DEFAULT_COCKPIT_URL} by default):`,
     `  CEZ_API_URL=${DEFAULT_COCKPIT_URL} ${message.example}`,
-    'On a cockpit serving several projects, add CEZ_PROJECT_ID=<id> (`cezar projects` lists them); without it the command addresses the project the cockpit was started in.',
+    'Set CEZ_PROJECT_ID=<id> for this project command (`cezar projects` lists registered project ids); the command will not guess a project if it is missing.',
     'Inside a cezar task the cockpit sets this variable itself — if it is missing there, the feature is off: do not set it by hand.',
   ].join('\n');
 }

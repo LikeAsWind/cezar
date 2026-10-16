@@ -135,6 +135,8 @@ npx cezar-run
 
 This opens the cockpit at `http://localhost:4321`. `cez serve` starts a **global workspace** — it does not register the directory you launched it from. Register or select a project first, then type a task, pick a workflow, and hit **Start**. Each task runs in its own git worktree inside its selected project. `npx cezar-cli` still works too — it's the same package under its older name.
 
+The workspace has two URL scopes: workspace pages (`/`, `/tasks`, `/projects`, `/settings/global/*`) and project pages (`/p/<projectId>/*`). Project APIs use `/api/v1/p/<projectId>/*`; workspace APIs stay under `/api/v1`. A workspace with no projects still opens its overview and offers registration. `CEZ_PROJECT_ID` is required by `cez runs`, `cez task`, and `cez automation`; see the [CLI and HTTP API reference](docs/reference.md#talking-to-a-running-cockpit).
+
 ```bash
 npx cezar-run run "add a --json flag to the export command"   # headless, no browser
 npx cezar-run run "…" --repo ~/other-repo                     # explicit headless repository

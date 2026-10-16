@@ -312,17 +312,12 @@ describe('task quick-list', () => {
     browser.waitForFunction(`document.querySelector('${ROW}[data-run-id="fix-var-a"]') === null`)
   })
 
-  it('lights the row for the task the route has open', () => {
-    // A LEGACY flat deep link, on purpose: pre-multi-project bookmarks must still land, and the
-    // cockpit rewrites them onto the boot project's scoped twin (BACKWARD_COMPATIBILITY.md).
+  it('requires project selection before opening a flat task deep link', () => {
     browser.goto(`${baseUrl}/tasks/fix-done`)
-    browser.waitForFunction(`location.pathname === '${scoped('/tasks/fix-done')}'`)
-    browser.waitForFunction(`document.querySelector('${ROW}[data-active]') !== null`)
-
-    expect(browser.evaluate(`[...document.querySelectorAll('${ROW}[data-active]')].map((r) => r.dataset.runId)`)).toEqual(
-      ['fix-done']
-    )
-    browser.screenshot(`${artifactsDir}/quick-list-active-row.png`)
+    browser.waitForFunction(`document.querySelector('[data-slot="registered-projects"]') !== null`)
+    expect(browser.url()).toBe(`${baseUrl}/tasks/fix-done`)
+    expect(browser.count(`${ROW}[data-active]`)).toBe(0)
+    expect(browser.count(`[data-slot="registered-projects"] a[href="/p/${bootProject}/"]`)).toBe(1)
   })
 
   it('switches to the archived view, and back', () => {

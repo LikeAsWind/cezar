@@ -104,25 +104,27 @@ workspace file that also holds the global knobs
 the repo: per-project state stays exactly where it was, in that repo's
 `.ai/cezar/`.
 
-**Your first run registers the repo you start it in** — that is the whole setup.
-After that the registry is yours to curate: starting cezar somewhere else serves
-that folder as usual (its own tasks, its own `.ai/cezar/`, reachable at
-`/p/<slug>/`) but neither adds it to the list nor shows it there — a launch
-folder is where you opened the cockpit from, not a project, so the sidebar keeps
-showing the projects you chose and a bare `/` opens the most recent of them.
-Keeping the folder is the explicit click: **Settings → Add project** (or
-`cezar projects add` from a terminal).
+The launch directory does not select or register a project. Add projects from
+**Settings → Projects** (or `cezar projects add`). A workspace with no projects
+is a complete state: `/` shows the workspace overview and offers project
+registration. It does not redirect, fail, or guess a project from the launch
+directory, registry order, or recent activity.
 
-Project views are scoped to their repository; **Dashboard** at `/dashboard`, **All tasks**, and global settings span the workspace:
+The URL model has exactly two scopes. Workspace pages are `/`, `/tasks`,
+`/projects`, and `/settings/global/*`; workspace APIs live directly under
+`/api/v1` (for example `/api/v1/projects` and `/api/v1/workspace/config`).
+Project pages use `/p/<projectId>/*`, and project APIs use
+`/api/v1/p/<projectId>/*`. Each project ID must explicitly name a registered
+project. Shared workspace pages summarize projects and link to their scoped
+detail pages; global settings stay outside project scope.
 
 ```
 /p/<projectId>/            tasks · git · github · skills · workflows · settings
 ```
 
-`<projectId>` is a slug derived from the folder name (`my-app`, then `my-app-2`
-on a collision), and `/p/default/…` always means the project cezar was started
-in. The sidebar shows one collapsible group per project — each with its own nav
-and task list — and the new-task composer names the project it will run in.
+`<projectId>` is the registered project's explicit ID. The sidebar shows one
+collapsible group per project — each with its own nav and task list — and the
+new-task composer names the project it will run in.
 
 **Adding a project** — the **+** button beside *New task*:
 
@@ -544,9 +546,10 @@ cez automation list                 # automations, with state and counts
 cez task tree <run id>              # a dispatch tree
 ```
 
-On a cockpit that serves several projects, add `CEZ_PROJECT_ID=<id>`
-(`cezar projects` lists the ids); without it every command addresses the
-project the cockpit was started in.
+Set `CEZ_PROJECT_ID=<id>` for every command (`cezar projects` lists the IDs).
+`CEZ_PROJECT_ID` is mandatory for `cez runs`, `cez task`, and `cez automation`;
+without it the command exits with status 2 and sends no request. Workspace
+operations such as listing or registering projects remain unscoped.
 
 `CEZ_API_URL` is never guessed. For an agent, its absence is how the cockpit
 says dispatch or automations are unavailable, and a fallback would let a task
@@ -562,10 +565,10 @@ the API below.
 - **Everything is under `/api/v1`.** The unversioned `/api/*` spelling was
   removed on purpose and answers `404` — `GET /api/v1/runs` is right,
   `GET /api/runs` is not.
-- **Project scope.** Every project route also answers under
-  `/api/v1/p/<projectId>/…`; the unscoped path is bound to the project the
-  cockpit was started in. Workspace-wide routes (`/api/v1/projects`,
-  `/api/v1/workspace/…`) have no scoped twin.
+- **Project scope.** Project routes require an explicit project ID, for example
+  `GET /api/v1/p/<projectId>/runs`; project routes have no unscoped alias.
+  Workspace-wide routes (`/api/v1/projects`, `/api/v1/workspace/…`) stay
+  directly under `/api/v1` and have no project-scoped twin.
 - **Discovery.** `GET /api/v1/health` answers without the request-origin guard,
   so it is the call to probe whether a cockpit is up and which version it runs.
 - **Routes and shapes.** The route inventory is section 2 of

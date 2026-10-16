@@ -14,15 +14,13 @@ import {
   type To,
 } from 'react-router'
 
-import type { ProjectsResponse } from '@open-mercato/cezar-api-client'
-
 import { useProjectScope } from '@/api/project-scope-context'
 
 /**
  * Scope-aware navigation (multi-project spec, step 3.2): every cockpit route lives under
  * `/p/:projectId/`, but link call sites keep writing the flat paths they always wrote
  * (`to="/new"`, `navigate('/tasks/'+id)`). The wrappers below prefix those targets with the
- * ACTIVE project on the way out, so links stay inside the project the user is looking at.
+ * active project on the way out, so links stay inside the project the user is looking at.
  *
  * Swapping an import from 'react-router' to this module is the whole migration for a call
  * site — props and semantics are unchanged. Kept mechanical on purpose.
@@ -30,14 +28,13 @@ import { useProjectScope } from '@/api/project-scope-context'
  * The active project comes from `ProjectScopeContext` first (authoritative inside the routed
  * tree) and falls back to the URL's own `/p/:projectId` prefix — the app shell renders OUTSIDE
  * the routes (app.tsx wraps `AppRoutes` in the shell), so its nav has no provider above it but
- * still must generate scoped links. Unscoped (legacy flat URL mid-redirect, or a component
- * test rendering without a prefix) everything is the identity, byte-for-byte.
+ * still must generate scoped links. Workspace pages use React Router directly for workspace links.
  */
 
 /** `/p/<id>` at the start of a pathname. One segment, nothing else — `/proxy` must not match. */
 const PROJECT_PREFIX_RE = /^\/p\/([^/]+)(?=\/|$)/
 
-/** The project id a pathname is scoped to, or null for legacy flat paths. */
+/** The project id a pathname is scoped to, or null for a workspace path. */
 export function pathnameProjectId(pathname: string): string | null {
   const id = PROJECT_PREFIX_RE.exec(pathname)?.[1]
   return id === undefined ? null : decodeURIComponent(id)
@@ -74,13 +71,6 @@ export function scopeTo(projectId: string, to: To): To {
   }
   if (to.pathname === undefined) return to
   return { ...to, pathname: scopePathname(projectId, to.pathname) }
-}
-
-/** Legacy project links resolve only when the registry has exactly one available project. */
-export function resolveLegacyProjectId(registry: ProjectsResponse | undefined): string | null {
-  if (registry === undefined) return null
-  const usable = registry.projects.filter((project) => project.status !== 'missing')
-  return usable.length === 1 ? (usable[0]?.id ?? null) : null
 }
 
 /**

@@ -116,7 +116,7 @@ function serve({
         return importableFailure ? new Response('skills catalog unavailable', { status: 503 }) : json(importable)
       }
       if (path === '/api/v1/workflows') return json(WORKFLOWS)
-      if (url === '/api/v1/launch-key') return json({ key: 'sekret' })
+      if (path === '/api/v1/launch-key') return json({ key: 'sekret' })
       if (path.startsWith('/api/v1/workspace/skills-update?projectId=')) return json(skillsUpdate)
       if (path === '/api/v1/workspace/skills-update/check' && method === 'POST') return json(skillsUpdate)
       if (path === '/api/v1/workspace/skills-update/apply' && method === 'POST') {
@@ -144,14 +144,13 @@ function serve({
   )
 }
 
-/** Seeds the step-3.2 route gates — boot id (legacy redirect) + registry (known-check) — so a
- *  flat entry URL lands scoped immediately. The boot project mounts UNSCOPED, so the exact
- *  `/api/v1/*` paths this file's fetch stub matches stay byte-identical. */
+/** Seeds the registry with the explicit project id used by these component tests. */
 function gateSeededClient() {
   const client = createQueryClient()
+  client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } })
   client.setQueryData(queryKeys.health, { bootProject: 'boot' })
   client.setQueryData(workspaceQueryKeys.projects, {
-    projects: [],
+    projects: [{ id: 'boot', name: 'repo', root: '/repo', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' }],
     bootProject: 'boot',
     projectsDir: '~/cezar/projects',
   })
@@ -163,6 +162,7 @@ function renderAt(
   client = gateSeededClient(),
   onNavigate?: (navigate: ReturnType<typeof useNavigate>) => void,
 ) {
+  const projectEntry = entry.startsWith('/p/') || entry.startsWith('/settings/global') ? entry : `/p/boot${entry}`
   function CaptureNavigate() {
     const navigate = useNavigate()
     onNavigate?.(navigate)
@@ -170,7 +170,7 @@ function renderAt(
   }
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={[projectEntry]}>
         {onNavigate && <CaptureNavigate />}
         <AppRoutes />
         <Toaster />
@@ -228,14 +228,14 @@ describe('the catalog list and skill preview', () => {
     const toggle = row.parentElement?.querySelector<HTMLButtonElement>('[data-slot="skill-activation"]')
     expect(toggle?.hasAttribute('data-disabled')).toBe(true)
 
-    const attempts = requests.filter((request) => request.url.includes('/api/v1/skills/importable')).length
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    const attempts = requests.filter((request) => request.url.includes('/api/v1/p/boot/skills/importable')).length
+    const retry = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement
+    await waitFor(() => expect(retry.disabled).toBe(false))
+    fireEvent.click(retry)
     await waitFor(() => {
-      expect(requests.filter((request) => request.url.includes('/api/v1/skills/importable')).length).toBeGreaterThan(
-        attempts,
-      )
+      expect(requests.filter((request) => request.url.includes('/api/v1/p/boot/skills/importable')).length).toBeGreaterThan(attempts)
     })
-  })
+  }, 10_000)
 
   it('shows the Open Mercato skills update status when no skills are tracked', async () => {
     serve()
@@ -430,6 +430,15 @@ describe('the catalog list and skill preview', () => {
     client.setQueryData(workspaceQueryKeys.projects, {
       projects: [
         {
+          id: 'boot',
+          name: 'repo',
+          root: '/repo',
+          addedAt: '2026-09-24T12:00:00.000Z',
+          lastOpenedAt: '2026-09-24T12:00:00.000Z',
+          source: 'local',
+          status: 'ok',
+        },
+        {
           id: 'other',
           name: 'other',
           root: '/other',
@@ -507,7 +516,7 @@ describe('refresh (#384: selection and scroll survive)', () => {
 
     fireEvent.click(document.querySelector('[data-slot="skills-refresh"]')!)
     await waitFor(() =>
-      expect(requests.some((r) => r.method === 'POST' && r.url === '/api/v1/skills/refresh')).toBe(true),
+      expect(requests.some((r) => r.method === 'POST' && r.url === '/api/v1/p/boot/skills/refresh')).toBe(true),
     )
     // The refreshed catalog rendered (the new team skill is in the list)…
     await waitFor(() => expect(rowNames()).toEqual(['om-fix', 'om-review', 'team-new', 'zebra-global']))
