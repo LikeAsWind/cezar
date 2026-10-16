@@ -157,11 +157,11 @@ export function ProjectsRegistry({
   const projects = useProjects()
   const config = useWorkspaceConfig()
 
+  let registryContent
   if (projects.isPending || config.isPending) {
-    return <p data-slot="projects-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading projects…')}</p>
-  }
-  if (projects.isError || config.isError) {
-    return (
+    registryContent = <p data-slot="projects-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">{t('Loading projects…')}</p>
+  } else if (projects.isError || config.isError) {
+    registryContent = (
       <CenteredState
         icon={<FoldersIcon />}
         tone="danger"
@@ -170,14 +170,16 @@ export function ProjectsRegistry({
         heading="h2"
       />
     )
+  } else {
+    registryContent = <RegistryTable registry={projects.data} workspaceMax={config.data.resources.maxParallel} />
   }
   return (
     <>
-      <RegistryTable registry={projects.data} workspaceMax={config.data.resources.maxParallel} />
+      {registryContent}
       <RegisterProjectDialog
         open={registerDialogOpen}
         onOpenChange={onRegisterDialogOpenChange}
-        projects={projects.data.projects}
+        projects={projects.data?.projects ?? []}
       />
     </>
   )
