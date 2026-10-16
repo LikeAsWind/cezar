@@ -2,7 +2,7 @@ import { useId, type ComponentProps, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-const actionClasses = 'flex shrink-0 items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11 [&_a]:min-h-11 [&_a]:min-w-11 md:[&_button]:min-h-9 md:[&_button]:min-w-9 md:[&_a]:min-h-9 md:[&_a]:min-w-9'
+const actionClasses = 'flex shrink-0 items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11 [&_a]:inline-flex [&_a]:min-h-11 [&_a]:min-w-11 md:[&_button]:min-h-9 md:[&_button]:min-w-9 md:[&_a]:min-h-9 md:[&_a]:min-w-9'
 
 export function PageFrame({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cn('flex min-h-full min-w-0 flex-col', className)} {...props} />

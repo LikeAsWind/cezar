@@ -54,6 +54,24 @@ it('labels overview sections and keeps their action beside a secondary heading',
   expect(within(section).getByText('No recent tasks')).toBeTruthy()
 })
 
+it('gives direct action links a rendered mobile target in both page action slots', () => {
+  render(
+    <PageFrame>
+      <PageHeader title="Workspace" actions={<a href="/create">Create task</a>} />
+      <PageContent>
+        <OverviewSection title="Recent tasks" action={<a href="/tasks">View tasks</a>}>
+          <p>Recent activity</p>
+        </OverviewSection>
+      </PageContent>
+    </PageFrame>,
+  )
+
+  const pageAction = screen.getByRole('link', { name: 'Create task' })
+  const sectionAction = screen.getByRole('link', { name: 'View tasks' })
+  expect(pageAction.parentElement?.className).toContain('[&_a]:inline-flex')
+  expect(sectionAction.parentElement?.className).toContain('[&_a]:inline-flex')
+})
+
 function CurrentLocation() {
   return <output>{useLocation().pathname}</output>
 }
