@@ -40,7 +40,7 @@ export function WorkspaceSwitcher({ projects, activeProjectId, onSelectGlobal, o
     <Popover open={open} onOpenChange={(next) => { setOpen(next); setSearch(''); setSelected(-1) }}>
       <PopoverTrigger asChild>
         <Button variant="outline" className="h-auto min-h-11 w-full justify-start gap-2 px-2.5 py-2 text-left">
-          {global ? <GlobeIcon className="size-4 shrink-0 text-violet" /> : <FolderGit2Icon className="size-4 shrink-0 text-success" />}
+          {global ? <GlobeIcon className="size-4 shrink-0 text-violet" /> : <FolderGit2Icon className="size-4 shrink-0 text-foreground" />}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-semibold">{global ? t('Global workspace') : `${t('Project')}: ${active?.name ?? activeProjectId}`}</span>
             <span className={cn('block truncate text-[10.5px] text-muted-foreground', !global && 'font-mono')}>

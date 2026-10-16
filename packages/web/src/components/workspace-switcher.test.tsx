@@ -97,3 +97,14 @@ it('keeps menu rows single interactive targets with mobile sizing and a visible 
   expect(screen.getByRole('searchbox').className).toContain('h-11')
   expect(screen.getByRole('searchbox').className).toContain('md:h-9')
 })
+
+// The project folder glyph is a location label, not a status — it must not borrow the `success`
+// (green) token reserved for ok/available/done outcomes. Global keeps its violet accent.
+it('does not paint the project folder glyph as a status success', () => {
+  renderSwitcher('alpha')
+  const trigger = screen.getByRole('button', { name: /Alpha/ })
+  const icon = trigger.querySelector('svg') as SVGElement
+  const classes = icon.getAttribute('class') ?? ''
+  expect(classes).toContain('text-foreground')
+  expect(classes).not.toContain('text-success')
+})

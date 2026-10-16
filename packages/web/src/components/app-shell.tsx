@@ -318,7 +318,7 @@ export const AppShell = React.memo(function AppShell({
         <AppShellMain mainRef={mainRef}>
           {projectId !== null ? (
             <header data-slot="project-header" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs">
-              <span className="font-semibold text-success">{t('Project')}: {projects.find((project) => project.id === projectId)?.name ?? projectId}</span>
+              <span className="font-semibold text-foreground">{t('Project')}: {projects.find((project) => project.id === projectId)?.name ?? projectId}</span>
               <RouterLink to="/" className="ml-auto rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{t('Back to global workspace')}</RouterLink>
             </header>
           ) : null}
@@ -684,9 +684,6 @@ function SidebarContent({
       </nav>
       {projectId !== null ? (
         <div data-slot="project-navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="border-t border-border px-3.5 pt-2 text-xs font-semibold text-success">
-            {projects.find((project) => project.id === projectId)?.name ?? projectId}
-          </div>
           <nav aria-label={t('Project')} className="px-2.5 py-1.5">
             {items.map((item) => {
               const isActive = item.to === activeTo

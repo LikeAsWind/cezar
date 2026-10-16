@@ -77,6 +77,26 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: /New task/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Add project' })).toBeTruthy()
   })
+
+  // The active project's name is already named by the workspace switcher; the sidebar project
+  // section must not repeat it as a header row — the nav items lead directly (option B).
+  it('does not repeat the project name as a header inside the project navigation', () => {
+    renderProjectShell('/')
+    const section = document.querySelector('[data-slot="project-navigation"]') as HTMLElement
+    const first = section.firstElementChild as HTMLElement
+    expect(first.tagName).toBe('NAV')
+    expect(first.getAttribute('aria-label')).toBe('Project')
+    // No project is registered in this render, so a repeated name would read the URL id "alpha".
+    expect(section.textContent).not.toContain('alpha')
+  })
+
+  // The project banner above the scroller is chrome, not a status — it must not borrow the
+  // `success` (green) token reserved for ok/available/done outcomes.
+  it('renders the project banner in the neutral foreground colour', () => {
+    renderProjectShell('/')
+    const banner = document.querySelector('[data-slot="project-header"]') as HTMLElement
+    expect(banner.className).not.toContain('text-success')
+  })
   it('renders the routed view in the main region', () => {
     renderProjectShell('/', {}, <p>route content</p>)
     expect(within(screen.getByRole('main')).getByText('route content')).toBeTruthy()
