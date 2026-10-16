@@ -87,7 +87,7 @@ export function buildProjectOverviewModel(input: ProjectOverviewInput): ProjectO
     },
     tasks: {
       status: runs === undefined || worktrees === undefined ? 'unavailable' : 'ready',
-      running: runs?.filter((run) => run.status === 'queued' || run.status === 'running' || run.status === 'waiting').length ?? null,
+      running: runs?.filter((run) => run.status === 'running').length ?? null,
       needsAttention: runs?.filter((run) => run.status === 'review').length ?? null,
       failed: runs?.filter((run) => run.status === 'failed').length ?? null,
       worktrees: worktrees?.length ?? null,

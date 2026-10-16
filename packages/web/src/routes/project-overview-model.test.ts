@@ -155,6 +155,6 @@ describe('buildProjectOverviewModel', () => {
       worktrees: { worktrees: [{ runId: '1', title: 'One', status: 'done', branch: null, sizeBytes: 1, finishedAt: null, reclaimable: true }], totalBytes: 1, keep: 4 },
     })
 
-    expect(model.tasks).toMatchObject({ running: 3, needsAttention: 1, failed: 1, worktrees: 1 })
+    expect(model.tasks).toMatchObject({ running: 1, needsAttention: 1, failed: 1, worktrees: 1 })
   })
 })
