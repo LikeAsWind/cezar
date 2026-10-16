@@ -208,7 +208,8 @@ describe('sidebar wiring', () => {
     await screen.findByRole('button', { name: /Global workspace/ })
     await waitFor(() => expect(versionChip()).not.toBeNull())
     expect(screen.queryByRole('navigation', { name: 'Project' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'New task' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByRole('link', { name: /New task/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add project' })).toBeTruthy()
     expect(fetchMock.mock.calls.map((call) => String(call[0])).filter((path) => /\/(runs|todos|skills\/update)$/.test(path))).toEqual([])
   })
 

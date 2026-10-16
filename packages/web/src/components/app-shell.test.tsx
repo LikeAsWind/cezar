@@ -56,10 +56,13 @@ const sidebar = () => document.querySelector('[data-slot="sidebar"]') as HTMLEle
 const footer = () => document.querySelector('[data-slot="sidebar-footer"]') as HTMLElement
 
 describe('AppShell', () => {
-  it('keeps global navigation and disables task creation without a URL project', () => {
+  it('keeps global navigation and offers only Add project without a URL project', () => {
     renderShell('/')
-    expect(screen.getByRole('button', { name: 'New task' }).hasAttribute('disabled')).toBe(true)
-    expect(screen.getByText('Select a project before creating a task')).toBeTruthy()
+    // No project is selected, so a task has nowhere to land: the New task CTA is gone and the
+    // full-width primary action is adding a project instead.
+    expect(screen.queryByRole('link', { name: /New task/ })).toBeNull()
+    expect(screen.queryByText('Select a project before creating a task')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add project' })).toBeTruthy()
     expect(screen.queryByRole('navigation', { name: 'Project' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Workspace' }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('link', { name: 'Projects' }).getAttribute('href')).toBe('/projects')
@@ -71,7 +74,8 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Back to global workspace' }))
     expect(screen.getByTestId('location').textContent).toBe('/')
     expect(screen.queryByRole('navigation', { name: 'Project' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'New task' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByRole('link', { name: /New task/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add project' })).toBeTruthy()
   })
   it('renders the routed view in the main region', () => {
     renderProjectShell('/', {}, <p>route content</p>)

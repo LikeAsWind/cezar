@@ -614,7 +614,6 @@ function SidebarContent({
   const projectId = useActiveProjectId()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const newTaskReasonId = React.useId()
 
   return (
     <div
@@ -647,25 +646,31 @@ function SidebarContent({
           onRegister={() => { navigate('/projects?register=1'); onNavigate?.() }} />
       </div>
       <div className="flex gap-1.5 px-2.5 pt-1 pb-2">
-        {projectId !== null ? <Button asChild variant="contrast" className="relative min-w-0 flex-1 justify-center">
-          {/* A Router Link since R4 Step 1.1: the React /new composer is real, so deliberate
-              New task affordances stay inside the SPA. Full document loads of /new (the
-              bookmarklet contract) land on the shell like any route (static-ui.ts) — the
-              React composer has owned auto-start parity since R4 Step 1.3. */}
-          <RouterLink to={scopeTo(projectId, '/new')} onClick={onNavigate}>
-            <PlusIcon className="size-[15px]" aria-hidden="true" />{t('New task')}{/* Decorative: the `c`-to-create accelerator is registered in the command palette.
-                (⌘N is also bound there, but only the desktop shell receives it — the browser
-                reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
-            <kbd
-              aria-hidden="true"
-              className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-[5px] py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
-            >{t('C')}</kbd>
-          </RouterLink>
-        </Button> : <Button disabled variant="contrast" className="flex-1" aria-describedby={newTaskReasonId}>{t('New task')}</Button>}
-        {singleProject ? null : <AddProjectMenu projects={projects} />}
+        {projectId !== null ? (
+          <>
+            <Button asChild variant="contrast" className="relative min-w-0 flex-1 justify-center">
+              {/* A Router Link since R4 Step 1.1: the React /new composer is real, so deliberate
+                  New task affordances stay inside the SPA. Full document loads of /new (the
+                  bookmarklet contract) land on the shell like any route (static-ui.ts) — the
+                  React composer has owned auto-start parity since R4 Step 1.3. */}
+              <RouterLink to={scopeTo(projectId, '/new')} onClick={onNavigate}>
+                <PlusIcon className="size-[15px]" aria-hidden="true" />{t('New task')}{/* Decorative: the `c`-to-create accelerator is registered in the command palette.
+                    (⌘N is also bound there, but only the desktop shell receives it — the browser
+                    reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
+                <kbd
+                  aria-hidden="true"
+                  className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-[5px] py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
+                >{t('C')}</kbd>
+              </RouterLink>
+            </Button>
+            {singleProject ? null : <AddProjectMenu projects={projects} />}
+          </>
+        ) : (
+          // No project selected: a task has nowhere to land, so the New task CTA is omitted and
+          // adding a project is the one action worth a full-width primary.
+          <AddProjectMenu projects={projects} fullWidth />
+        )}
       </div>
-
-      {projectId === null ? <p id={newTaskReasonId} className="px-3.5 pb-2 text-xs text-muted-foreground">{t('Select a project before creating a task')}</p> : null}
       <nav aria-label={t('Global workspace')} className="shrink-0 px-2.5 py-1.5">
         {GLOBAL_NAV_ITEMS.map((item) => {
           const isActive = item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(item.to + '/')
@@ -839,7 +844,7 @@ function GlobalSettingsLink({
  * places that mount it without a QueryClient. The cost is no close animation, which is the
  * cheaper half of the trade.
  */
-function AddProjectMenu({ projects }: { projects: readonly ProjectListEntry[] }) {
+function AddProjectMenu({ projects, fullWidth = false }: { projects: readonly ProjectListEntry[]; fullWidth?: boolean }) {
   useLocale()
 
   const [browsing, setBrowsing] = React.useState(false)
@@ -848,15 +853,18 @@ function AddProjectMenu({ projects }: { projects: readonly ProjectListEntry[] })
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {/* size-11 in the drawer (touch target), the CTA's height on desktop. */}
+        {/* size-11 in the drawer (touch target), the CTA's height on desktop. `fullWidth` is the
+            global-workspace state: adding a project is the only task there, so it takes the whole
+            primary row instead of the 44px icon button that sits beside a project's New task CTA. */}
         <Button
-          variant="outline"
-          size="icon"
+          variant={fullWidth ? 'contrast' : 'outline'}
+          size={fullWidth ? 'default' : 'icon'}
           aria-label={t('Add project')}
           title={t('Add project')}
-          className="size-11 shrink-0 md:size-9"
+          className={fullWidth ? 'min-w-0 flex-1 justify-center' : 'size-11 shrink-0 md:size-9'}
         >
-          <FolderOpenIcon className="size-4" aria-hidden="true" />
+          {fullWidth ? <PlusIcon className="size-[15px]" aria-hidden="true" /> : <FolderOpenIcon className="size-4" aria-hidden="true" />}
+          {fullWidth ? t('Add project') : null}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
