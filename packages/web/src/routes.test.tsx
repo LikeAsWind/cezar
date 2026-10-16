@@ -254,7 +254,9 @@ describe('scoped route map (/p/:projectId)', () => {
     expect(screen.getByRole('heading', { name, level: 2 })).not.toBeNull()
     expect(screen.getByText(root)).not.toBeNull()
     expect(screen.getByRole('link', { name: 'Tasks & Worktrees' }).getAttribute('href')).toBe(`/p/${id}/tasks`)
-    expect(screen.getByRole('link', { name: 'Back to global workspace' }).getAttribute('href')).toBe('/')
+    // The standalone route does not duplicate the shell-owned return link; AppShell's composed
+    // route test covers the single link and its navigation.
+    expect(screen.queryByRole('link', { name: 'Back to global workspace' })).toBeNull()
     expect(screen.queryByLabelText('Search tasks')).toBeNull()
   })
 
@@ -495,6 +497,32 @@ describe('global workspace routes', () => {
     expect(routeName()).toBe('global-tasks')
     expect(currentPathname()).toBe('/tasks')
     expect(getApiScope()).toBeNull()
+  })
+
+  it.each([
+    ['/', 'Workspace'],
+    ['/tasks', 'All tasks'],
+    ['/projects', 'Projects'],
+    ['/p/boot/', 'Project overview'],
+  ])('gives %s one visible page heading and a shared page frame', (entry, title) => {
+    renderAt(entry)
+    const route = document.querySelector('[data-route]')!
+    expect(route.querySelectorAll('h1')).toHaveLength(1)
+    const heading = screen.getByRole('heading', { level: 1, name: title })
+    expect(heading.closest('[hidden], [aria-hidden="true"], .hidden')).toBeNull()
+    expect(route.querySelector('[data-slot="page-header"]')).not.toBeNull()
+    expect(route.querySelector('[data-slot="page-content"]')).not.toBeNull()
+  })
+
+  it('keeps global task page actions in one accessible region with mobile-sized targets', () => {
+    renderAt('/tasks')
+    const heading = screen.getByRole('heading', { level: 1, name: 'All tasks' })
+    const actions = screen.getByRole('group', { name: 'All tasks' })
+    expect(heading.closest('header')?.contains(actions)).toBe(true)
+    expect(actions.querySelectorAll('button')).toHaveLength(2)
+    expect(actions.className).toContain('[&_button]:min-h-11')
+    expect(actions.className).toContain('md:[&_button]:min-h-9')
+    expect(actions.querySelector('input')?.className).toContain('min-h-11')
   })
 
   it('renders project management outside project scope', () => {

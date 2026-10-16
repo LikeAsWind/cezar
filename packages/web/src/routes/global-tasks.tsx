@@ -35,6 +35,7 @@ import { ReferenceOverflow } from '@/components/reference-overflow'
 import { ResolveConflictsForRun } from '@/components/reference-conflict-action'
 import { ReferenceStatusProvider } from '@/components/reference-status'
 import { SubtaskToggle } from '@/components/subtask-toggle'
+import { PageContent, PageFrame, PageHeader } from '@/components/page-frame'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -379,14 +380,17 @@ export function GlobalTasksRoute() {
 
   if (index.isError || projects.isError) {
     return (
-      <div data-route="global-tasks" className="flex min-h-full flex-col">
-        <CenteredState
-          icon={<LayersIcon />}
-          tone="danger"
-          title={t('Tasks across projects did not load')}
-          subtitle={(index.error ?? projects.error)?.message}
-        />
-      </div>
+      <PageFrame data-route="global-tasks">
+        <PageHeader title={t('All tasks')} />
+        <PageContent>
+          <CenteredState
+            icon={<LayersIcon />}
+            tone="danger"
+            title={t('Tasks across projects did not load')}
+            subtitle={(index.error ?? projects.error)?.message}
+          />
+        </PageContent>
+      </PageFrame>
     )
   }
 
@@ -402,28 +406,31 @@ export function GlobalTasksRoute() {
         onChange={(event) => setQueryDraft(event.target.value)}
         placeholder={t('Search every project…')}
         aria-label={t('Search tasks across projects')}
-        className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-[13px] text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="h-9 min-h-11 w-full rounded-md border border-input bg-card pr-3 pl-8 text-[13px] text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-9"
       />
     </div>
   )
 
   return (
-    <div data-route="global-tasks" className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">{t('All tasks')}</h1>
-        <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
-          <ViewTab view="active" current={view} onSelect={setView}>{t('Active')}</ViewTab>
-          <ViewTab view="archived" current={view} onSelect={setView}>{t('Archived')}</ViewTab>
-        </div>
-        <div className="flex-1" />
-        <span data-slot="global-tasks-count" className="text-[12.5px] text-soft-foreground tabular-nums">
-          {visible.length}{' '}{t('of')}{' '}{allTasks.length}
-        </span>
-        {search}
-      </header>
+    <PageFrame data-route="global-tasks">
+      <PageHeader
+        title={t('All tasks')}
+        actions={(
+          <>
+            <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
+              <ViewTab view="active" current={view} onSelect={setView}>{t('Active')}</ViewTab>
+              <ViewTab view="archived" current={view} onSelect={setView}>{t('Archived')}</ViewTab>
+            </div>
+            <span data-slot="global-tasks-count" className="text-[12.5px] text-soft-foreground tabular-nums">
+              {visible.length}{' '}{t('of')}{' '}{allTasks.length}
+            </span>
+            <div className="hidden md:block">{search}</div>
+          </>
+        )}
+      />
 
-      <div className="flex flex-1 flex-col gap-3 p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
-        {/* Below `md` the header above is hidden, so the search box rides here instead. */}
+      <PageContent className="gap-3">
+        {/* On narrow screens the search box follows the page title instead of sitting in the action row. */}
         <div className="md:hidden">{search}</div>
 
         <FilterBar
@@ -500,8 +507,8 @@ export function GlobalTasksRoute() {
             ))}
           </ReferenceStatusProvider>
         )}
-      </div>
-    </div>
+      </PageContent>
+    </PageFrame>
   )
 }
 

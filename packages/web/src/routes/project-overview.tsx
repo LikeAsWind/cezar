@@ -84,8 +84,9 @@ export function ProjectOverviewRoute() {
 
   return (
     <PageFrame data-route="project-overview">
-      <PageHeader title={t('Project overview')} description={project.name || project.id} />
+      <PageHeader title={t('Project overview')} />
       <PageContent>
+        <h2 className="text-sm font-semibold">{project.name || project.id}</h2>
         <div className="grid gap-5 lg:grid-cols-2">
           <OverviewSection title={t('Project identity')}>
             <OverviewLinkCard

@@ -281,6 +281,26 @@ describe('design guardian', () => {
     expect(sources.length).toBeGreaterThan(40)
   })
 
+  it('keeps global and overview pages on the shared responsive frame', () => {
+    const routeFiles = [
+      'src/routes/global-tasks.tsx',
+      'src/routes/projects.tsx',
+      'src/routes/workspace-home.tsx',
+      'src/routes/project-overview.tsx',
+    ]
+    for (const rel of routeFiles) {
+      const source = sources.find((file) => file.rel === rel)?.lines.join('\n')
+      expect(source, `${rel} is included in the design scan`).toBeDefined()
+      expect(source, `${rel} imports the shared page primitives`).toContain("from '@/components/page-frame'")
+      expect(source, `${rel} composes the shared page frame`).toContain('<PageFrame')
+      expect(source, `${rel} uses the shared page header`).toContain('<PageHeader')
+      expect(source, `${rel} uses the shared page content`).toContain('<PageContent')
+      expect(source, `${rel} does not copy the sticky page-header classes`).not.toMatch(
+        /<header\b[^>]*className=["'`][^"'`]*sticky top-0/,
+      )
+    }
+  })
+
   for (const rule of RULES) {
     it(`${rule.name}: ${rule.why}`, () => {
       const violations: string[] = []
