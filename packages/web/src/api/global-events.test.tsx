@@ -1194,7 +1194,7 @@ describe('GlobalEventsProvider', () => {
 
 
 it.each(['event', 'reconnect', 'visibility'])('discards old project/tracker requests after %s', async trigger => {
-  const keys = [workspaceQueryKeys.projects, ['tracker', BOOT, 'association']] as const
+  const keys = [workspaceQueryKeys.projects, projectQueryKeys.tracker.associationFor(BOOT), [...projectQueryKeys.tracker.allFor(BOOT), 'connection']] as const
   const controls = keys.map((queryKey) => {
     let resolveOld!: (value: string) => void
     const old = new Promise<string>((resolve) => { resolveOld = resolve })

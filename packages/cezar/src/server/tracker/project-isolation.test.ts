@@ -34,6 +34,20 @@ beforeEach(async () => {
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const service = () => createTrackerService({ CEZ_HOME: join(root, 'home'), JIRA_API_TOKEN: 'ignored', LINEAR_API_KEY: 'ignored' }, fetcher);
 const data = (project: string) => join(project, '.ai/cezar');
+it('restores a saved TAPD workspace and connection after creating a fresh service', async () => {
+  const first = service();
+  const saved = await first.saveConnection(a, { kind: 'tapd', accessToken: 'restart-test-token', timeZone: 'Asia/Shanghai' });
+  expect(saved?.connection).toMatchObject({ kind: 'tapd' });
+  const association = { kind: 'tapd' as const, source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '69280376', externalName: 'Saved workspace', connectionId: saved!.connection!.id };
+  expect(await writeTrackerAssociation(data(a), association)).toBe(true);
+  const before = await readFile(join(data(a), 'tracker.json'), 'utf8');
+  const restarted = service();
+  expect(await restarted.connection(a)).toEqual(saved);
+  const restored = await restarted.driver(a, data(a));
+  expect(restored).toHaveProperty('association', association);
+  expect(await readFile(join(data(a), 'tracker.json'), 'utf8')).toBe(before);
+  expect(calls).toEqual([]);
+});
 async function connect(s: ReturnType<typeof service>, project: string) {
   const result = await s.resolve(project, { kind: 'linear', sourceId: 'same-org', externalId: team, connectionId: (await s.connection(project)).connection?.id });
   if (!result.available) throw new Error(result.reason);

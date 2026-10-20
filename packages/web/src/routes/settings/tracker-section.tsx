@@ -143,7 +143,7 @@ export function TrackerSection() {
     onSuccess: async result => {
       if (queryScope() === result.projectId) { resetSecrets(); setPickerOpen(false); setSelected(null) }
       await queryClient.cancelQueries({ queryKey: queryKeys.tracker.allFor(result.projectId) })
-      queryClient.setQueryData(['tracker', result.projectId, 'connection'], { connection: result.connection, demo: result.demo })
+      queryClient.setQueryData([...queryKeys.tracker.allFor(result.projectId), 'connection'], { connection: result.connection, demo: result.demo })
       await refresh(result.projectId)
       toast(t('Credentials saved for this project. Browse and connect a scope.'))
     },
@@ -154,7 +154,7 @@ export function TrackerSection() {
     onSuccess: async projectId => {
       if (queryScope() === projectId) { resetSecrets(); setPickerOpen(false); setSelected(null) }
       await queryClient.cancelQueries({ queryKey: queryKeys.tracker.allFor(projectId) })
-      queryClient.setQueryData(['tracker', projectId, 'connection'], { connection: null, demo: false })
+      queryClient.setQueryData([...queryKeys.tracker.allFor(projectId), 'connection'], { connection: null, demo: false })
       await refresh(projectId)
       toast(t('Project credentials removed'))
     },

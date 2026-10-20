@@ -334,10 +334,10 @@ async function reconcile(queryClient: QueryClient): Promise<void> {
       // Visible tracker lists own their first-page watch; refetching an infinite query here
       // would reload every loaded page on visibility/SSE reconnect and defeat pagination protection.
       Promise.all([
-        queryClient.cancelQueries({ queryKey: ['tracker'], predicate: q => q.queryKey[2] !== 'items' || q.getObserversCount() === 0 }),
+        queryClient.cancelQueries({ predicate: q => q.queryKey[0] === 'project' && q.queryKey[2] === 'tracker' && (q.queryKey[3] !== 'items' || q.getObserversCount() === 0) }),
         queryClient.cancelQueries({ queryKey: workspaceQueryKeys.projects }),
       ]).then(() => Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['tracker'], predicate: q => q.queryKey[2] !== 'items' || q.getObserversCount() === 0 }),
+        queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === 'project' && q.queryKey[2] === 'tracker' && (q.queryKey[3] !== 'items' || q.getObserversCount() === 0) }),
         queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.projects }),
       ])),
       ...cachedProjectScopes(queryClient)
@@ -640,13 +640,14 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
             return
           }
           if (name === 'tracker-changed') {
-            if (!trackerChangedEventSchema.safeParse(payload).success) return
+            const parsed = trackerChangedEventSchema.safeParse(payload)
+            if (!parsed.success) return
             // Cancel old requests before refetch: a replacement must not resurrect old tickets.
             void Promise.all([
-              queryClient.cancelQueries({ queryKey: ['tracker'] }),
+              queryClient.cancelQueries({ queryKey: projectQueryKeys.tracker.allFor(parsed.data.project) }),
               queryClient.cancelQueries({ queryKey: workspaceQueryKeys.projects }),
             ]).then(() => Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['tracker'] }),
+              queryClient.invalidateQueries({ queryKey: projectQueryKeys.tracker.allFor(parsed.data.project) }),
               queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.projects }),
             ]))
           }

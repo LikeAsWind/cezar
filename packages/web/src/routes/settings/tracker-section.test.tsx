@@ -10,6 +10,7 @@ import { createQueryClient } from '@/api/query-client'
 import { TrackerSection } from './tracker-section'
 
 beforeEach(() => {
+  setApiScope('default')
   // cmdk sizes its list with a ResizeObserver and scrolls the selected item into view;
   // jsdom has neither.
   vi.stubGlobal('ResizeObserver', class { observe() {}; unobserve() {}; disconnect() {} })
@@ -19,6 +20,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); setApiScope(null); vi.unstubAllGlobals() })
 
 describe('Tracker settings', () => {
+  it('restores a saved TAPD workspace on a fresh page load without selecting it again', async () => {
+    const saved = { kind: 'tapd', connectionId: '11111111-1111-4111-8111-111111111111', source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '69280376', externalName: 'Saved TAPD workspace' }
+    const requests: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      requests.push(`${init?.method ?? 'GET'} ${url}`)
+      return new Response(JSON.stringify(url.endsWith('/tracker/connection')
+        ? { connection: { id: saved.connectionId, kind: 'tapd' }, demo: false }
+        : { association: saved }), { status: 200 })
+    }))
+    for (let load = 0; load < 2; load++) {
+      const client = createQueryClient()
+      const view = render(<MemoryRouter><QueryClientProvider client={client}><TrackerSection /></QueryClientProvider></MemoryRouter>)
+      expect(await screen.findByText('Saved TAPD workspace')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+      expect(screen.queryByText(/This scope needs reconnection/)).toBeNull()
+      view.unmount()
+      client.clear()
+    }
+    expect(requests.every(request => request.startsWith('GET ') && !request.includes('/tracker/candidates'))).toBe(true)
+  })
+
   it('searches and paginates candidates before connecting the selected project', async () => {
     const requests: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -123,8 +146,8 @@ describe('Tracker settings', () => {
     }))
     const client = createQueryClient()
     client.setQueryData(queryKeys.tracker.connection(), { connection: null, demo: true })
-    client.setQueryData(['tracker', 'project-a', 'connection'], { connection: null, demo: true })
-    client.setQueryData(['tracker', 'project-b', 'connection'], { connection: null, demo: true })
+    client.setQueryData([...queryKeys.tracker.allFor('project-a'), 'connection'], { connection: null, demo: true })
+    client.setQueryData([...queryKeys.tracker.allFor('project-b'), 'connection'], { connection: null, demo: true })
     setApiScope('project-a')
     client.setQueryData(queryKeys.tracker.connection(), { connection: null, demo: true })
     const view = render(
@@ -175,8 +198,8 @@ describe('Tracker settings', () => {
     }))
     const client = createQueryClient()
     client.setQueryData(queryKeys.tracker.connection(), { connection: null, demo: true })
-    client.setQueryData(['tracker', 'project-a', 'connection'], { connection: null, demo: true })
-    client.setQueryData(['tracker', 'project-b', 'connection'], { connection: null, demo: true })
+    client.setQueryData([...queryKeys.tracker.allFor('project-a'), 'connection'], { connection: null, demo: true })
+    client.setQueryData([...queryKeys.tracker.allFor('project-b'), 'connection'], { connection: null, demo: true })
     setApiScope('project-a')
     const view = render(
       <MemoryRouter><QueryClientProvider client={client}>
