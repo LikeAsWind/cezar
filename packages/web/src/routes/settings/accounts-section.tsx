@@ -360,7 +360,15 @@ function DefaultsForNewProjects({ profiles }: { profiles: AgentProfilesResponse 
 
   const save = useMutation({
     mutationFn: (patch: SetWorkspaceConfigInput) => putWorkspaceConfig(patch),
-    onSuccess: (result) => queryClient.setQueryData(workspaceQueryKeys.config, result),
+    onSuccess: (result) => {
+      queryClient.setQueryData(workspaceQueryKeys.config, result)
+      // `agentDefaults` seed the per-project `/api/v1/config` on the SERVER (`withMachineDefaults`),
+      // so a workspace default changed here must re-read every cached project config too — the
+      // composer (new-task.tsx) reads `defaultModels`/`defaultRunner` from that cache, not from here.
+      void queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey[0] === 'project' && q.queryKey[2] === 'config',
+      })
+    },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
 

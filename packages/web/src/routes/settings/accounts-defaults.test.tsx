@@ -1,4 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -154,6 +154,7 @@ function renderAccounts() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return client
 }
 
 const defaults = () => document.querySelector('[data-slot="accounts-defaults"]')
@@ -174,6 +175,24 @@ afterEach(() => {
 })
 
 describe('Agent accounts → Defaults for new projects', () => {
+  it('refreshes cached project defaults immediately after saving a workspace model', async () => {
+    serve({ agentDefaults: { models: { claude: 'opus' } } })
+    const client = renderAccounts()
+    const key = ['project', 'alpha', 'config'] as const
+    client.setQueryData(key, { defaultModels: { claude: 'opus' } })
+    const read = vi.fn(async () => ({ defaultModels: {} }))
+    const observer = new QueryObserver(client, { queryKey: key, queryFn: read })
+    const unsubscribe = observer.subscribe(() => {})
+    try {
+      const select = () => document.querySelector<HTMLSelectElement>('[data-slot="accounts-default-model"][data-runner="claude"]')
+      await waitFor(() => expect(select()).not.toBeNull())
+      expect(read).not.toHaveBeenCalled()
+      fireEvent.change(select()!, { target: { value: '' } })
+      await waitFor(() => expect(client.getQueryData(key)).toEqual({ defaultModels: {} }))
+      expect(read).toHaveBeenCalledTimes(1)
+    } finally { unsubscribe() }
+  })
+
   it('survives a server that has never heard of agent defaults', async () => {
     // Version skew, and it crashed this page for real: Vite serves this bundle while `dist/` or
     // another process serves the API, so an older server answers `/workspace/config` with no
