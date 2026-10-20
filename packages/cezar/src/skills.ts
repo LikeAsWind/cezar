@@ -6,6 +6,7 @@ import { gatedSkillsRepos } from './config.ts';
 import { getTeamSkillsCached } from './skills-remote.ts';
 import { readUiState } from './ui-state.ts';
 import { builtinSkills } from './automations/builtin-skill.ts';
+import { unattendedSkills } from './workflows/superpowers-bundle.ts';
 
 /**
  * A skill is a Markdown file with optional YAML-ish frontmatter (`name`,
@@ -22,8 +23,8 @@ export interface Skill {
   interactive?: true;
   body: string;
   path: string;
-  /** `builtin` is the one skill cezar ships itself (`create-cezar-automation`, spec
-   *  2026-09-13-automations-from-prompt) — listed last, and only while automations are reachable. */
+  /** Built-in playbooks have lowest precedence. The automation playbook additionally
+   *  requires a reachable cockpit; the unattended workflow is available in every project. */
   source: 'ai' | 'cezar' | 'agents' | 'global' | 'team' | 'builtin';
   /** Team skills only: where the definition lives in its skills repo. */
   team?: {
@@ -103,7 +104,7 @@ export async function discoverSkills(repoRoot: string): Promise<Skill[]> {
   );
   const merged: Skill[] = [];
   const seen = new Set<string>();
-  for (const skills of [...lists, teamSkills, builtinSkills()]) {
+  for (const skills of [...lists, teamSkills, [...builtinSkills(), ...unattendedSkills()]]) {
     for (const skill of skills) {
       if (seen.has(skill.name)) continue;
       seen.add(skill.name);

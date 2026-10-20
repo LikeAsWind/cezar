@@ -14,6 +14,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { findPackGaps } from '../dist/pack-check.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,6 +37,17 @@ if (files.length === 0) {
 }
 
 const gaps = findPackGaps(files);
+if (!files.includes('scripts/probe-policy.mjs')) gaps.push('host probe policy script missing: scripts/probe-policy.mjs');
+for (const entry of ['scripts/workflow-action.mjs', 'scripts/workflow/artifacts.mjs', 'dist/workflows/templates/unattended.js', 'dist/workflows/superpowers-bundle.js']) {
+  if (!files.includes(entry)) gaps.push(`host workflow action asset missing: ${entry}`);
+}
+const unattended = 'dist/workflows/assets/superpowers';
+const manifest = JSON.parse(readFileSync(path.join(repoRoot, unattended, 'provenance.json'), 'utf8'));
+const required = ['skills/project-probe/SKILL.md', 'skills/adjudicator/SKILL.md', 'context.md', 'provenance.json',
+  ...Object.keys(manifest.files)];
+for (const entry of required) {
+  if (!files.includes(`${unattended}/${entry}`)) gaps.push(`built-in unattended asset missing: ${unattended}/${entry}`);
+}
 if (gaps.length > 0) {
   console.error('check:pack: the npm tarball would ship a broken cockpit:');
   for (const gap of gaps) console.error(`  - ${gap}`);

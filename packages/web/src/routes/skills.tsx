@@ -21,6 +21,7 @@ import { SkillDetailBody, SkillSourceTag } from '@/components/skill-detail'
 import type { SkillActivation } from '@/components/skill-detail'
 import { SkillEmptyHint } from '@/components/skill-empty-hint'
 import { SkillsUpdateCard } from '@/components/skills-update-card'
+import { SuperpowersUpdateCard } from '@/components/superpowers-update-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -214,6 +215,7 @@ function SkillsCatalog() {
         {projectId ? (
           <div className="shrink-0 px-3 pb-2">
             <SkillsUpdateCard projectId={projectId} state={updateQuery.data} loadError={updateQuery.error} />
+            <SuperpowersUpdateCard />
           </div>
         ) : null}
         {importableQuery.isError ? (

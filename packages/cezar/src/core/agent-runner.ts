@@ -39,6 +39,8 @@ export function isRunnerId(value: string): value is RunnerId {
 }
 
 export interface AgentRunSpec {
+  /** Host-enforced discovery boundary, never an agent-supplied setting. */
+  probePolicy?: { root: string; runId: string };
   /** Appended to the CLI's default system prompt (`--append-system-prompt`). */
   systemPrompt?: string;
   userPrompt: string;

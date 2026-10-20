@@ -40,7 +40,7 @@
     "test:unit": "node --import tsx --test test/unit/*.test.ts",
     "test:package": "node --import tsx --test test/e2e/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "postbuild": "node scripts/inline-contract.mjs"
+    "postbuild": "node scripts/inline-contract.mjs && node scripts/copy-workflow-assets.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
@@ -50,6 +50,7 @@
     "parse5": "^8.0.1",
     "proper-lockfile": "4.1.2",
     "smol-toml": "^1.7.0",
+    "tar": "^7.5.22",
     "ws": "^8.21.1",
     "yaml": "^2.5.0",
     "zod": "^4.4.3"

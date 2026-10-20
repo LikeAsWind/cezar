@@ -18,6 +18,8 @@ import type {
 export type { AgentSession, SessionOptions } from './agent-runner.ts';
 import { isSignalTerminationExit, trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
+import { claudeProbeArgs } from './probe-policy.ts';
+import { writeClaudeProbeSettings } from './claude-probe-settings.ts';
 import { disclaimedCommand } from './disclaim-spawn.ts';
 import { resolveClaudeBin } from './claude-bin.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
@@ -50,12 +52,14 @@ export const AUTO_END_DELAY_MS = 250;
  * prose rather than an invitation to use Claude Code's interactive controls.
  */
 export const CLAUDE_HEADLESS_GUIDANCE = `You are running Claude Code through cezar's headless integration. Permission prompts cannot be answered in the cezar cockpit. If a tool call is denied, do not suggest Shift+Tab, /permissions, changing Claude permission settings, or replying Continue to retry it. Report the exact blocked tool and path or command, stop retrying that operation, and explain that the task's actual Open in… action is the workaround: continue in an interactive claude --resume <session id> shell in the task worktree and approve the prompt there. Do not use filesystem workarounds or claim that cezar can approve the request.`;
+const CLAUDE_PROBE_GUIDANCE = `You are running a host-restricted discovery stage. Tool denials express stage boundaries, not missing human approval. Never suggest changing permissions or an interactive session to bypass them. If a progress checkpoint denies further source reads, first save the permitted mapped probe.md and context-map.jsonl using evidence already read, then resume within the stated scope. If a broad search is denied, choose an explicit in-worktree file/module scope. Do not compile/test, delegate, or scan external directories. Record genuinely unavailable evidence and return blocked only when it prevents the required discovery contract.`;
 
 /** Keep caller-owned instructions intact while adding guidance owned by this backend. */
-export function appendClaudeSystemPrompt(systemPrompt?: string): string {
+export function appendClaudeSystemPrompt(systemPrompt?: string, probe = false): string {
+  const guidance = probe ? CLAUDE_PROBE_GUIDANCE : CLAUDE_HEADLESS_GUIDANCE;
   return systemPrompt
-    ? `${systemPrompt}\n\n---\n\n${CLAUDE_HEADLESS_GUIDANCE}`
-    : CLAUDE_HEADLESS_GUIDANCE;
+    ? `${systemPrompt}\n\n---\n\n${guidance}`
+    : guidance;
 }
 
 export interface ClaudeCliRunnerOptions {
@@ -120,8 +124,9 @@ export class ClaudeCliRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const mcpConfig = writeClaudeMcpConfig(spec.mcpServers);
+    const mcpConfig = writeClaudeMcpConfig(spec.probePolicy ? undefined : spec.mcpServers);
     const args = buildClaudeArgs(spec, process.env, mcpConfig?.path);
+    const probeSettings = writeClaudeProbeSettings(spec, args);
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -130,6 +135,7 @@ export class ClaudeCliRunner implements AgentRunner {
       child = nodeSpawn(file, argv, { cwd: spec.cwd, env });
     } catch (err) {
       mcpConfig?.cleanup();
+      probeSettings?.cleanup();
       throw wrapSpawnError(err, this.bin);
     }
 
@@ -317,15 +323,18 @@ export class ClaudeCliRunner implements AgentRunner {
         if (!timedOut) throw err;
       } finally {
         if (deadline) clearTimeout(deadline);
-        if (killTimer) clearTimeout(killTimer);
         if (hardKillTimer) clearTimeout(hardKillTimer);
         if (autoEndTimer) clearTimeout(autoEndTimer);
         stdinOpen = false;
         // stdout closed: the CLI read `--mcp-config` at startup long ago, so the file can go.
         mcpConfig?.cleanup();
+        probeSettings?.cleanup();
       }
 
       const exitCode = await waitForExit(child);
+      // stdout can close as soon as the timeout destroys it, before the process exits.
+      // Keep the timeout's SIGKILL armed until the process has actually settled.
+      if (killTimer) clearTimeout(killTimer);
       if (eofTermTimer) clearTimeout(eofTermTimer);
       if (eofKillTimer) clearTimeout(eofKillTimer);
 
@@ -409,9 +418,9 @@ export function buildClaudeArgs(
     '--verbose',
     '--include-partial-messages',
     '--permission-mode',
-    env.CEZ_APPROVAL_GATE === '1' ? 'acceptEdits' : 'dontAsk',
+    !spec.probePolicy && env.CEZ_APPROVAL_GATE === '1' ? 'acceptEdits' : 'dontAsk',
   ];
-  args.push('--append-system-prompt', appendClaudeSystemPrompt(spec.systemPrompt));
+  args.push('--append-system-prompt', appendClaudeSystemPrompt(spec.systemPrompt, !!spec.probePolicy));
   // Pin the session so the user can `claude --resume <sessionId>` in the repo
   // to take over interactively after a run. With `resume` we reopen the
   // existing on-disk conversation instead.
@@ -422,16 +431,19 @@ export function buildClaudeArgs(
       args.push('--session-id', spec.sessionId);
     }
   }
-  const allowed = buildAllowedTools(spec.allowedTools ?? [], spec.bashAllowlist);
+  // Mutating tools and Bash are visible but never pre-approved during probe.
+  // The host hook grants each safe call. A missing/timed-out hook falls back to dontAsk denial.
+  const allowed = buildAllowedTools(spec.probePolicy ? ['Read', 'Glob', 'Grep'] : spec.allowedTools ?? [], spec.bashAllowlist);
   // Private MCP servers (spec 2026-10-07-private-project-mcp): `--mcp-config` ADDS to the repo's
   // own MCP config, and their tools are allowed — `dontAsk` would deny every one of them otherwise.
-  if (mcpConfigPath && spec.mcpServers?.length) {
+  if (!spec.probePolicy && mcpConfigPath && spec.mcpServers?.length) {
     args.push('--mcp-config', mcpConfigPath);
     allowed.push(...claudeMcpAllowRules(spec.mcpServers));
   }
   if (allowed.length > 0) {
     args.push('--allowedTools', allowed.join(','));
   }
+  if (spec.probePolicy) args.push(...claudeProbeArgs(spec.probePolicy));
   if (spec.model) {
     args.push('--model', spec.model);
   }

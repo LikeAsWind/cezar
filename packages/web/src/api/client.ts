@@ -2398,6 +2398,25 @@ export async function removeAgentProfile(id: string): Promise<RemoveAgentProfile
 
 /** Cached Open Mercato update state for one registered project. The GET is immediate; the
  * server may start a stale detection-only refresh after taking its snapshot. */
+export async function getSuperpowersUpdate(opts?: ReadOptions) {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].$get({}, init(opts)), '/workspace/superpowers-update')
+}
+export async function checkSuperpowersUpdate() {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].check.$post({ json: {} }), '/workspace/superpowers-update/check')
+}
+export async function stageSuperpowersUpdate(version: string) {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].stage.$post({ json: { version } }), '/workspace/superpowers-update/stage')
+}
+export async function activateSuperpowersUpdate(digest: string) {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].activate.$post({ json: { digest, reviewed: true } }), '/workspace/superpowers-update/activate')
+}
+export async function rollbackSuperpowersUpdate() {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].rollback.$post({ json: {} }), '/workspace/superpowers-update/rollback')
+}
+export async function setSuperpowersAutoCheck(autoCheck: boolean) {
+  return unwrap(await cez.api.v1.workspace['superpowers-update'].settings.$put({ json: { autoCheck } }), '/workspace/superpowers-update/settings')
+}
+
 export async function getSkillsUpdate(
   projectId: string,
   opts?: ReadOptions,

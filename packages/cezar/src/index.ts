@@ -48,6 +48,8 @@ Usage:
   cezar task <create|report|list>  dispatch or report from inside a running task (CEZ_DISPATCH=0 turns it off)
   cezar automation <add|create|check|run|list|…>  create and manage automations (GitHub polls, schedules) on a running cockpit
   cezar runs list           list a running cockpit's tasks from a shell (CEZ_API_URL=http://127.0.0.1:4321)
+  cezar workflow-action <init|route|execution|baseline|verify|seal>
+                            execute a host workflow operation in the current task worktree
   cezar init                scaffold .ai/cezar/ (example workflow + skill)
   cezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>)
@@ -120,6 +122,12 @@ async function main(): Promise<void> {
   // `cez runs …` (#1080): the read-only twin for a person at a shell, same addressing.
   if (process.argv[2] === 'runs') {
     process.exitCode = await runRunsCommand(process.argv.slice(3));
+    return;
+  }
+  if (process.argv[2] === 'workflow-action') {
+    const { main } = await import('../scripts/workflow-action.mjs');
+    if (process.argv.length !== 4) throw new Error('usage: cezar workflow-action <init|route|execution|baseline|verify|seal>');
+    await main(process.argv[3]);
     return;
   }
   const { values, positionals } = parseArgs({

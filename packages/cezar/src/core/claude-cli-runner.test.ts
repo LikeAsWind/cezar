@@ -98,6 +98,23 @@ describe('buildClaudeArgs approval gate', () => {
   });
 });
 
+describe('host probe policy', () => {
+  it('keeps shell and writes unapproved unless the hook explicitly grants the call, including approval-gate mode', () => {
+    const args = buildClaudeArgs({ userPrompt: 'probe', cwd: '/repo', probePolicy: { root: '/repo', runId: 'probe-run' }, allowedTools: ['Bash', 'Write', 'Agent'] }, { CEZ_APPROVAL_GATE: '1' });
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('Read,Glob,Grep');
+    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Glob,Grep,Write,Edit,Bash');
+    expect(args[args.indexOf('--setting-sources') + 1]).toBe('');
+    expect(args).toContain('--strict-mcp-config');
+    expect(args[args.indexOf('--disallowedTools') + 1]).toContain('mcp__*');
+    const settings = JSON.parse(args[args.indexOf('--settings') + 1]!);
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('.*');
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('probe-policy.mjs');
+    expect(args[args.indexOf('--append-system-prompt') + 1]).toContain('progress checkpoint');
+    expect(buildClaudeArgs({ userPrompt: 'implement', cwd: '/repo', allowedTools: ['Bash'] })).not.toContain('--settings');
+  });
+});
+
 /**
  * #703 — a session cezar tore down itself must not settle as an agent
  * failure. Every agent CLI installs its own stop-signal handler and exits
@@ -245,6 +262,21 @@ describe('SIGTERM→SIGKILL escalation for a CLI that survives SIGTERM', () => {
       vi.advanceTimersByTime(KILL_GRACE_MS);
       expect(fake.signals).toEqual(['SIGTERM', 'SIGKILL']);
     });
+  });
+
+  it('keeps the timeout kill armed after stdout closes asynchronously', async () => {
+    const fake = signallableChild();
+    spawnHook.override = () => fake.child;
+    vi.useFakeTimers();
+    try {
+      const session = new ClaudeCliRunner({ bin: 'claude', timeoutMs: 20 }).startSession({ userPrompt: 'probe', cwd: process.cwd() });
+      void session.result.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(KILL_GRACE_MS);
+      expect(fake.signals).toEqual(['SIGTERM', 'SIGKILL']);
+      fake.exit(137);
+      await session.result;
+    } finally { vi.useRealTimers(); spawnHook.override = null; }
   });
 
   it('stops escalating once the CLI really exits after SIGTERM', () => {

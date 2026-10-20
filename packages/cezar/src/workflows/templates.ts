@@ -1,5 +1,7 @@
 import { graphIssues, graphToSteps, type WorkflowGraph } from './graph.ts';
 import type { WorkflowDef } from './types.ts';
+import { UNATTENDED_TEMPLATE } from './templates/unattended.ts';
+import { bindWorkflowActions } from './workflow-actions.ts';
 
 /**
  * Built-in graph workflows (spec 2026-09-30-workflow-node-editor, D19): exemplars that show what
@@ -200,4 +202,8 @@ export const REVIEW_COUNCIL = builtIn(
   },
 );
 
-export const BUILT_IN_GRAPH_WORKFLOWS: readonly WorkflowDef[] = [IMPLEMENT_AND_VERIFY, IMPLEMENT_REVIEW_PR, REVIEW_COUNCIL, FIX_CI];
+const unattended = structuredClone(UNATTENDED_TEMPLATE);
+bindWorkflowActions(unattended.nodes);
+export const UNATTENDED = builtIn(unattended.name, unattended.description ?? '', { nodes: unattended.nodes, edges: unattended.edges });
+
+export const BUILT_IN_GRAPH_WORKFLOWS: readonly WorkflowDef[] = [IMPLEMENT_AND_VERIFY, IMPLEMENT_REVIEW_PR, REVIEW_COUNCIL, FIX_CI, UNATTENDED];

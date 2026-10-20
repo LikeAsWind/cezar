@@ -1,3 +1,4 @@
+import { bindWorkflowActions } from './workflow-actions.ts';
 import { readdir, readFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -56,6 +57,7 @@ export async function loadWorkflows(
           issues.push({ path, message: graphDoc.error.issues.map((i) => i.message).join('; ') });
           continue;
         }
+        bindWorkflowActions(graphDoc.data.nodes);
         const problems = graphIssues(graphDoc.data);
         if (problems.length) {
           issues.push({ path, message: problems.join('; ') });

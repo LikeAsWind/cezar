@@ -32,6 +32,10 @@ single factory `createRunner(backend)` in `packages/cezar/src/core/runner-factor
 outside `packages/cezar/src/core/` should ever `new` a concrete runner or branch on the backend
 id — that is the whole point of the seam.
 
+The host may supply `AgentRunSpec.probePolicy` for unattended project discovery. This is a capability requirement, not a portable `allowedTools` hint: currently only Claude implements it, using a restricted built-in tool set, no MCP tools, isolated setting sources, and a host PreToolUse hook. Only reads are pre-approved; the hook grants exact report writes and bounded version queries. Missing hook decisions fall back to `dontAsk` denial for Bash/Write/Edit. The workflow host rejects unsupported backends before launch; never silently ignore this requirement. Ordinary sessions without the field keep their existing behavior.
+
+Isolating setting sources must preserve the selected account's authentication and model configuration. Claude probe launches copy only provider/auth settings into a private temporary settings file alongside the host policy; they never restore user tool permissions, hooks, arbitrary environment variables or MCP configuration. Credentials stay out of argv and prompts, and the temporary file is removed after spawn failure or session close. Disabling settings without carrying provider configuration breaks accounts authenticated through settings.env even when ordinary nodes work.
+
 ### Identity
 
 ```ts

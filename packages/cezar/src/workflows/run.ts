@@ -55,6 +55,12 @@ import {
 } from '@open-mercato/cezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
+import { pinSuperpowersRun } from './superpowers-pin.ts';
+import { guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
+import { unattendedRecoveryPoint } from './unattended-recovery.ts';
+import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions } from './unattended-probe.ts';
+import { workflowActionOf } from './workflow-actions.ts';
+import { artifactPath } from '../../scripts/workflow/artifacts.mjs';
 import { automationsReachable } from '../automations/builtin-skill.ts';
 import { AUTOMATIONS_PROMPT } from '../automations/prompts.ts';
 import { materializeSkillDir } from '../skills-remote.ts';
@@ -3676,6 +3682,37 @@ export class RunManager {
     if (!['done', 'failed', 'cancelled', 'review'].includes(run.status)) {
       return { ok: false, error: `cannot continue a ${run.status} run` };
     }
+    if (run.status === 'failed' && run.workflowDef?.graph) {
+      try {
+        if (isUnattendedGraph(this.dataDir, runId, run.workflowDef.graph)) {
+          const cursor = unattendedRecoveryPoint(run.workflowDef.graph, run.graphState);
+          if (!cursor) return { ok: false, error: 'No valid unattended workflow recovery point; start a new task instead of bypassing verification' };
+          const prompt = opts.text?.trim() || 'Continue from the recorded blocker using the existing evidence.';
+          const saved = this.persistPastedAttachments(runId, opts.images ?? []);
+          const queuedMessages = [...(run.queuedMessages ?? []), { id: randomUUID(), text: prompt, createdAt: new Date().toISOString(), ...(saved.length ? { images: saved.map(image => image.url) } : {}) }];
+          const runner = opts.runner ?? run.runner;
+          const foreign = opts.runner !== undefined && opts.runner !== run.runner;
+          const model = opts.model !== undefined ? opts.model || undefined : foreign ? undefined : run.model;
+          const agentProfile = opts.agentProfile ?? (foreign ? undefined : run.agentProfile);
+          const cwd = run.worktreePath ?? this.repoRoot;
+          try {
+            const path = artifactPath(cwd, runId, 'resume-message.md');
+            const previous = existsSync(path) ? readFileSync(path, 'utf8') : '';
+            writeFileSync(path, `${previous}\n## User continuation ${new Date().toISOString()}\n${prompt}\n`);
+          } catch (error) { if (!(error instanceof Error) || error.message !== 'Run artifacts have not been initialized') throw error; }
+          this.clearAutoResume(runId);
+          this.store.updateRun(runId, { status: 'queued', error: undefined, finishedAt: undefined, currentStepId: undefined, runner, model, agentProfile, queuedMessages,
+            graphState: { ...run.graphState!, cursor } });
+          this.store.updateStep(runId, cursor, { status: 'pending', error: undefined });
+          this.store.appendEvent(runId, { type: 'user-message', text: prompt, imageCount: opts.images?.length ?? 0, images: saved.map(image => image.url) });
+          this.pendingJobs.set(runId, { workflow: run.workflowDef, input: { task: run.task, runner, model, agentProfile, systemPrompt: run.systemPrompt, worktree: run.worktree, autonomous: run.autonomous, generateFollowups: run.generateFollowups, dispatch: run.dispatch } });
+          this.queue.push(runId);
+          this.store.appendEvent(runId, { type: 'lifecycle', message: `resuming the pinned unattended workflow at "${cursor}"; existing loop budgets retained` });
+          void this.pump();
+          return { ok: true };
+        }
+      } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+    }
     const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
     if (!sessionStep?.sessionId) return { ok: false, error: 'no agent session to resume' };
     const targetRunner = opts.runner ?? run.runner ?? 'claude';
@@ -3892,7 +3929,18 @@ export class RunManager {
     // sessions; a continuation builds its OWN ActiveRun, and without this the resumed session
     // expanded against an empty registry and leaked `/om-...` verbatim to the backend, which
     // answered "Unknown skill" (#811). Best-effort — discovery must never break Continue.
-    state.skills = await discoverSkills(this.repoRoot).catch(() => [] as Skill[]);
+    try {
+      const discovered = await discoverSkills(this.repoRoot).catch(() => [] as Skill[]);
+      const definition = record ? await this.reviveWorkflow(record) : null;
+      if (definition) {
+        const pinned = await pinSuperpowersRun(this.dataDir, runId, definition, discovered);
+        state.skills = pinned.skills;
+        this.store.updateRun(runId, { workflowDef: pinned.workflow });
+      } else state.skills = discovered;
+    } catch (error) {
+      this.failOwnedContinuation(runId, effectiveOwnerToken, error instanceof Error ? error.message : String(error));
+      return;
+    }
     // The dispatch session snapshot — the SECOND of the two `ActiveRun` construction
     // sites (spec 2026-09-10-dispatch; AGENTS.md § "every construction site"). A Continue
     // that skipped this would resume a task with no dispatch prompt and no way to dispatch:
@@ -4547,7 +4595,19 @@ export class RunManager {
     const seeded = this.store.getRun(runId);
     if (seeded) seedHandoffFile(this.dataDir, seeded);
 
-    const skills = await discoverSkills(this.repoRoot);
+    let skills: Skill[];
+    try {
+      const pinned = await pinSuperpowersRun(this.dataDir, runId, workflow, await discoverSkills(this.repoRoot));
+      workflow = pinned.workflow;
+      skills = pinned.skills;
+      this.store.updateRun(runId, { workflowDef: workflow });
+    } catch (error) {
+      const message = `Superpowers bundle preparation failed: ${error instanceof Error ? error.message : String(error)}`;
+      this.store.updateRun(runId, { status: 'failed', error: message, finishedAt: new Date().toISOString(), currentStepId: undefined });
+      emit({ type: 'lifecycle', message });
+      this.dropActive(runId, state);
+      return;
+    }
     // Every ActiveRun construction site must carry the registry — `runContinuation` builds
     // its own, and the one that skipped this leaked raw `/skill` text to the backend (#811).
     state.skills = skills;
@@ -4736,6 +4796,7 @@ export class RunManager {
     },
   ): Promise<string | null> {
     const { input, skills, emit, taskBackend, extraSystemPrompt } = ctx;
+    const managedUnattended = await isUnattendedGraph(this.dataDir, runId, graph);
     let { startImages, startAttachments } = ctx;
     // Resume only onto a node this graph still has; anything else starts the walk afresh.
     const resumeNode = ctx.resume?.cursor
@@ -4873,7 +4934,9 @@ export class RunManager {
           extraSystemPrompt,
           stepIdx >= 0 ? chainStepNote(workflow.steps, stepIdx) : undefined,
           startAttachments,
-          resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn) : { resumeSessionId: this.graphResumeSession(runId, node, backend, emit), lastTurn },
+          resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn, emit, managedUnattended) : {
+            resumeSessionId: this.graphResumeSession(runId, node, backend, emit,
+              managedUnattended && taken[taken.length - 1] === `adjudicator.${node.id === 'design' ? 'answered' : node.id}->${node.id}`), lastTurn },
         );
         startImages = undefined;
         startAttachments = [];
@@ -4918,15 +4981,21 @@ export class RunManager {
             if (!nudge) verdict = parseVerdict(lastTurn.text, verdicts);
           }
         }
+        let handoffFailure: string | undefined;
+        if (managedUnattended && !failure && verdict) {
+          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph); }
+          catch (error) { handoffFailure = error instanceof Error ? error.message : String(error); }
+        }
         const stepRec = this.store.getRun(runId)?.steps.find((s) => s.id === node.id);
         outputs.set(node.id, {
           summary: stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
           verdict: verdict ?? '',
           costUsd: stepRec?.costUsd ?? 0,
         });
-        if (failure) {
-          this.finishStep(runId, node.id, 'failed', failure, emit);
-          agentFailure = failure;
+        if (failure || handoffFailure) {
+          if (handoffFailure) checkFailure = handoffFailure;
+          this.finishStep(runId, node.id, 'failed', failure ?? handoffFailure, emit);
+          agentFailure = failure ?? handoffFailure;
           port = 'failed';
         } else if (verdicts.length && !verdict) {
           const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}`;
@@ -4960,7 +5029,12 @@ export class RunManager {
         let checkResult: { ok: boolean; output: string; exitCode: number };
         state.checkInProgress = true;
         try {
+          await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'before');
           checkResult = await this.runCheckStep(runId, state, rendered, emit);
+          if (checkResult.ok) await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'after');
+        } catch (error) {
+          checkResult = { ok: false, exitCode: 1, output: error instanceof Error ? error.message : String(error) };
+          emit({ type: 'check-output', stepId: node.id, text: checkResult.output, exitCode: 1 });
         } finally {
           if (checkpointSafe && state.cwd !== this.repoRoot) {
             await captureCheckArtifacts(state.cwd, state.autosaveExcludedPaths);
@@ -5002,7 +5076,7 @@ export class RunManager {
       if (step.kind === 'node') this.store.updateStep(runId, step.node.id, { status: 'pending' });
     }
 
-    cursor = undefined;
+    cursor = managedUnattended && step.status === 'failed' ? unattendedRecoveryPoint(graph, { loops: Object.fromEntries(loopCounts), taken }) : undefined;
     persistWalk();
     if (step.status === 'success') return null;
     if (step.endNode) return `workflow ended at "${step.endNode}"`;
@@ -5031,11 +5105,14 @@ export class RunManager {
     backend: RunnerId,
     rendered: WorkflowStepDef,
     lastTurn: { text: string },
-  ): { resumeSessionId?: string; lastTurn: { text: string } } {
-    const own = this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
+    emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
+    managedUnattended = false,
+  ): { resumeSessionId?: string; lastTurn: { text: string }; freshPrompt?: string } {
+    const own = managedUnattended ? this.graphResumeSession(runId, node, backend, emit, true) : this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
     if (!own || !RESUMABLE_BACKENDS.has(backend)) return { lastTurn };
-    rendered.prompt = RESTART_CONTINUATION_PROMPT;
-    return { resumeSessionId: own, lastTurn };
+    const freshPrompt = rendered.prompt;
+    rendered.prompt = managedUnattended ? `${RESTART_CONTINUATION_PROMPT}\n\nRead the mapped resume-message.md if present for additional user evidence. Continue this node, not a standalone follow-up. ${node.verdicts?.length ? verdictInstruction(node.verdicts) : ''}` : RESTART_CONTINUATION_PROMPT;
+    return { resumeSessionId: own, lastTurn, ...(freshPrompt ? { freshPrompt } : {}) };
   }
 
   /**
@@ -5700,13 +5777,15 @@ export class RunManager {
     node: Extract<GraphNode, { type: 'agent' }>,
     backend: RunnerId,
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
+    returningCaller = false,
   ): string | undefined {
-    const target = node.session?.continue;
+    const target = returningCaller ? node.id : node.session?.continue;
     if (!target) return undefined;
     const rec = this.store.getRun(runId)?.steps.find((s) => s.id === target);
     let why: string | undefined;
     if (!rec?.sessionId) why = `"${target}" has no session yet`;
     else if ((rec.backend ?? backend) !== backend) why = `"${target}" ran on ${rec.backend}, this node on ${backend}`;
+    else if (this.store.getRun(runId)?.agentProfile !== undefined && (rec.profileId ?? DEFAULT_AGENT_ACCOUNT_ID) !== this.store.getRun(runId)?.agentProfile) why = `"${target}" belongs to another agent account`;
     else if (!RESUMABLE_BACKENDS.has(backend)) why = `${backend} cannot resume a session`;
     if (why) {
       emit({ type: 'note', stepId: node.id, message: `session.continue: starting fresh — ${why}` });
@@ -5737,7 +5816,7 @@ export class RunManager {
     attachments: PersistedAttachment[] = [],
     /** Graph-workflow hooks (spec 2026-09-30-workflow-node-editor): reopen an earlier session
      *  instead of minting one, and hand back the last turn's text for verdict parsing. */
-    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string } },
+    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string },
   ): Promise<string | null> {
     let systemPrompt: string | undefined;
     if (step.skill) {
@@ -5809,7 +5888,7 @@ export class RunManager {
       userPrompt += `\n\n${pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))}`;
     }
 
-    const sessionId = graphHooks?.resumeSessionId ?? randomUUID();
+    let sessionId = graphHooks?.resumeSessionId ?? randomUUID();
     const backend = step.runner ?? taskBackend;
     this.store.updateStep(runId, step.id, { sessionId, backend });
 
@@ -6064,6 +6143,15 @@ export class RunManager {
     };
 
     const stepBackend = step.runner ?? taskBackend;
+    let probe: Awaited<ReturnType<typeof prepareUnattendedProbe>> | undefined;
+    const stageGraph = this.store.getRun(runId)?.workflowDef?.graph;
+    if (step.skill === 'cezar:project-probe' && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
+      try {
+        probe = await prepareUnattendedProbe(this.dataDir, runId, state.cwd, stepBackend,
+          stageGraph.nodes.some(node => node.type === 'check' && workflowActionOf(node.command) === 'verify'));
+        userPrompt += `\n\n${probe.instructions}`;
+      } catch (error) { return error instanceof Error ? error.message : String(error); }
+    }
     // Normalise the selected model to canonical `provider/model` and back to the
     // backend's own wire form via the ONE shared mapper (#405). Fail-loud: an
     // unresolvable model (e.g. a bare id on opencode) returns the step error
@@ -6104,10 +6192,27 @@ export class RunManager {
       if (err instanceof AgentTempDirError || err instanceof TrackerAgentBindingError) return err.message;
       throw err;
     }
-    this.store.updateStep(runId, step.id, { profileId: stepProfile.profileId });
+    if (graphHooks?.resumeSessionId) {
+      const owner = this.store.getRun(runId)?.steps.find(record => record.sessionId === graphHooks.resumeSessionId);
+      if (owner && ((owner.backend ?? stepBackend) !== stepBackend || (owner.profileId ?? DEFAULT_AGENT_ACCOUNT_ID) !== stepProfile.profileId)) {
+        graphHooks.resumeSessionId = undefined;
+        sessionId = randomUUID();
+        if (graphHooks.freshPrompt) userPrompt += `\n\nThe launch account changed; recover from the shared files and perform this original stage:\n${applyTemplate(graphHooks.freshPrompt, input.task)}`;
+        emit({ type: 'note', stepId: step.id, message: 'session account differs from the resolved launch account — starting fresh with file recovery' });
+      }
+    }
+    this.store.updateStep(runId, step.id, { profileId: stepProfile.profileId, sessionId, backend: stepBackend });
 
     const runner = createRunner(stepBackend);
     const stepMcp = await this.privateMcpForLaunch(stepBackend, onEvent);
+    let launchEnv = stepProfile.env;
+    if (!probe && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
+      try {
+        launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
+        userPrompt += `\n\n${artifactInstructions(state.cwd, runId)}`;
+      }
+      catch (error) { return error instanceof Error ? error.message : String(error); }
+    }
     let session: AgentSession;
     state.currentStepId = step.id;
     this.beginUsageInvocation(runId, state, step.id);
@@ -6140,8 +6245,8 @@ export class RunManager {
             state.grantedAttachmentLibrary,
             stepProfile.env,
           ),
-          env: stepProfile.env,
-          mcpServers: stepMcp,
+          env: launchEnv,
+          mcpServers: probe ? undefined : stepMcp,
           model: backendModel,
           sessionId,
           resume: graphHooks?.resumeSessionId !== undefined,
@@ -6156,7 +6261,8 @@ export class RunManager {
           // strand the run — both close the session, and a park whose session
           // closed unanswered settles as `failed` with a Continue button (see
           // the `askPark` branch in `execute`), never as a run stuck `waiting`.
-          timeoutMs: interactive ? 0 : undefined,
+          timeoutMs: probe?.timeoutMs ?? (interactive ? 0 : undefined),
+          ...(probe ? { probePolicy: probe.policy } : {}),
         },
         onEvent,
         {
@@ -6357,7 +6463,7 @@ export class RunManager {
     try {
       let skillDescription: string | undefined;
       if (skillName) {
-        const skills = await discoverSkills(this.repoRoot).catch(() => [] as Skill[]);
+        const skills = this.active.get(runId)?.skills ?? await discoverSkills(this.repoRoot).catch(() => [] as Skill[]);
         skillDescription = skills.find((s) => s.name === skillName)?.description;
       }
       // Only the creation call names the branch: the live refresh must never move it.

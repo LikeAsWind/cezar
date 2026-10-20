@@ -32,6 +32,7 @@ import type {
   runnerModelCatalogResponseSchema,
   setConfigResponseSchema,
   skillsUpdateStateSchema,
+  superpowersUpdateStateSchema,
   selfUpdateStatusSchema,
   starCountSchema,
   uiStateSchema,
@@ -109,6 +110,13 @@ const scoped = client.api.v1.p[':projectId'];
 
   // ---- skills updates ---------------------------------------------------------------------
   type SkillsUpdate200 = InferResponseType<(typeof client.api.v1.workspace)['skills-update']['$get'], 200>;
+  type Superpowers = (typeof client.api.v1.workspace)['superpowers-update'];
+  type _SuperpowersGet = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['$get'], 200>>>;
+  type _SuperpowersCheck = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['check']['$post'], 200>>>;
+  type _SuperpowersStage = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['stage']['$post'], 200>>>;
+  type _SuperpowersActivate = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['activate']['$post'], 200>>>;
+  type _SuperpowersRollback = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['rollback']['$post'], 200>>>;
+  type _SuperpowersSettings = Assert<Exact<z.infer<typeof superpowersUpdateStateSchema>, InferResponseType<Superpowers['settings']['$put'], 200>>>;
   type SkillsUpdateCheck200 = InferResponseType<
     (typeof client.api.v1.workspace)['skills-update']['check']['$post'],
     200

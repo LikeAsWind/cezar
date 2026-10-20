@@ -67,6 +67,7 @@ import {
   getWorkspaceConfig,
   getWorkspaceUiState,
   getSkillsUpdate,
+  getSuperpowersUpdate,
   getSelfUpdate,
   getSelfUpdateDevelopment,
   getStarCount,
@@ -449,6 +450,7 @@ export const workspaceQueryKeys = {
   agentAccountStatus: (routeId: string) =>
     ['workspace', 'agent-profiles', 'status', routeId] as const,
   skillsUpdate: (projectId: string) => ['workspace', 'skills-update', projectId] as const,
+  superpowersUpdate: ['workspace', 'superpowers-update'] as const,
   /** cezar's own updater via `GET /api/v1/workspace/self-update` (self-update PoC). */
   selfUpdate: ['workspace', 'self-update'] as const,
   selfUpdateDevelopment: ['workspace', 'self-update', 'development'] as const,
@@ -1507,6 +1509,13 @@ export function useSkillsUpdate(projectId: string, enabled = true) {
         ? 60_000
         : false
     },
+  })
+}
+
+export function useSuperpowersUpdate() {
+  return useQuery({
+    queryKey: workspaceQueryKeys.superpowersUpdate,
+    queryFn: ({ signal }) => getSuperpowersUpdate({ signal }),
   })
 }
 

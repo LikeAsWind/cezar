@@ -278,6 +278,66 @@ that calls it needs the extra segment.
 
 ## Workflow format
 
+`unattended` is a built-in workflow available in every project without a local installation.
+Its version: 2 graph uses the common agent/check/if/loop engine.
+The canonical definition is `src/workflows/templates/unattended.ts`, registered
+alongside all other built-ins in `src/workflows/templates.ts`. Skill bundles no
+longer contain a second workflow source, runtime, artifact helper or vendored zod.
+Custom skills, original upstream skills/helpers, shared instructions and provenance
+live together in `src/workflows/assets/superpowers/`. The build copies these assets
+unchanged to `dist/workflows/assets/superpowers/`; the package ships that built tree.
+New immutable snapshots serialize the canonical definition as `workflow.json`;
+historical snapshots continue to read their own YAML and executable assets.
+New templates invoke
+host workflow actions (`cezar workflow-action init|route|execution|baseline|verify|seal`)
+instead of a Superpowers snapshot runtime. These actions resolve dependencies from
+the cezar installation, not the target repository. Other graph templates can reuse
+the same command operations and their frozen validation-plan/receipt checks.
+Legacy snapshots retain their original runtime commands and artifact layout.
+It preserves the Superpowers 7.0.0 prompts, probes the target project's code map and toolchain,
+and selects a fast, standard, or deep execution path. Host checks execute the discovered project's
+validation commands (for example Maven for a Java repo), followed by independent review and bounded
+repair. It ends at review, never auto-pushes or merges, and does not change the default `quick-task`.
+Role nodes directly select the pinned original Superpowers 7 skills or role templates; their bodies are injected into node input without an entry skill or adapter-reading chain.
+Workflow artifacts use a persisted `YYYY-MM-DD-<runId>` prefix under `docs/superpowers/`: `probe/<prefix>-probe.md`, `probe/<prefix>-context-map.jsonl`, `specs/<prefix>-design.md`, `plans/<prefix>-plan.md`, and same-prefix environment, clarification, implementation, review, delivery and verification files. The host gives each node an exact path map; Continue keeps its original date and legacy frozen runs keep their saved layout. Current-run generated artifacts are excluded from the seal diff, without excluding unrelated docs. Host-private trust and bundle pins remain in `.ai/cezar/runs/`.
+Probe is limited to eight minutes, file reads/searches, five discovery reports and bounded installed-tool version queries. It cannot build, test, set up dependencies or delegate. Claude currently enforces this boundary; selecting another backend for probe produces an explicit blocker. Other nodes retain their selected backend. The host initializes the context before launch, and partial reports survive timeouts. Java/Maven/Gradle validation commands must reference a frozen toolchain with an observed Java home; setup, version checks, baseline and verification receive that binding through child JAVA_HOME/PATH rather than inheriting the terminal default. Missing installations and version drift block instead of triggering environment repair or weaker checks.
+A project file of the same name overrides it. See the [bundle guide](../packages/cezar/src/workflows/assets/superpowers/README.md).
+
+The **Skills → Superpowers updates** card checks official stable releases from `obra/superpowers`.
+Checking is manual by default. Optional automatic checking runs at most once per six hours;
+it never downloads or activates a release automatically. Network failures leave the packaged
+workflow usable. Updates for Open Mercato skills use their own independent controls.
+
+For compatible v7 releases, download and inspect the candidate, follow the exact-commit comparison
+link, then acknowledge review before activation. Local `project-probe` and `adjudicator` skills,
+the host workflow implementation remain local to cezar. Hashes, required files and graph
+validation establish structural integrity, not behavioral compatibility or a publisher signature.
+New major versions require an adapter update. Rollback switches back to the previous complete bundle.
+
+Snapshots and update metadata live under `cezarHomeDir()/superpowers/`. A task using this bundle
+pins its digest in `.ai/cezar/runs/<runId>.superpowers.json`; Continue and restart recovery reuse
+the same pinned skills, template and context; historical snapshots also retain their own runtime. Missing or damaged pinned content fails that task
+instead of changing its version. Activation affects new tasks from the built-in catalog; saved graphs
+retain their explicitly referenced bundle assets. Ordinary tasks that only mention a Superpowers slash command do not acquire
+this workflow pin. Historical snapshots are retained so running and recovered tasks keep their assets.
+
+The managed workflow stores its trusted validation plan/receipt and pending-question metadata under
+`.ai/cezar/runs/<runId>.unattended*.json`, outside its task worktree. Required stage artifacts and
+map paths are checked before accepting success; adjudication is bound to its pending Q and origin.
+This guards accidental edits, not hostile code running as the same OS user. Legacy runs without a
+trusted baseline fail closed rather than trusting mutable worktree copies.
+
+For a reproduced, isolated product test failure, baseline may specify `expectedFailure` with its
+nonzero `exitCode`, `outputIncludes`, complete normalized output SHA256 in `outputHash`, and `reason`.
+Unexpected or unstable output stays blocked. Final verify forbids this field and requires zero exits.
+Deep plans separately record task independence and observed subagent capability in `execution-input.json`;
+the host chooses SDD or deep native without lowering risk constraints. No policy agent is added.
+
+Continue on a failed managed workflow resumes its saved graph and frozen bundle, preserving loop
+budgets and user additions in `resume-message.md`; ordinary workflows retain their existing Continue
+behavior. After adjudication the caller can reuse its own session, with fresh file recovery when the
+backend or actual launch account cannot resume it. Independent review contexts remain separate.
+
 A workflow is a small YAML file in `.ai/cezar/workflows/`:
 
 ```yaml

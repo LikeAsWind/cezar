@@ -114,6 +114,8 @@ import {
 import { planChain, slugify } from '../planner.ts';
 import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
+import { SuperpowersUpdateService, SuperpowersUpdateConflictError } from '../superpowers-update.ts';
+import { superpowersEmptyRequestSchema, superpowersStageRequestSchema, superpowersActivateRequestSchema, superpowersAutoCheckRequestSchema, type SuperpowersUpdateState } from '@open-mercato/cezar-contract';
 import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema, selfUpdateDevelopmentQuerySchema } from '@open-mercato/cezar-contract';
 import { SelfUpdateBusyError, SelfUpdateService } from '../self-update/service.ts';
 import { StarCountReader } from './star-count.ts';
@@ -312,6 +314,7 @@ export interface ServerDeps {
   /** Process-wide Open Mercato skills update detector. Injected in tests and
    * shared by every workspace route/project; createApp owns the default. */
   skillsUpdate?: SkillsUpdateService;
+  superpowersUpdate?: Pick<SuperpowersUpdateService, 'snapshot' | 'check' | 'stage' | 'activate' | 'rollback' | 'setAutoCheck' | 'start'>;
   /** The project/workspace secret store (spec 2026-10-10-project-secrets-vault-options). Tests
    *  inject one with a fake keychain; the default reads the OS keychain or a key file. */
   secrets?: SecretStore;
@@ -1283,6 +1286,7 @@ export function createApp(deps: ServerDeps) {
   const openFile = deps.openFile ?? openFileInDefaultApp;
   const openApp = deps.openApp ?? openInApp;
   const skillsUpdate = deps.skillsUpdate ?? new SkillsUpdateService();
+  const superpowersUpdate = deps.superpowersUpdate ?? new SuperpowersUpdateService();
   // No injected updater (tests, embedded callers): a READ-ONLY service over the running entry.
   // It has no way to restart the process, so it must not install either — an install that
   // flips `current` under a process that keeps running the old code is the worst of both.
@@ -2877,6 +2881,37 @@ export function createApp(deps: ServerDeps) {
 
   // Workspace-level by design: update state spans project and global installs,
   // but the selected registered project supplies the safe, server-owned cwd.
+  const superpowersAction = async (action: () => Promise<SuperpowersUpdateState>) => {
+    try { return { state: await action() }; }
+    catch (error) {
+      return { error: error instanceof SuperpowersUpdateConflictError ? 'another Superpowers update operation is running' : 'Superpowers update failed', status: error instanceof SuperpowersUpdateConflictError ? 409 as const : 400 as const };
+    }
+  };
+  const superpowersUpdateRoutes = new Hono<ProjectApiEnv>()
+    .get('/workspace/superpowers-update', async (c) => c.json(await superpowersUpdate.snapshot()))
+    .post('/workspace/superpowers-update/check', jsonZodValidator(superpowersEmptyRequestSchema), async (c) => {
+      const result = await superpowersAction(() => superpowersUpdate.check(true));
+      return 'state' in result ? c.json(result.state) : c.json({ error: result.error }, result.status);
+    })
+    .post('/workspace/superpowers-update/stage', jsonZodValidator(superpowersStageRequestSchema), async (c) => {
+      const { version } = c.req.valid('json');
+      const result = await superpowersAction(() => superpowersUpdate.stage(version));
+      return 'state' in result ? c.json(result.state) : c.json({ error: result.error }, result.status);
+    })
+    .post('/workspace/superpowers-update/activate', jsonZodValidator(superpowersActivateRequestSchema), async (c) => {
+      const { digest, reviewed } = c.req.valid('json');
+      const result = await superpowersAction(() => superpowersUpdate.activate(digest, reviewed));
+      return 'state' in result ? c.json(result.state) : c.json({ error: result.error }, result.status);
+    })
+    .post('/workspace/superpowers-update/rollback', jsonZodValidator(superpowersEmptyRequestSchema), async (c) => {
+      const result = await superpowersAction(() => superpowersUpdate.rollback());
+      return 'state' in result ? c.json(result.state) : c.json({ error: result.error }, result.status);
+    })
+    .put('/workspace/superpowers-update/settings', jsonZodValidator(superpowersAutoCheckRequestSchema), async (c) => {
+      const { autoCheck } = c.req.valid('json');
+      const result = await superpowersAction(() => superpowersUpdate.setAutoCheck(autoCheck));
+      return 'state' in result ? c.json(result.state) : c.json({ error: result.error }, result.status);
+    });
   const skillsUpdateInputSchema = z.object({ projectId: projectIdSchema }).strict();
   const resolveSkillsUpdateRoot = async (raw: string): Promise<
     { root: string } | { status: 404 | 409; error: string }
@@ -6766,6 +6801,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', projectsRoutes)
     .route('/', agentProfilesRoutes)
     .route('/', skillsUpdateRoutes)
+    .route('/', superpowersUpdateRoutes)
     .route('/', selfUpdateRoutes)
     .route('/', starCountRoutes)
     .route('/', workspaceConfigRoutes)
@@ -6804,6 +6840,7 @@ export function createApp(deps: ServerDeps) {
 export function startServer(deps: ServerDeps, port: number): ServerType {
   const workspaceEvents = deps.runtime.workspaceEvents;
   const skillsUpdate = deps.skillsUpdate ?? new SkillsUpdateService({ invalidateCatalog: refreshTeamSkills });
+  const superpowersUpdate = deps.superpowersUpdate ?? new SuperpowersUpdateService();
   // The subscription hub rides the same HTTP server (one port, zero config):
   // createApp registers the topics, the `upgrade` hook below owns the socket.
   const socketHub = deps.socketHub ?? createSocketHub();
@@ -6830,6 +6867,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     runtime: appRuntime,
     onDispose: (cleanup) => { appCleanups.push(cleanup); deps.onDispose?.(cleanup); },
     skillsUpdate,
+    superpowersUpdate,
     socketHub,
     automationsChanged: () => rescheduleAutomations(),
   });
@@ -6845,6 +6883,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   const coordinator = new SkillsUpdateCoordinator(skillsUpdate, async () =>
     effectiveSkillsAutoUpdate(await loadWorkspaceConfig()));
+  appCleanups.push(superpowersUpdate.start());
   // Every registered project gets a handle (spec 2026-09-14): `github`/`gitlab` only when the
   // remote is on a supported forge — a project without one still fires its scheduled automations.
   const automationProjects = new Map<string, { root: string; github?: { owner: string; repo: string }; gitlab?: import('../server/forge/types.ts').GitlabRepoRef }>();

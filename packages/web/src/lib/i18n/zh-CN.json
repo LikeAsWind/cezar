@@ -2758,5 +2758,19 @@
   "Forge snapshot": "代码托管平台快照",
   "Retry forge": "重试代码托管平台",
   "Refresh forge": "刷新代码托管平台",
-  "Create PR unavailable — no supported forge remote detected": "无法创建 PR——未检测到支持的代码托管平台远程仓库"
+  "Create PR unavailable — no supported forge remote detected": "无法创建 PR——未检测到支持的代码托管平台远程仓库",
+  "Automatically check Superpowers updates": "自动检查 Superpowers 更新",
+  "Current version": "当前版本",
+  "Latest version": "上游版本",
+  "Changed": "已修改",
+  "Check for updates": "检查更新",
+  "Download and inspect": "下载并检查",
+  "Restore previous Superpowers version": "回退到上一已启用的 Superpowers 版本",
+  "This major version requires adaptation.": "此主版本需要适配。",
+  "Candidate version": "候选版本",
+  "Review upstream changes": "审阅上游变更",
+  "This comparison covers upstream changes. Local custom skills are preserved.": "此比较展示上游变更，本地自定义技能会保留。",
+  "Structural checks do not prove behavioral compatibility. Review the changes.": "结构检查通过不代表行为兼容，请审阅变更。",
+  "I have reviewed these changes": "我已审阅这些变更",
+  "Activate reviewed version": "启用已审阅版本"
 }
