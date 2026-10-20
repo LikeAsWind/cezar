@@ -14,7 +14,7 @@ export type RepoInfo = z.infer<typeof repoInfoSchema>;
 
 /** One probed CLI behind the Tools menu. */
 export const backendCheckSchema = z.object({
-  name: z.enum(['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'gh', 'git']),
+  name: z.enum(['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'gh', 'glab', 'git']),
   available: z.boolean(),
   version: z.string().optional(),
   hint: z.string().optional(),
@@ -22,7 +22,7 @@ export const backendCheckSchema = z.object({
 export type BackendCheck = z.infer<typeof backendCheckSchema>;
 
 export const forgeInfoSchema = z.object({
-  kind: z.literal('github'),
+  kind: z.enum(['github', 'gitlab']),
   /**
    * Whether the forge is reachable — **absent until the availability probe has warmed**.
    *

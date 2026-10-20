@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { RepoInfo } from '../git.ts';
-import { forgeKindOfRemote, parseRemote, resolveForge } from './index.ts';
+import { forgeKindOfRemote, forgeWebRoot, parseRemote, resolveForge } from './index.ts';
 
 /** Forge resolution (spec §"Forge-driver seam"): remote host → driver | null. */
 
 const info = (remote?: string): RepoInfo => ({ root: '/repo', branch: 'main', remote });
 
 describe('parseRemote', () => {
+  it('preserves HTTP origin without confusing SSH transport ports with instance ports', () => {
+    expect(parseRemote('https://user:secret@code.example.net:8443/group/sub/project.git')).toMatchObject({
+      host: 'code.example.net', httpOrigin: 'https://code.example.net:8443', owner: 'sub', repo: 'project',
+      namespace: 'group/sub', projectPath: 'group/sub/project',
+    });
+    expect(parseRemote('ssh://git@code.example.net:2222/group/project.git')).not.toHaveProperty('httpOrigin');
+  });
   it.each([
     ['https://github.com/acme/demo.git', { host: 'github.com', owner: 'acme', repo: 'demo' }],
     ['https://github.com/acme/demo', { host: 'github.com', owner: 'acme', repo: 'demo' }],
@@ -19,7 +26,12 @@ describe('parseRemote', () => {
     ['https://github.com/acme/demo/', { host: 'github.com', owner: 'acme', repo: 'demo' }],
     ['git@gitlab.com:group/sub/project.git', { host: 'gitlab.com', owner: 'sub', repo: 'project' }],
   ])('parses %s', (remote, expected) => {
-    expect(parseRemote(remote)).toEqual(expected);
+    expect(parseRemote(remote)).toEqual({
+      ...expected,
+      namespace: remote.includes('group/sub') ? 'group/sub' : 'acme',
+      projectPath: remote.includes('group/sub') ? 'group/sub/project' : 'acme/demo',
+      ...(remote.startsWith('https://') ? { httpOrigin: 'https://github.com' } : {}),
+    });
   });
 
   it.each([
@@ -38,12 +50,19 @@ describe('forgeKindOfRemote', () => {
   it.each([
     ['https://github.com/acme/demo.git', 'github'],
     ['git@github.com:acme/demo.git', 'github'],
-    ['git@gitlab.com:acme/demo.git', null],
+    ['git@gitlab.com:acme/demo.git', 'gitlab'],
     ['https://git.example.com/acme/demo.git', null],
     ['/srv/git/demo.git', null],
     [undefined, null],
   ])('classifies %s as %s', (remote, expected) => {
     expect(forgeKindOfRemote(remote)).toBe(expected);
+  });
+});
+
+describe('forgeWebRoot', () => {
+  it('keeps nested GitLab groups and strips URL credentials and SSH transport ports', () => {
+    expect(forgeWebRoot('https://user:secret@gitlab.com/group/sub/project.git')).toBe('https://gitlab.com/group/sub/project');
+    expect(forgeWebRoot('ssh://git@gitlab.com:2222/group/sub/project.git')).toBe('https://gitlab.com/group/sub/project');
   });
 });
 
@@ -56,8 +75,8 @@ describe('resolveForge', () => {
     expect(resolveForge(info('git@github.com:acme/demo.git'))?.kind).toBe('github');
   });
 
-  it('returns null for an unknown forge host (GitLab lands here later)', () => {
-    expect(resolveForge(info('git@gitlab.com:acme/demo.git'))).toBeNull();
+  it('resolves GitLab through its own driver', () => {
+    expect(resolveForge(info('git@gitlab.com:acme/demo.git'))?.kind).toBe('gitlab');
   });
 
   it('returns null for a self-hosted host', () => {

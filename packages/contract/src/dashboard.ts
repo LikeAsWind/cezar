@@ -44,6 +44,9 @@ export type DashboardTelemetry = z.infer<typeof dashboardTelemetrySchema>;
 export const dashboardTaskResultSchema = z.object({ kind: z.literal('task-result'), key: z.string().min(1), at: iso, run: dashboardTaskRowSchema });
 export const dashboardForgeCreatedSchema = z.object({
   kind: z.literal('github-created'), key: z.string().min(1), at: iso, repo: z.string(),
+  /** The forge the row came from — `github` or `gitlab` (spec 2026-10-16-gitlab-forge-parity).
+   *  Optional on the wire so a pre-GitLab server's rows (no field) still parse. */
+  provider: z.enum(['github', 'gitlab']).optional(),
   projectIds: z.array(z.string()), itemKind: z.enum(['issue', 'pr']), number: z.number().int().positive(),
   title: z.string(), url: z.url().refine((s) => /^https?:\/\//.test(s), 'Expected an HTTP(S) URL'),
 });

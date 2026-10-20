@@ -6,7 +6,7 @@ import { resolveClaudeBin } from './claude-bin.ts';
 const exec = promisify(execFile);
 
 export interface BackendCheck {
-  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'gh' | 'git';
+  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'gh' | 'glab' | 'git';
   available: boolean;
   version?: string;
   hint?: string;
@@ -29,6 +29,7 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
     probeJunie(),
     probeCopilot(),
     probeGh(),
+    probeGlab(),
     probeGit(),
   ]);
 }
@@ -224,6 +225,22 @@ async function probeGh(): Promise<BackendCheck> {
       name: 'gh',
       available: false,
       hint: 'install the GitHub CLI and run `gh auth login` (only needed for PR creation)',
+    };
+  }
+}
+
+/** The GitLab CLI (`glab`): a workspace-level install/version probe, distinct from per-project
+ *  forge identity and authentication. Availability here means the binary answers `--version`,
+ *  not that any instance is configured. */
+async function probeGlab(): Promise<BackendCheck> {
+  try {
+    const { stdout } = await exec('glab', ['--version'], { timeout: 10_000 });
+    return { name: 'glab', available: true, version: stdout.trim().split(/\r?\n/)[0] ?? '' };
+  } catch {
+    return {
+      name: 'glab',
+      available: false,
+      hint: 'install the GitLab CLI and run `glab auth login` (only needed for GitLab MR/issue features)',
     };
   }
 }

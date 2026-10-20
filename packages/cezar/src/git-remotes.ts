@@ -27,6 +27,11 @@ export interface ParsedRemote {
   host: string;
   owner: string;
   repo: string;
+  /** Full namespace; owner remains the penultimate path component for GitHub callers. */
+  namespace: string;
+  projectPath: string;
+  /** Normalized HTTP origin; an SSH transport port is never an HTTP instance port. */
+  httpOrigin?: string;
 }
 
 /**
@@ -39,9 +44,15 @@ export function parseRemote(remote: string): ParsedRemote | null {
   const r = remote.trim().replace(/\/+$/, '');
   let host: string | undefined;
   let path: string | undefined;
-  const url = /^(?:https?|ssh|git|git\+ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(r);
+  const url = /^(https?|ssh|git|git\+ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?\/(.+)$/.exec(r);
+  let httpOrigin: string | undefined;
   if (url) {
-    [, host, path] = url;
+    const [, protocol, hostname, port, pathname] = url;
+    host = hostname;
+    path = pathname;
+    if (protocol === 'http' || protocol === 'https') {
+      try { httpOrigin = new URL(`${protocol}://${hostname}${port ? `:${port}` : ''}`).origin; } catch { return null; }
+    }
   } else {
     // scp-like: [user@]host:owner/repo(.git) — a leading '/' (local path)
     // can't match the host group, so plain directories fall through to null.
@@ -54,7 +65,11 @@ export function parseRemote(remote: string): ParsedRemote | null {
   const owner = parts[parts.length - 2];
   const repo = parts[parts.length - 1];
   if (!owner || !repo) return null;
-  return { host: host.toLowerCase(), owner, repo };
+  return {
+    host: host.toLowerCase(), owner, repo,
+    namespace: parts.slice(0, -1).join('/'), projectPath: parts.join('/'),
+    ...(httpOrigin ? { httpOrigin } : {}),
+  };
 }
 
 /** `owner/name` of a GitHub repo's fork parent, or null (not a fork, no `gh`, offline). */

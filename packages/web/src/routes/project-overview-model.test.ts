@@ -55,6 +55,11 @@ function run(status: ApiRun['status']): Pick<ApiRun, 'status'> {
 function automations(available = true): AutomationsResponse {
   return {
     available,
+    providerCapabilities: {
+      provider: 'github',
+      supportedEvents: ['pull_request.opened', 'issue.opened', 'issue.labeled', 'issue.unlabeled', 'pull_request.reviewed', 'pull_request.review_requested', 'pull_request.rereview_requested'],
+      unsupportedEvents: [{ event: 'pull_request.approval_observed', reason: 'Approval snapshots are unsupported on GitHub; use pull_request.reviewed' }],
+    },
     scheduler: { state: 'scheduled' },
     timeZone: 'UTC',
     stats: { runs: 0, failed: 0, agentSeconds: 0 },

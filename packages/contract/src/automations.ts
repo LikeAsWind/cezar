@@ -7,6 +7,11 @@ import { createRunInputBaseSchema, runStatusSchema } from './runs.ts';
 import { DISPATCH_MAX_SUBTASKS, dispatchKindSchema } from './dispatch.ts';
 import { automationScheduleSchema } from './automation-schedule.ts';
 
+export const gitlabAutomationScanSchema = z.object({
+  scope: z.string(), kind: z.enum(['merge_requests', 'issues']), cursor: z.string().optional(),
+  labelCursor: z.string().optional(), initializing: z.boolean(), since: z.string().optional(),
+});
+
 /**
  * The AUTOMATIONS family of `/api/v1` (#694) — the per-project GitHub triggers, their runtime
  * state, the manual "test filter" checks and the execution log.
@@ -28,7 +33,9 @@ import { automationScheduleSchema } from './automation-schedule.ts';
 
 // ---- the definition ------------------------------------------------------------------------
 
-/** The GitHub activity an automation reacts to. Seven events, all bounded polls — never a webhook. */
+/** The activity an automation reacts to, all bounded polls — never a webhook. `pull_request.approval_observed`
+ *  is the GitLab approval snapshot trigger (spec 2026-10-16-gitlab-forge-parity): an individual approver's
+ *  retained approval, not a GitHub-style review event. */
 export const automationEventSchema = z.enum([
   'pull_request.opened',
   'issue.opened',
@@ -37,8 +44,23 @@ export const automationEventSchema = z.enum([
   'pull_request.reviewed',
   'pull_request.review_requested',
   'pull_request.rereview_requested',
+  'pull_request.approval_observed',
 ]);
 export type AutomationEvent = z.infer<typeof automationEventSchema>;
+
+/**
+ * What a project's forge can actually poll, per provider (spec 2026-10-16-gitlab-forge-parity).
+ * The GitLab poller is a snapshot of retained approvals, not a GitHub timeline: the three review
+ * triggers are unsupported there, and GitHub does not expose an approval snapshot at all.
+ */
+export const automationProviderCapabilitiesSchema = z.object({
+  /** `'github'`, `'gitlab'` or `null` for a project with no supported forge. */
+  provider: z.enum(['github', 'gitlab']).nullable(),
+  supportedEvents: z.array(automationEventSchema),
+  unsupportedEvents: z.array(z.object({ event: automationEventSchema, reason: z.string() })),
+  approvalObservation: z.object({ supported: z.boolean(), reason: z.string() }).optional(),
+});
+export type AutomationProviderCapabilities = z.infer<typeof automationProviderCapabilitiesSchema>;
 
 export const trackerTriggerSchema = z.object({
   events: z.array(trackerAutomationEventSchema).min(1).max(4),
@@ -197,6 +219,15 @@ export const automationRuntimeStateSchema = z.object({
   lastRunAt: z.string().optional(),
   /** Per-query GitHub ETags, so an unchanged page costs no rate-limit budget. */
   etags: z.record(z.string(), z.string()).optional(),
+  /** GitLab approval snapshot (spec 2026-10-16-gitlab-forge-parity): the retained-approval
+   *  identity set (host:projectPath:iid:approverId:approved_at → approved_at), persisted
+   *  distinctly from the cursor so enable/restart/re-enable never replay retained approvals. */
+  approvalBaseline: z.record(z.string(), z.string()).optional(),
+  /** The polled GitLab source identity (`host:projectPath`) the baseline belongs to; a change
+   *  re-establishes the baseline rather than launching the new source's retained approvals. */
+  approvalSource: z.string().optional(),
+  gitlabScan: gitlabAutomationScanSchema.optional(),
+  approvalBaselineAt: z.string().optional(),
   backoffUntil: z.string().optional(),
   consecutiveFailures: z.number().optional(),
 });
@@ -307,6 +338,10 @@ export type AutomationStats = z.infer<typeof automationStatsSchema>;
 export const automationsResponseSchema = z.object({
   available: z.boolean(),
   reason: z.string().optional(),
+  /** The selected project's provider capability story (spec 2026-10-16-gitlab-forge-parity):
+   *  which poll events the poller can deliver, which are disabled with a reason, and the GitLab
+   *  approval-snapshot limitation. Always sent by this server. */
+  providerCapabilities: automationProviderCapabilitiesSchema,
   scheduler: z.object({
     state: z.enum(['scheduled', 'idle']),
     nextDue: z.string().optional(),

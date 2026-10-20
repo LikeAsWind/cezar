@@ -94,6 +94,8 @@ export type AppShellProps = {
    *  Defaults to shown so the presentational shell stays renderable alone; the container
    *  passes the health payload's truth. */
   forgeAvailable?: boolean
+  /** WHICH forge the project's remote belongs to — supplies the item's provider label. */
+  forgeKind?: 'github' | 'gitlab'
   /** Inbox gating (#471): `false` drops the Inbox nav item and its badge — the global inbox is
    *  opt-in via `CEZ_FOLLOWUPS=1`. Defaults to shown for the same reason as `forgeAvailable`. */
   inboxAvailable?: boolean
@@ -173,6 +175,7 @@ export const AppShell = React.memo(function AppShell({
   hostWidget,
   toolsMenu,
   forgeAvailable = true,
+  forgeKind,
   inboxAvailable = true,
   automationsAvailable = true,
   tracker,
@@ -243,8 +246,8 @@ export const AppShell = React.memo(function AppShell({
   }, [])
 
   const items = React.useMemo(
-    () => projectNavItems({ forge: forgeAvailable, inbox: inboxAvailable, automations: automationsAvailable, tracker }),
-    [forgeAvailable, inboxAvailable, automationsAvailable, tracker],
+    () => projectNavItems({ forge: forgeAvailable, forgeKind, inbox: inboxAvailable, automations: automationsAvailable, tracker }),
+    [forgeAvailable, forgeKind, inboxAvailable, automationsAvailable, tracker],
   )
 
   const nav = {

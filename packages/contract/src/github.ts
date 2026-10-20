@@ -59,6 +59,8 @@ export const githubDataSchema = z.object({
   prsTotal: z.number().int().nonnegative().optional(),
   issuesNextCursor: z.string().nullable().optional(),
   prsNextCursor: z.string().nullable().optional(),
+  /** Provider read stopped at a cap or retained only part of a failed list operation. */
+  truncated: z.boolean().optional(),
 });
 export type GithubData = z.infer<typeof githubDataSchema>;
 

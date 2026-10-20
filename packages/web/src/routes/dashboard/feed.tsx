@@ -11,13 +11,17 @@ import { shortAge } from '@/lib/format'
 import { TaskRow, Coverage } from './rows'
 import { DashboardEntryContext, readPanel, savePanel, useStagedRows } from './state'
 function sourceLabel(key: string) {
-  if (!key.startsWith('github:')) return key === 'tasks' ? t('Task results') : key
-  const parts = key.slice(7).split(':')
+  const isGithub = key.startsWith('github:')
+  const isGitlab = key.startsWith('gitlab:')
+  if (!isGithub && !isGitlab) return key === 'tasks' ? t('Task results') : key
+  const prefix = isGithub ? 'github:' : 'gitlab:'
+  const parts = key.slice(prefix.length).split(':')
   const kind = parts.pop() === 'pr' ? t('Pull requests') : t('Issues')
   const name = parts
     .join(':')
     .replace(/^project:/, t('Project '))
     .replace(/^github.com\//, '')
+    .replace(/^gitlab.com\//, '')
   return `${name} · ${kind}`
 }
 const feedKey = (row: DashboardFeedRow) => row.key
@@ -57,17 +61,23 @@ export function Feed({
       (!!query.data && !query.isPending && !query.isFetching)
   }, [restore, rows.length, count, query.data, query.isPending, query.isFetching])
   const heading = useRef<HTMLHeadingElement>(null)
-  const github = query.data?.sources.filter((s) => s.key.startsWith('github:')) ?? []
+  const github = query.data?.sources.filter((s) => s.key.startsWith('github:') || s.key.startsWith('gitlab:')) ?? []
+  const gitlab = github.filter((s) => s.key.startsWith('gitlab:'))
+  // Which provider's word the chrome uses. The heading + summary speak GitHub only when every
+  // configured forge is GitHub; any GitLab source (or a mix) gets the provider-neutral wording.
+  const forgeWord = (githubWord: string, forgeWord: string) => gitlab.length ? forgeWord : githubWord
   const fetched = github.flatMap((s) => (s.fetchedAt ? [s.fetchedAt] : [])).sort()[0]
   const githubFailed = query.githubError
-  const unconfigured = github.filter((s) => s.reason === 'No GitHub remote')
-  const loading = github.some((s) => s.reason === 'Still loading GitHub')
+  const unconfigured = github.filter((s) => s.reason === 'No GitHub remote' || s.reason === 'No GitLab remote')
+  const loading = github.some((s) => s.reason === 'Still loading GitHub' || s.reason === 'Still loading GitLab')
   const noGithub = github.length > 0 && unconfigured.length === github.length && !githubFailed
   const errors = github.filter(
     (s) =>
       s.state !== 'ready' &&
       s.reason !== 'No GitHub remote' &&
-      s.reason !== 'Still loading GitHub',
+      s.reason !== 'No GitLab remote' &&
+      s.reason !== 'Still loading GitHub' &&
+      s.reason !== 'Still loading GitLab',
   )
   const tasksOnly = noGithub && filter === 'all'
   return (
@@ -78,7 +88,7 @@ export function Feed({
       <div className="space-y-2 border-b px-4 pt-2.5 pb-2">
         <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
           <h2 ref={heading} tabIndex={-1} className={widgetHeading}>
-            {tasksOnly ? t('Recent results') : t('Recent results & GitHub')}
+            {tasksOnly ? t('Recent results') : t(forgeWord('Recent results & GitHub', 'Recent results & forge'))}
           </h2>
           <span className="font-mono text-[11px] text-soft-foreground">{t('Last 7 days')}</span>
         </div>
@@ -90,13 +100,13 @@ export function Feed({
             options={[
               { value: 'all', label: 'All' },
               { value: 'tasks', label: 'Tasks' },
-              { value: 'github', label: 'GitHub' },
+              { value: 'github', label: t(forgeWord('GitHub', 'Forge')) },
             ]}
             onChange={setFilter}
           />
         )}
         {tasksOnly && (
-          <p className="text-xs text-muted-foreground">{t('Task results · No GitHub repositories configured')}</p>
+          <p className="text-xs text-muted-foreground">{t(forgeWord('Task results · No GitHub repositories configured', 'Task results · No forge repositories configured'))}</p>
         )}
         {filter !== 'tasks' && !tasksOnly && (
           <details
@@ -106,28 +116,28 @@ export function Feed({
             <summary className={`${disclosureSummary} py-1.5`}>
               <DisclosureChevron />
               {errors.length || githubFailed
-                ? t('GitHub needs attention')
+                ? t(forgeWord('GitHub needs attention', 'Forge needs attention'))
                 : loading
-                  ? t('Checking GitHub…')
+                  ? t(forgeWord('Checking GitHub…', 'Checking forge…'))
                   : noGithub
-                    ? t('GitHub not configured')
+                    ? t(forgeWord('GitHub not configured', 'Forge not configured'))
                     : fetched
-                      ? t('GitHub checked {0} ago', { 0: shortAge(fetched) })
-                      : t('GitHub source')}
+                      ? t(forgeWord('GitHub checked {0} ago', 'Forge checked {0} ago'), { 0: shortAge(fetched) })
+                      : t(forgeWord('GitHub source', 'Forge source'))}
             </summary>
             <div className="flex flex-wrap items-center justify-between gap-x-3">
               <p>
                 {errors.length || githubFailed
                   ? fetched
-                    ? t('Could not refresh GitHub. Showing results from {0}.', { 0: new Date(fetched).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' }) })
-                    : t('Could not load one or more GitHub sources.')
+                    ? t(forgeWord('Could not refresh GitHub. Showing results from {0}.', 'Could not refresh the forge. Showing results from {0}.'), { 0: new Date(fetched).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' }) })
+                    : t(forgeWord('Could not load one or more GitHub sources.', 'Could not load one or more forge sources.'))
                   : loading
                     ? t('Checking repository sources. Available results remain visible.')
                     : noGithub
-                      ? t('No GitHub repositories configured. Select Tasks to see task results.')
+                      ? t(forgeWord('No GitHub repositories configured. Select Tasks to see task results.', 'No forge repositories configured. Select Tasks to see task results.'))
                       : fetched
-                        ? t('GitHub checked {0} ago', { 0: shortAge(fetched) })
-                        : t('GitHub snapshot')}
+                        ? t(forgeWord('GitHub checked {0} ago', 'Forge checked {0} ago'), { 0: shortAge(fetched) })
+                        : t(forgeWord('GitHub snapshot', 'Forge snapshot'))}
               </p>
               {!noGithub && (
                 <Button
@@ -141,8 +151,8 @@ export function Feed({
                   {query.githubFetching
                     ? t('Refreshing…')
                     : errors.length || githubFailed
-                      ? t('Retry GitHub')
-                      : t('Refresh GitHub')}
+                      ? t(forgeWord('Retry GitHub', 'Retry forge'))
+                      : t(forgeWord('Refresh GitHub', 'Refresh forge'))}
                 </Button>
               )}
             </div>
@@ -219,7 +229,8 @@ export function Feed({
                 {row.title}
               </a>
               <p className="mt-1 text-xs text-muted-foreground">
-                {row.repo} · {row.itemKind === 'pr' ? t('PR') : t('Issue')} #{row.number}{' '}{t('created ·')}{' '}
+                {row.repo} · {row.itemKind === 'pr' ? (row.provider === 'gitlab' ? t('MR') : t('PR')) : t('Issue')}{' '}
+                {row.provider === 'gitlab' ? `!${row.number}` : `#${row.number}`}{' '}{t('created ·')}{' '}
                 {shortAge(row.at)}
               </p>
             </div>
@@ -254,9 +265,9 @@ export function Feed({
             {query.data.sources.map((s) => (
               <p className="break-words py-1" key={s.key}>
                 {sourceLabel(s.key)}:{' '}
-                {s.reason === 'No GitHub remote'
+                {s.reason === 'No GitHub remote' || s.reason === 'No GitLab remote'
                   ? t('Not configured')
-                  : s.reason === 'Still loading GitHub'
+                  : s.reason === 'Still loading GitHub' || s.reason === 'Still loading GitLab'
                     ? t('Checking…')
                     : (s.reason ?? (s.state === 'ready' ? t('Up to date') : s.state))}
                 {s.truncated ? t(' · capped') : ''}

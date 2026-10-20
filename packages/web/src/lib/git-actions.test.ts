@@ -108,13 +108,20 @@ describe('gitActionPolicy — a chosen step that cannot run right now says why',
   })
 
   it.each<[Partial<GitActionState>, string]>([
-    [{ forge: { kind: 'github', available: false, reason: 'gh is not logged in' } }, 'gh is not logged in'],
-    [{ forge: { kind: 'github', available: false } }, 'unreachable'],
+    [{ forge: { kind: 'github', available: false, reason: 'gh is not logged in' }, uncommitted: 0, unpushed: 0 }, 'gh is not logged in'],
+    [{ forge: { kind: 'gitlab', available: false, reason: 'glab is not logged in' }, uncommitted: 0, unpushed: 0 }, 'glab is not logged in'],
+    [{ forge: { kind: 'github', available: false }, uncommitted: 0, unpushed: 0 }, 'unreachable'],
     [{ branch: undefined }, 'no worktree'],
   ])('Create PR disabled for %j', (extra, phrase) => {
     const action = gitActionPolicy(withState(extra))
     expect(action).toMatchObject({ id: 'create-pr', enabled: false })
     expect(action?.reason).toContain(phrase)
+  })
+
+  it.each(['github', 'gitlab'] as const)('keeps Git publishing available without the %s CLI', kind => {
+    const forge = { kind, available: false, reason: 'Install the CLI and log in' }
+    expect(gitActionPolicy(withState({ forge }))?.id).toBe('commit-push')
+    expect(gitActionPolicy(withState({ forge, uncommitted: 0, unpushed: 2 }))?.id).toBe('push')
   })
 
   it('Commit and push while the agent is writing in the worktree', () => {

@@ -572,6 +572,9 @@ export function useProjects() {
   return useQuery({
     queryKey: workspaceQueryKeys.projects,
     queryFn: ({ signal }) => getProjects({ signal }),
+    // Refresh provider labels/icons on focus even within the shared five-minute staleTime,
+    // since a host-config edit can reclassify a self-managed GitLab project.
+    refetchOnWindowFocus: 'always',
   })
 }
 

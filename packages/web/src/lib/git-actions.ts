@@ -121,7 +121,7 @@ function createPrAction(state: GitActionState): GitAction {
     return disabled(t('Create PR unavailable — {0}', { 0: t(NO_WORKTREE_REASON) }))
   }
   if (state.forge === null) {
-    return disabled('Create PR unavailable — no supported forge remote (GitHub) detected')
+    return disabled('Create PR unavailable — no supported forge remote detected')
   }
   if (!state.forge.available) {
     return disabled(t('Create PR unavailable — {0}', { 0: state.forge.reason ?? 'the forge is unreachable' }))
@@ -174,13 +174,13 @@ export function gitActionPolicy(state: GitActionState): GitAction | null {
     state.behind !== undefined && state.behind !== null && state.behind > 0 && !state.agentBlocked
       ? agentStep(state, 'update-branch', 'Update branch')
       : null
-  if (!state.prUrl && state.forge !== null) return update ?? createPrAction(state)
+  if (!state.prUrl && state.forge?.available) return update ?? createPrAction(state)
   if (state.uncommitted === undefined) return null
   const hasUncommitted = state.uncommitted > 0
   if (!state.prUrl) {
     if (hasUncommitted) return commitAndPushAction(state)
     if (state.unpushed !== 0) return pushAction(state)
-    return update
+    return update ?? (state.forge ? createPrAction(state) : null)
   }
   if (hasUncommitted) return commitAndPushAction(state)
   if (state.unpushed !== undefined && state.unpushed !== null && state.unpushed > 0) return pushAction(state)

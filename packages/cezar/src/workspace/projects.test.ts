@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/cezar-contract';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH, projectListEntrySchema } from '@open-mercato/cezar-contract';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import { TrackerConnections } from '../server/tracker/connections.ts';
 import { writeTrackerAssociation } from '../tracker-association.ts';
@@ -198,14 +198,63 @@ describe('workspace projects', () => {
       expect(entry).toMatchObject({ status: 'ok', forge: 'github' });
     });
 
-    it('omits forge for a non-github remote and for a remote-less repo', async () => {
+    it('classifies GitLab with its full project URL while omitting forge for a remote-less repo', async () => {
       const gitlab = makeRepo('lab');
       execFileSync('git', ['remote', 'add', 'origin', 'git@gitlab.com:acme/lab.git'], { cwd: gitlab });
       const bare = makeRepo('loner');
-      await registerProject(gitlab);
-      await registerProject(bare);
+      const registeredLab = await registerProject(gitlab);
+      const registeredBare = await registerProject(bare);
       const entries = await listProjects();
-      expect(entries.every((entry) => entry.forge === undefined)).toBe(true);
+      const entry = entries.find((entry) => entry.id === registeredLab.id)!;
+      expect(entry).toMatchObject({ forge: 'gitlab', repoUrl: 'https://gitlab.com/acme/lab' });
+      expect(projectListEntrySchema.parse(entry).forge).toBe('gitlab');
+      expect(entries.find((entry) => entry.id === registeredBare.id)?.forge).toBeUndefined();
+    });
+
+    it('warms configured self-managed hosts before classifying a project', async () => {
+      const root = makeRepo('self-managed');
+      execFileSync('git', ['remote', 'add', 'origin', 'ssh://git@ssh.registry.example.net:2222/group/sub/project.git'], { cwd: root });
+      const glabDir = makeDir('glab-config');
+      writeFileSync(join(glabDir, 'config.yml'), 'hosts:\n  code.registry.example.net:8443:\n    ssh_host: ssh.registry.example.net:2222\n');
+      vi.stubEnv('GLAB_CONFIG_DIR', glabDir);
+      try {
+        await registerProject(root);
+        const [entry] = await listProjects();
+        expect(entry).toMatchObject({ status: 'ok', forge: 'gitlab', repoUrl: 'https://code.registry.example.net:8443/group/sub/project' });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it.each([['https', '443'], ['http', '80']])('isolates default %s instances when project discovery warms metadata', async (protocol, port) => {
+      const glabDir = makeDir(`glab-${protocol}-ports`);
+      writeFileSync(join(glabDir, 'config.yml'), `hosts:
+  isolated.project.example.net:8443:
+    api_protocol: ${protocol}
+  coexist.project.example.net:
+    api_protocol: ${protocol}
+  coexist.project.example.net:8443:
+    api_protocol: ${protocol}
+  normalized.project.example.net:${port}:
+    api_protocol: ${protocol}
+`);
+      vi.stubEnv('GLAB_CONFIG_DIR', glabDir);
+      try {
+        for (const [name, remoteHost, expectedOrigin] of [
+          ['unknown', 'isolated.project.example.net', undefined],
+          ['default', 'coexist.project.example.net', `${protocol}://coexist.project.example.net`],
+          ['custom', 'coexist.project.example.net:8443', `${protocol}://coexist.project.example.net:8443`],
+          ['explicit-default', `normalized.project.example.net:${port}`, `${protocol}://normalized.project.example.net`],
+        ] as const) {
+          const root = makeRepo(`${protocol}-${name}`);
+          execFileSync('git', ['remote', 'add', 'origin', `${protocol}://${remoteHost}/group/sub/project.git`], { cwd: root });
+          const entry = await probeProjectStatus(root);
+          expect(entry.forge).toBe(expectedOrigin ? 'gitlab' : undefined);
+          expect(entry.repoUrl).toBe(expectedOrigin ? `${expectedOrigin}/group/sub/project` : undefined);
+        }
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it('reports a deleted root as missing (after the probe TTL cache is cleared)', async () => {

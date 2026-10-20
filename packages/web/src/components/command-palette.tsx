@@ -449,7 +449,8 @@ function PaletteContent({ close }: { close: () => void }) {
               <LayersIcon aria-hidden="true" />{t('All tasks')}</CommandItem>
           ) : null}
           {(activeProjectId === null ? GLOBAL_NAV_ITEMS : visibleNavItems({
-            forge: registry?.projects.find((project) => project.id === activeProjectId)?.forge === 'github',
+            forge: registry?.projects.find((project) => project.id === activeProjectId)?.forge !== undefined,
+            forgeKind: registry?.projects.find((project) => project.id === activeProjectId)?.forge,
             inbox: health.data?.capabilities.followups === true,
             automations: health.data?.capabilities.automations === true,
             tracker: registry?.projects.find((project) => project.id === activeProjectId)?.tracker,

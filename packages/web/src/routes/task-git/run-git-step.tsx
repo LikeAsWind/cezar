@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
 import { ApiError, createRunPr, pushRun } from '@/api/client'
-import { queryKeys, useGithub, useRepo, useRunGitStatus } from '@/api/queries'
+import { queryKeys, useGithub, useProjects, useRepo, useRunGitStatus } from '@/api/queries'
 import type { ApiRun, ForgeInfo } from '@open-mercato/cezar-api-client'
 import { useReferenceStatus } from '@/components/reference-status'
 import { toast } from '@/components/ui/toaster'
@@ -45,8 +45,11 @@ export function useRunGitStep(run: ApiRun): RunGitStep {
   const finished = prStatus === 'merged' || prStatus === 'closed'
   const projectId = useActiveProjectId()
   const github = useGithub({ limit: 1 }, projectId !== null)
+  const forgeKind = useProjects().data?.projects.find((project) => project.id === projectId)?.forge
+  // The run's forge is the SELECTED project's provider, never a handwritten `github` literal and
+  // never a workspace-health forge. No supported forge ⇒ plain-Git features only.
   const forge: ForgeInfo | null = github.data
-    ? { kind: 'github', available: github.data.available, ...(github.data.reason ? { reason: github.data.reason } : {}) }
+    ? { kind: forgeKind ?? 'github', available: github.data.available, ...(github.data.reason ? { reason: github.data.reason } : {}) }
     : null
   const repo = useRepo()
   const status = useRunGitStatus(run.id, Boolean(run.worktreePath) && !finished, isRunActive(run.status))

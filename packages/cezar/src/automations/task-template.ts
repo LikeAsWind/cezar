@@ -8,6 +8,7 @@ import type { GithubCandidate } from './github-poller.ts';
 import type { ScheduleOccurrence } from './schedule-runner.ts';
 import type { TrackerAutomationCandidate } from './tracker-poller.ts';
 import { resolvePrHead, type CommandRunner } from './pr-head.ts';
+import { automationCapabilityIssue } from './forge-capabilities.ts';
 import type { AutomationDefinition, GithubAutomationDefinition, ScheduleAutomationDefinition, TrackerAutomationDefinition } from './types.ts';
 
 const GITHUB_PLACEHOLDERS = new Set([
@@ -166,8 +167,12 @@ export async function launchAutomationRun(options: {
   dispatchEnabled?: boolean;
   /** Test seam for the `gh`/`git` calls a `checkout: 'pr-head'` launch makes. */
   runCommand?: CommandRunner;
+  /** The GitLab identity to resolve an approval-snapshot MR head against (GitLab checkouts). */
+  gitlabRef?: import('../server/forge/types.ts').GitlabRepoRef;
 }): Promise<{ runId: string }> {
   const { definition, candidate } = options;
+  const capabilityIssue = automationCapabilityIssue(options.gitlabRef ? 'gitlab' : 'github', definition.events);
+  if (capabilityIssue) throw new AutomationLaunchOutcome('failed', capabilityIssue);
   const workflow = await resolveWorkflow(options.root, definition);
   const input = startInput(definition, renderAutomationTask(definition, candidate), options.dispatchEnabled ?? false);
   // `checkout: 'pr-head'` (spec 2026-10-06-agentic-e2e-checks Phase 3): resolve the PR's head
@@ -180,6 +185,11 @@ export async function launchAutomationRun(options: {
       number: candidate.number,
       allowForkHeads: definition.task.allowForkHeads === true,
       run: options.runCommand,
+      // A GitLab approval-snapshot candidate carries the resolved GitLab identity; route its
+      // MR-head metadata through the GitLab provider (source project/branch/SHA via glab).
+      ...(options.gitlabRef
+        ? { gitlabRef: options.gitlabRef }
+        : {}),
     });
     if (resolution.kind === 'skipped') throw new AutomationLaunchOutcome('skipped', resolution.reason);
     if (resolution.kind === 'failed') throw new AutomationLaunchOutcome('failed', resolution.reason);
@@ -372,6 +382,8 @@ export function rebaselineIdleAutomations(
       revision: definition.revision,
       baselineAt,
       cursor: { timestamp: baselineAt },
+      gitlabScan: undefined,
+      approvalBaselineAt: undefined,
       frozenHighWatermark: undefined,
       backlogAfter: undefined,
       pinnedCursor: undefined,

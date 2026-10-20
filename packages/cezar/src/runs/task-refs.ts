@@ -33,12 +33,25 @@ export function extractTaskRefs(task: string): TaskRefs {
   const issueUrl = /github\.com\/[\w.-]+\/[\w.-]+\/issues\/(\d+)/i.exec(text);
   if (issueUrl) refs.issueNumber = num(issueUrl[1]);
 
+  // 1b. GitLab URLs — `/-/merge_requests/:iid` and `/-/issues/:iid` on any host
+  //     (gitlab.com or a self-managed instance). The kind is carried by the path,
+  //     never inferred from the trailing number.
+  if (refs.prNumber === undefined) {
+    const glPr = /\/-\/merge_requests\/(\d+)/i.exec(text);
+    if (glPr) refs.prNumber = num(glPr[1]);
+  }
+  if (refs.issueNumber === undefined) {
+    const glIssue = /\/-\/issues\/(\d+)/i.exec(text);
+    if (glIssue) refs.issueNumber = num(glIssue[1]);
+  }
+
   // 2. Worded references — covers the GitHub-tab templates verbatim
   //    ("Address GitHub pull request #N", "Fix GitHub issue #N") and free text
-  //    ("pr 437", "PR#437", "review pull request 437", "issue #12").
+  //    ("pr 437", "PR#437", "review pull request 437", "issue #12"), plus the
+  //    GitLab spellings ("merge request 437", "MR 437", "!437").
   if (refs.prNumber === undefined) {
-    const pr = /\b(?:pull\s+request|pr)\s*#?\s*(\d+)/i.exec(text);
-    if (pr) refs.prNumber = num(pr[1]);
+    const pr = /\b(?:merge\s+request|pull\s+request|mr|pr)\s*#?\s*(\d+)|\B!(\d+)\b/i.exec(text);
+    if (pr) refs.prNumber = num(pr[1] ?? pr[2]);
   }
   if (refs.issueNumber === undefined) {
     const issue = /\bissue\s*#?\s*(\d+)/i.exec(text);

@@ -2,7 +2,7 @@ import { t, useLocale } from '@/lib/i18n'
 import { ChevronDownIcon } from 'lucide-react'
 import { useState } from 'react'
 
-import type { AutomationEvent } from '@open-mercato/cezar-api-client'
+import type { AutomationEvent, AutomationProviderCapabilities } from '@open-mercato/cezar-api-client'
 import { Chip } from '@/components/chip'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
@@ -14,18 +14,25 @@ import { GITHUB_EVENTS, POLL_MINUTES, clamp, needsChangedLabels, type DraftFilte
 
 /**
  * The "When GitHub changes" half of the When section (spec 2026-09-14-automations-redesign
- * § UI/UX 4.3): the seven event chips (multi-select — the contract is `events[]`), the poll line,
+ * § UI/UX 4.3): the event chips (multi-select — the contract is `events[]`), the poll line,
  * and the shipped feature's filters under a Collapsible the export does not draw.
+ *
+ * Provider-aware (spec 2026-10-16-gitlab-forge-parity): `providerCapabilities` names which events
+ * the project's poller can actually deliver. Unsupported choices render disabled with the
+ * server's reason, the GitLab `approval_observed` trigger appears only where the provider knows
+ * it, and its snapshot limitation shows as help text.
  */
 export function EditorGithubFields({
   events,
   intervalSeconds,
   filters,
+  providerCapabilities,
   onChange,
 }: {
   events: readonly AutomationEvent[]
   intervalSeconds: number
   filters: DraftFilters
+  providerCapabilities?: AutomationProviderCapabilities
   onChange: (patch: { events?: AutomationEvent[]; intervalSeconds?: number; filters?: DraftFilters }) => void
 }) {
   useLocale()
@@ -35,9 +42,21 @@ export function EditorGithubFields({
   const [open, setOpen] = useState(hasList || filters.lookbackDays !== 7 || filters.maxRecords !== 25)
   const setFilter = <K extends keyof DraftFilters>(key: K, value: DraftFilters[K]) =>
     onChange({ filters: { ...filters, [key]: value } })
+
+  // The seven GitHub triggers, plus the GitLab approval snapshot where the provider knows it.
+  const unsupportedByEvent = new Map(providerCapabilities?.unsupportedEvents.map((row) => [row.event, row.reason]))
+  const offeredEvents: AutomationEvent[] = providerCapabilities?.provider === 'gitlab'
+    ? ([...GITHUB_EVENTS, 'pull_request.approval_observed'] as AutomationEvent[])
+    : ([...GITHUB_EVENTS] as AutomationEvent[])
+  const approvalHelp = providerCapabilities?.provider === 'gitlab'
+    ? providerCapabilities.approvalObservation?.reason
+    : undefined
+
+  // Filter the new selection through `offeredEvents` (not `GITHUB_EVENTS`), or a GitLab
+  // `approval_observed` selection would be silently dropped by the toggle.
   const toggleEvent = (event: AutomationEvent) => {
     const next = events.includes(event) ? events.filter((item) => item !== event) : [...events, event]
-    onChange({ events: GITHUB_EVENTS.filter((item) => next.includes(item)) })
+    onChange({ events: offeredEvents.filter((item) => next.includes(item)) })
   }
   const changedRequired = needsChangedLabels(events)
   const changedMissing = changedRequired && filters.changedLabels.trim().length === 0
@@ -45,18 +64,29 @@ export function EditorGithubFields({
   return (
     <div data-slot="editor-github" className="flex flex-col gap-3.5">
       <div role="group" aria-label={t('GitHub events')} className="flex flex-wrap gap-1.5">
-        {GITHUB_EVENTS.map((event) => (
-          <Chip
-            key={event}
-            active={events.includes(event)}
-            aria-pressed={events.includes(event)}
-            className="font-mono"
-            onClick={() => toggleEvent(event)}
-          >
-            {event}
-          </Chip>
-        ))}
+        {offeredEvents.map((event) => {
+          const reason = unsupportedByEvent.get(event)
+          const disabled = reason !== undefined
+          return (
+            <Chip
+              key={event}
+              active={events.includes(event)}
+              aria-pressed={events.includes(event)}
+              disabled={disabled}
+              title={disabled ? reason : undefined}
+              className="font-mono"
+              onClick={() => toggleEvent(event)}
+            >
+              {event}
+            </Chip>
+          )
+        })}
       </div>
+      {approvalHelp ? (
+        <p data-slot="editor-github-approval-help" className="text-[11px] leading-snug text-soft-foreground">
+          {approvalHelp}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">{t('poll every')}<Select value={String(Math.round(intervalSeconds / 60))} onValueChange={(value) => onChange({ intervalSeconds: Number(value) * 60 })}>
           <SelectTrigger size="sm" aria-label={t('Poll interval')} className="text-[13px]">
             <SelectValue />

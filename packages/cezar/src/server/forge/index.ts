@@ -1,31 +1,31 @@
 import { parseRemote } from '../../git-remotes.ts';
 import type { RepoInfo } from '../git.ts';
 import { createGithubDriver } from './github.ts';
+import { createGitlabDriver } from './gitlab.ts';
+import { knownGitlabHost } from './gitlab-hosts.ts';
 import type { ForgeDriver, ForgeKind } from './types.ts';
 
 /**
  * Forge resolution (cockpit-ui redesign spec §"Forge-driver seam"): map the
- * repo's origin remote to a driver — github.com → the GitHub driver, anything
- * else (GitLab, self-hosted, no remote, not a repo) → null. The health route
- * serializes the result as `forge: {kind, available, reason?} | null`; a null
- * forge means plain-git features only (diffs, commit, push, branches).
+ * selected remote to a driver (spec 2026-10-16-gitlab-forge-parity).
+ * Workspace health carries no project forge identity.
  */
 
 export { parseRemote, type ParsedRemote } from '../../git-remotes.ts';
 
-/** Remote host → forge kind. The one host table both `resolveForge` and the
- *  registry probe read; GitLab lands here later as one more row. */
+/** GitLab additionally resolves instances discovered from glab's local metadata. */
 const FORGE_HOSTS: Record<string, ForgeKind> = { 'github.com': 'github' };
 
 /**
  * Which forge a remote URL belongs to, without building a driver (#698): the
- * registry's per-project probe classifies each root from its remote alone —
- * plain string parsing, no `gh` shell-out — so the sidebar can gate each
- * project's GitHub tab on the project's own remote.
+ * registry's per-project probe warms local host metadata before classification.
+ * This synchronous path never shells out or probes a remote.
  */
 export function forgeKindOfRemote(remote: string | undefined): ForgeKind | null {
   const parsed = remote ? parseRemote(remote) : null;
-  return parsed ? (FORGE_HOSTS[parsed.host] ?? null) : null;
+  if (!parsed) return null;
+  return FORGE_HOSTS[parsed.host]
+    ?? (parsed.host === 'gitlab.com' || knownGitlabHost(parsed) ? 'gitlab' : null);
 }
 
 /**
@@ -38,11 +38,14 @@ export function forgeKindOfRemote(remote: string | undefined): ForgeKind | null 
  */
 export function forgeWebRoot(remote: string | undefined): string | null {
   const parsed = remote ? parseRemote(remote) : null;
-  if (!parsed || !(parsed.host in FORGE_HOSTS)) return null;
-  return `https://${parsed.host}/${parsed.owner}/${parsed.repo}`;
+  if (!parsed) return null;
+  if (FORGE_HOSTS[parsed.host] === 'github') return `https://${parsed.host}/${parsed.owner}/${parsed.repo}`;
+  const host = knownGitlabHost(parsed);
+  const origin = host?.webOrigin ?? (parsed.host === 'gitlab.com' ? 'https://gitlab.com' : null);
+  return origin ? `${origin}/${parsed.projectPath}` : null;
 }
 
-/** Remote host → driver | null. GitLab lands here later as one more case. */
+/** Remote host → driver | null, using previously warmed local host metadata. */
 export function resolveForge(repoInfo: RepoInfo | null): ForgeDriver | null {
   if (!repoInfo?.remote) return null;
   const parsed = parseRemote(repoInfo.remote);
@@ -50,7 +53,12 @@ export function resolveForge(repoInfo: RepoInfo | null): ForgeDriver | null {
   if (FORGE_HOSTS[parsed.host] === 'github') {
     return createGithubDriver(repoInfo.root, { owner: parsed.owner, repo: parsed.repo });
   }
+  const host = knownGitlabHost(parsed);
+  if (host || parsed.host === 'gitlab.com') {
+    return createGitlabDriver(repoInfo.root, { host: host?.host ?? 'gitlab.com', projectPath: parsed.projectPath,
+      webOrigin: host?.webOrigin ?? 'https://gitlab.com' });
+  }
   return null;
 }
 
-export type { ForgeDriver, ForgeAvailability, ForgeItem, ForgeKind, ForgePrStatus, ForgeRefKind } from './types.ts';
+export type { ForgeDriver, ForgeAvailability, ForgeItem, ForgeKind, ForgePrStatus, ForgeRefKind, GitlabRepoRef } from './types.ts';

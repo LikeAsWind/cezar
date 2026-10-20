@@ -51,6 +51,11 @@ const REPO = { info: { root: '/repo', branch: 'main' }, status: [], log: [], bra
 
 const DATA: AutomationsResponse = {
   available: true,
+  providerCapabilities: {
+    provider: 'github',
+    supportedEvents: ['pull_request.opened', 'issue.opened', 'issue.labeled', 'issue.unlabeled', 'pull_request.reviewed', 'pull_request.review_requested', 'pull_request.rereview_requested'],
+    unsupportedEvents: [{ event: 'pull_request.approval_observed', reason: 'Approval snapshots are unsupported on GitHub; use pull_request.reviewed' }],
+  },
   scheduler: { state: 'idle' },
   timeZone: 'Europe/Warsaw',
   stats: { runs: 0, failed: 0, agentSeconds: 0 },

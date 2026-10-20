@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOBAL_NAV_ITEMS, NAV_ITEMS, activeNavItem, activeNavPath, projectNavItems, visibleNavItems } from './nav-items'
+import { GLOBAL_NAV_ITEMS, NAV_ITEMS, activeNavItem, activeNavPath, projectNavItems, visibleNavItems, forgeProviderIcon } from './nav-items'
 
 describe('workspace and project navigation', () => {
   it('keeps the global doors independent from project capabilities', () => {
@@ -126,6 +126,27 @@ describe('visibleNavItems', () => {
     expect(labelsOf({ tracker: 'jira' })).toContain('Jira')
     expect(labelsOf({ tracker: 'linear' })).toContain('Linear')
     expect(labelsOf()).not.toContain('Tracker')
+  })
+
+  it('labels the forge item GitLab and the Git section Git / GitLab for a GitLab project', () => {
+    expect(labelsOf({ forge: true, forgeKind: 'gitlab' })).toContain('GitLab')
+    expect(labelsOf({ forge: true, forgeKind: 'gitlab' })).not.toContain('GitHub')
+    expect(projectNavItems({ forge: true, forgeKind: 'gitlab' }).map((item) => [item.to, item.label]))
+      .toContainEqual(['/git', 'Git / GitLab'])
+  })
+
+  it('swaps the forge item icon with the provider', () => {
+    expect(forgeProviderIcon('gitlab').name).toBe('GitlabIcon')
+    expect(forgeProviderIcon('github').name).toBe('GithubIcon')
+    expect(forgeProviderIcon(undefined).name).toBe('GithubIcon')
+    const gitlabForgeItem = visibleNavItems({ forge: true, forgeKind: 'gitlab' }).find((item) => item.to === '/github')
+    expect(gitlabForgeItem?.icon.name).toBe('GitlabIcon')
+  })
+
+  it('keeps the GitHub labels when no forge kind is named (existing default)', () => {
+    expect(labelsOf({ forge: true })).toContain('GitHub')
+    expect(projectNavItems({ forge: true }).map((item) => [item.to, item.label]))
+      .toContainEqual(['/git', 'Git / GitHub'])
   })
 
   it('without a forge, only the GitHub item drops out — a schedule needs no remote', () => {

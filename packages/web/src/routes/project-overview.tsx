@@ -141,7 +141,7 @@ export function ProjectOverviewRoute() {
             />
           </OverviewSection>
 
-          <OverviewSection title={t('Git / GitHub')}>
+          <OverviewSection title={t('Git / {0}', { 0: model.identity.forge === 'gitlab' ? t('GitLab') : t('GitHub') })}>
             <OverviewLinkCard
               to={model.git.to}
               title={t('Repository')}

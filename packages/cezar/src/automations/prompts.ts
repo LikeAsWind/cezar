@@ -31,7 +31,7 @@ A GitHub poll:
   "name": "Review every new pull request",          // required, 1-200 chars
   "description": "What this automation is for",      // optional, up to 2000 chars
   "kind": "github",                                  // optional here — omitted means a GitHub poll
-  "events": ["pull_request.opened"],                 // 1-7 of: pull_request.opened, issue.opened, issue.labeled, issue.unlabeled, pull_request.reviewed, pull_request.review_requested, pull_request.rereview_requested
+  "events": ["pull_request.opened"],                 // 1-7 of: pull_request.opened, issue.opened, issue.labeled, issue.unlabeled, pull_request.reviewed, pull_request.review_requested, pull_request.rereview_requested, pull_request.approval_observed (GitLab only)
   "intervalSeconds": 300,                            // required: how often GitHub is polled, in seconds, 60-86400 (300 is the usual choice)
   "filters": {                                       // required, may be {}; every key optional; a candidate must pass ALL given filters
     "authors": ["octocat"],                          //   GitHub logins that opened it

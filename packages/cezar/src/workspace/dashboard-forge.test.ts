@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ repo: vi.fn(), driver: vi.fn(), recent: vi.fn() }));
+const mocks = vi.hoisted(() => ({ repo: vi.fn(), driver: vi.fn(), recent: vi.fn(), gitlabDriver: vi.fn(), gitlabRecent: vi.fn(), readHosts: vi.fn(), knownHost: vi.fn() }));
 vi.mock('../server/git.ts', () => ({
   getRepoInfo: mocks.repo,
   isNonRepositoryDirectory: async () => false,
 }));
 vi.mock('../server/forge/github.ts', () => ({ createGithubDriver: mocks.driver }));
+vi.mock('../server/forge/gitlab.ts', () => ({ createGitlabDriver: mocks.gitlabDriver }));
+// Dashboard reads warm host metadata (reads-only the glab config, no network); stub the warmer
+// to keep the suite hermetic and off a real user's `~/.config/glab-cli`. The self-managed-host
+// end-to-end classification is covered by projects.test.ts / operations.test.ts.
+vi.mock('../server/forge/gitlab-hosts.ts', async (original) => {
+  const actual = await original<typeof import('../server/forge/gitlab-hosts.ts')>();
+  return { ...actual, readGitlabHosts: mocks.readHosts, knownGitlabHost: mocks.knownHost };
+});
 const now = Date.parse('2026-09-18T12:00:00Z');
 const item = (number = 1, createdAt = '2026-09-17T12:00:00Z') => ({
   number,
@@ -26,6 +34,12 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ available: true, items: [item()], truncated: false });
   mocks.driver.mockReset().mockReturnValue({ recentCreated: mocks.recent });
+  mocks.gitlabDriver.mockReset().mockReturnValue({ kind: 'gitlab', recentCreated: mocks.gitlabRecent });
+  mocks.gitlabRecent
+    .mockReset()
+    .mockResolvedValue({ available: true, items: [], truncated: false });
+  mocks.readHosts.mockReset().mockResolvedValue(new Map());
+  mocks.knownHost.mockReset();
 });
 afterEach(() => vi.useRealTimers());
 describe('dashboard GitHub source', () => {
@@ -267,7 +281,7 @@ it('reports a failed probe without a cached identity as unavailable, not a missi
   ]);
 });
 
-it.each([undefined, 'https://gitlab.com/o/r', 'https://github.internal/o/r'])(
+it.each([undefined, 'https://github.internal/o/r'])(
   'forgets an absent or unsupported remote (%s) while another project caches the old repository',
   async (remote) => {
     const get = await reader();
@@ -291,6 +305,52 @@ it.each([undefined, 'https://gitlab.com/o/r', 'https://github.internal/o/r'])(
       .toBe('Could not read GitHub repository');
   },
 );
+
+it('identifies GitLab creations with a full namespace, provider label and gitlab: keys', async () => {
+  const get = await reader();
+  const projects = [{ id: 'a', root: '/a' }];
+  mocks.repo.mockImplementation(async (root: string) => ({ root, remote: 'git@gitlab.com:group/sub/project.git' }));
+  mocks.gitlabRecent.mockResolvedValue({
+    available: true,
+    items: [{ number: 1, title: 'An MR', createdAt: '2026-09-17T12:00:00Z', url: 'https://gitlab.com/group/sub/project/-/merge_requests/1' }],
+    truncated: false,
+  });
+  const result = await get(projects, now);
+  expect(result.rows).toHaveLength(2);
+  expect(result.rows[0]).toMatchObject({
+    repo: 'gitlab.com/group/sub/project',
+    provider: 'gitlab',
+    number: 1,
+    url: 'https://gitlab.com/group/sub/project/-/merge_requests/1',
+  });
+  expect(result.rows.every((row) => row.provider === 'gitlab')).toBe(true);
+  expect(result.sources.map((source) => source.key)).toEqual([
+    'gitlab:gitlab.com/group/sub/project:issue',
+    'gitlab:gitlab.com/group/sub/project:pr',
+  ]);
+});
+
+it('warms local GitLab host metadata before classifying each read', async () => {
+  const get = await reader();
+  const projects = [{ id: 'a', root: '/a' }];
+  await get(projects, now);
+  expect(mocks.readHosts).toHaveBeenCalled();
+});
+
+it('isolates same-host GitLab ports and deduplicates their canonical SSH alias', async () => {
+  const get = await reader();
+  mocks.knownHost.mockImplementation(remote => remote.host === 'ssh.alias'
+    ? { host: 'shared.example:8443', webOrigin: 'https://shared.example:8443' }
+    : { host: new URL(remote.httpOrigin).host, webOrigin: remote.httpOrigin });
+  mocks.repo.mockImplementation(async (root: string) => ({ root, remote: root === '/alias'
+    ? 'git@ssh.alias:group/project.git'
+    : `https://shared.example:${root === '/a' ? 8443 : 9443}/group/project.git` }));
+  mocks.gitlabRecent.mockResolvedValue({ available: true, items: [item()], truncated: false });
+  const result = await get([{ id: 'a', root: '/a' }, { id: 'b', root: '/b' }, { id: 'alias', root: '/alias' }], now);
+  expect(result.sources).toHaveLength(4);
+  expect(result.rows.filter(row => row.projectIds.includes('a')).every(row => row.projectIds.includes('alias') && !row.projectIds.includes('b'))).toBe(true);
+  expect(result.rows.filter(row => row.projectIds.includes('b')).every(row => row.projectIds.length === 1)).toBe(true);
+});
 
 it('retains only the latest remote after a rename followed by a probe outage', async () => {
   const get = await reader();

@@ -22,7 +22,7 @@ const data = vi.hoisted(() => ({
   trackerAssociation: { association: null },
   trackerConnection: { connection: null, demo: false },
   health: { data: { capabilities: { automations: true } }, isError: false },
-  automations: { available: true, automations: [], scheduler: { state: 'idle' }, stats: { runs: 0, failed: 0, agentSeconds: 0 }, timeZone: 'UTC' },
+  automations: { available: true, providerCapabilities: { provider: 'github', supportedEvents: [], unsupportedEvents: [] }, automations: [], scheduler: { state: 'idle' }, stats: { runs: 0, failed: 0, agentSeconds: 0 }, timeZone: 'UTC' },
   skills: [{ name: 'review', body: '', path: '/skills/review.md', source: 'team' }],
   workflows: { workflows: [{ name: 'Review', steps: [] }], issues: [] },
 }))
@@ -100,6 +100,16 @@ describe('ProjectOverviewRoute', () => {
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0)
     expect(screen.getByText('Automations are disabled')).toBeTruthy()
     expect(mocks.automationsQuery).toHaveBeenCalledWith(false)
+  })
+
+  it('labels the git summary section with the project forge provider', () => {
+    renderOverview()
+    expect(screen.getByRole('heading', { name: 'Git / GitHub' })).toBeTruthy()
+
+    cleanup()
+    data.project = { ...data.project, forge: 'gitlab' } as ProjectListEntry
+    renderOverview()
+    expect(screen.getByRole('heading', { name: 'Git / GitLab' })).toBeTruthy()
   })
 
   it('lets the project shell own the only back-to-workspace link', () => {

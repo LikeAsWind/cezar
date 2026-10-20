@@ -29,7 +29,8 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
 
   const projectId = useActiveProjectId()
   const projects = useProjects().data?.projects
-  const hasGithub = projects?.find((project) => project.id === projectId)?.forge === 'github'
+  const forge = projects?.find((project) => project.id === projectId)?.forge
+  const hasForge = forge !== undefined
   const queryClient = useQueryClient()
   const onError = (error: Error) => toast(error.message, { tone: 'danger' })
 
@@ -161,7 +162,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
         <p className="mt-1 text-[11px] text-soft-foreground">{t('New task worktrees branch from this.')}</p>
       </div>
 
-      {hasGithub ? <ForgePullRequests /> : null}
+      {hasForge ? <ForgePullRequests forge={forge} /> : null}
     </section>
   )
 }
@@ -169,15 +170,18 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
 /** Mounted only behind the forge gate, so `/api/github` is fetched only when a driver is
  *  available. The payload itself still degrades (`available:false` + reason) — rendered
  *  honestly rather than hidden, since at this point a forge was detected. */
-function ForgePullRequests() {
+function ForgePullRequests({ forge }: { forge: 'github' | 'gitlab' }) {
   useLocale()
 
   const github = useGithub({ limit: 20 })
+  const heading = forge === 'gitlab' ? t('Open merge requests') : t('Open pull requests')
+  const loading = forge === 'gitlab' ? t('Loading merge requests…') : t('Loading pull requests…')
+  const empty = forge === 'gitlab' ? t('No open merge requests.') : t('No open pull requests.')
   return (
     <div data-slot="repo-prs" className="max-w-xl">
-      <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">{t('Open pull requests')}</h2>
+      <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">{heading}</h2>
       {github.isPending ? (
-        <p className="mt-2 text-xs text-soft-foreground">{t('Loading pull requests…')}</p>
+        <p className="mt-2 text-xs text-soft-foreground">{loading}</p>
       ) : github.isError ? (
         <p className="mt-2 text-xs text-soft-foreground">{github.error.message}</p>
       ) : !github.data.available ? (
@@ -185,11 +189,11 @@ function ForgePullRequests() {
           {github.data.reason ?? t('The forge is unreachable right now.')}
         </p>
       ) : github.data.prs.length === 0 ? (
-        <p className="mt-2 text-xs text-soft-foreground">{t('No open pull requests.')}</p>
+        <p className="mt-2 text-xs text-soft-foreground">{empty}</p>
       ) : (
         <ul className="mt-2 flex flex-col divide-y divide-border">
           {github.data.prs.map((pr) => (
-            <PullRequestRow key={pr.number} pr={pr} />
+            <PullRequestRow key={pr.number} pr={pr} forge={forge} />
           ))}
         </ul>
       )}
@@ -197,13 +201,14 @@ function ForgePullRequests() {
   )
 }
 
-function PullRequestRow({ pr }: { pr: GithubItem }) {
+function PullRequestRow({ pr, forge }: { pr: GithubItem; forge: 'github' | 'gitlab' }) {
   useLocale()
 
+  const ref = forge === 'gitlab' ? `!${pr.number}` : `#${pr.number}`
   const inner = (
     <>
       <GitPullRequestIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{pr.number}</span>
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{ref}</span>
       <span className="min-w-0 flex-1 truncate text-[13px]">{pr.title}</span>
       {pr.checks ? <ChecksBadge checks={pr.checks} /> : null}
     </>

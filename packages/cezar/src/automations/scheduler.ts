@@ -1,7 +1,10 @@
 import { runEventPollCycle, launchEventCandidate } from './event-poll-cycle.ts';
+import { automationCapabilityIssue } from './forge-capabilities.ts';
 import type { AutomationCoordinator } from './coordinator.ts';
 import { POLL_RECORD_CEILING } from './github-poller.ts';
 import type { GithubCandidate, GithubPoller, GithubPollResult } from './github-poller.ts';
+import type { GitlabPoller, GitlabPollResult } from './gitlab-poller.ts';
+import type { GitlabRepoRef } from '../server/forge/types.ts';
 import { ScheduleRunner, type ScheduleLauncher } from './schedule-runner.ts';
 import type { AutomationStore } from './store.ts';
 import type { TrackerDriver } from '../server/tracker/types.ts';
@@ -37,6 +40,8 @@ export interface ProjectAutomationHandle {
   /** The zone every schedule is evaluated in — the server's own. */
   timeZone: string;
   github?: { owner: string; repo: string; poller: GithubPoller };
+  /** GitLab project: the resolved instance/project identity and the approval-snapshot poller. */
+  gitlab?: { ref: GitlabRepoRef; poller: GitlabPoller };
   /** `getDriver` re-resolves the project's tracker connection on every poll (it can be added,
    *  removed or reconnected between ticks) rather than being captured once at handle build time. */
   tracker?: { getDriver: () => Promise<TrackerDriver | TrackerFailure>; poller: TrackerPoller };
@@ -62,9 +67,17 @@ const githubRequests = new GithubRequestArbiter();
 export class ProjectAutomationScheduler {
   constructor(private readonly handle: ProjectAutomationHandle) {}
 
-  async check(definition: GithubAutomationDefinition, mode: 'preview' | 'execute' = 'execute'): Promise<GithubPollResult> {
+  async check(definition: GithubAutomationDefinition, mode: 'preview' | 'execute' = 'execute'): Promise<GithubPollResult | GitlabPollResult> {
+    const gitlab = this.handle.gitlab;
+    const issue = automationCapabilityIssue(gitlab && !this.handle.github ? 'gitlab' : 'github', definition.events);
+    if (issue) throw new Error(issue);
+    if (gitlab && !this.handle.github) return this.checkGitlab(definition, mode);
+    return this.checkGithub(definition, mode);
+  }
+
+  private async checkGithub(definition: GithubAutomationDefinition, mode: 'preview' | 'execute'): Promise<GithubPollResult> {
     const github = this.handle.github;
-    if (!github) throw new Error('No GitHub remote is configured');
+    if (!github) throw new Error('No supported repository platform is configured');
     const detectionOnly = mode === 'execute' && !this.handle.launch;
     if (detectionOnly) mode = 'preview';
     /** This call is the scheduler's own turn, not a by-hand preview from the API. */
@@ -135,6 +148,76 @@ export class ProjectAutomationScheduler {
         stillPinned: stillPinned && laterCursor(polledState.cursor, result.cursor) === polledState.cursor,
         cursor: polledState.cursor,
       }),
+    }).then(result => {
+      if (detectionOnly && store.get(definition.id)?.revision === definition.revision) {
+        store.setState(definition.id, current => ({
+          ...current,
+          nextCheckAt: new Date(Date.now() + definition.intervalSeconds * 1000).toISOString(),
+        }));
+      }
+      return result;
+    });
+  }
+
+  /** GitLab scan continuation and retained approval identities are independent of the event cursor. */
+  private async checkGitlab(definition: GithubAutomationDefinition, mode: 'preview' | 'execute'): Promise<GitlabPollResult> {
+    const gitlab = this.handle.gitlab;
+    if (!gitlab) throw new Error('No GitLab remote is configured');
+    const detectionOnly = mode === 'execute' && !this.handle.launch;
+    if (detectionOnly) mode = 'preview';
+    const scheduled = mode === 'execute' || detectionOnly;
+    const { store } = this.handle;
+    const sourceId = `${gitlab.ref.host}:${gitlab.ref.projectPath}`;
+    return runEventPollCycle({
+      store, definition, mode, scheduled, onChange: this.handle.onChange,
+      prepareState: state => {
+        // Missing runtime state, or the polled source moved to a different project: leave the
+        // baseline ABSENT before polling so the poller establishes (records) the retained
+        // approvals without launching any. `approvalSource` marks which source the baseline belongs to.
+        if (state.approvalBaseline !== undefined && state.approvalSource === sourceId) return;
+        this.handle.store.setState(definition.id, current => ({
+          ...current, revision: definition.revision, approvalBaseline: undefined, approvalSource: sourceId,
+          gitlabScan: undefined, approvalBaselineAt: undefined,
+          consecutiveFailures: 0, backoffUntil: undefined,
+        }));
+        this.handle.store.appendLog({
+          automationId: definition.id, revision: definition.revision, result: 'baseline',
+          reason: state.approvalBaseline === undefined
+            ? 'GitLab approval baseline was missing; retained approvals were not launched.'
+            : 'GitLab approval source changed; retained approvals of the new source were not launched.',
+        });
+      },
+      poll: async state => {
+        const since = state.cursor?.timestamp ?? state.baselineAt;
+        const overlapSince = since ? new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString() : undefined;
+        return gitlab.poller.poll(definition, { since: overlapSince, approvalBaseline: state.approvalBaseline,
+          scan: state.gitlabScan, baselineAt: state.approvalBaselineAt ?? state.baselineAt,
+          initializing: state.approvalBaselineAt === undefined });
+      },
+      launch: (candidate: GithubCandidate) => this.launch(definition, candidate),
+      persist: (result, current) => {
+        const cursor = result.partial ? current.cursor : laterCursor(current.cursor, result.cursor);
+        return {
+          ...current, revision: definition.revision, cursor,
+          // The approval identity set only ever GROWS; a partial poll must never clear it.
+          approvalBaseline: result.approvalBaseline ?? current.approvalBaseline,
+          approvalSource: result.approvalBaseline ? sourceId : current.approvalSource,
+          gitlabScan: result.scan,
+          approvalBaselineAt: result.initializedAt ?? current.approvalBaselineAt,
+          frozenHighWatermark: result.truncated && cursor?.tieBreaker ? { timestamp: cursor.timestamp, tieBreaker: cursor.tieBreaker } : undefined,
+          pinnedCursor: undefined,
+          lastSuccessAt: new Date().toISOString(),
+          nextCheckAt: new Date(Date.now() + definition.intervalSeconds * 1000).toISOString(),
+          consecutiveFailures: 0,
+          backoffUntil: undefined,
+        };
+      },
+      reason: result => result.unsupported
+        ? result.unsupported
+        : result.noBaseline
+          ? result.noBaseline
+          : result.partial ? 'GitLab poll was partial; retrying the same scan chunk without consuming events.'
+            : result.scan ? 'GitLab scan continues on the next scheduled check.' : 'Scheduled check completed.',
     }).then(result => {
       if (detectionOnly && store.get(definition.id)?.revision === definition.revision) {
         store.setState(definition.id, current => ({
@@ -357,7 +440,7 @@ export class WorkspaceAutomationScheduler {
         const key = `${projectId}:${definition.id}`;
         live.add(key);
         if (isGithubAutomation(definition)) {
-          if (!handle.github) continue;
+          if (!handle.github && !handle.gitlab) continue;
           const scheduler = new ProjectAutomationScheduler(handle);
           const at = Date.parse(store.state(definition.id)?.nextCheckAt ?? new Date(now).toISOString());
           due.push({ key, at: this.notBefore(key, at), retryAfterMs: Math.max(definition.intervalSeconds * 1_000, MIN_RETRY_MS), fire: () => scheduler.check(definition) });

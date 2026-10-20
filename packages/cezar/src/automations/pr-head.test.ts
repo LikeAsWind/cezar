@@ -8,7 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import { RunManager } from '../workflows/run.ts';
 import { SecretStore } from '../workspace/secrets.ts';
 import { launchEventCandidate } from './event-poll-cycle.ts';
-import { prunePrHeadRefs, resolvePrHead, runCommand, type CommandRunner } from './pr-head.ts';
+import { prunePrHeadRefs, resolveGitlabMrHead, resolvePrHead, runCommand, type CommandRunner } from './pr-head.ts';
 import { AutomationStore } from './store.ts';
 import { AutomationLaunchOutcome, launchAutomationRun } from './task-template.ts';
 import { automationDefinitionSchema, type GithubAutomationDefinition } from './types.ts';
@@ -134,6 +134,102 @@ describe('resolvePrHead (spec 2026-10-06-agentic-e2e-checks Phase 3)', () => {
     await prunePrHeadRefs(repo.root, new Set([2]));
     const left = (await run('git', ['for-each-ref', '--format=%(refname)', 'refs/cezar/pr/'], { cwd: repo.root })).stdout.trim();
     expect(left).toBe('refs/cezar/pr/2');
+  });
+});
+
+describe('resolveGitlabMrHead (spec 2026-10-16-gitlab-forge-parity)', () => {
+  it.each([false, true])('keeps GitLab dry run offline (wrapper=%s)', async wrapper => {
+    const calls: string[][] = [];
+    const runner: CommandRunner = async (command, args) => {
+      calls.push([command, ...args]);
+      return { ok: true, stdout: args[0] === 'rev-parse' ? 'a'.repeat(40) : '', stderr: '' };
+    };
+    const options = { root: '/fixture', number: 42, allowForkHeads: false, run: runner, env: { CEZ_DRY_RUN: '1' } };
+    const result = wrapper
+      ? await resolvePrHead({ ...options, repo: 'group/sub/shop', gitlabRef: { ...ref, projectPath: 'group/sub/shop' } })
+      : await resolveGitlabMrHead({ ...options, ref });
+    expect(result).toMatchObject({ kind: 'ok', head: { headSha: 'a'.repeat(40), untrusted: false } });
+    expect(calls).toEqual([['git', 'rev-parse', 'HEAD'], ['git', 'update-ref', 'refs/cezar/pr/42', 'a'.repeat(40)]]);
+  });
+  let repo: { root: string; base: string; head: string };
+  beforeEach(async () => {
+    repo = await gitRepo('cez-gitlab-mr-head-');
+  });
+  afterEach(() => rmSync(repo.root, { recursive: true, force: true }));
+
+  const ref = { host: 'gitlab.com', projectPath: 'group/shop', webOrigin: 'https://gitlab.com' };
+
+  /** A `glab`/`git` stand-in: `glab api` answers the bounded API, `git fetch` fetches the head. */
+  function fakeGitlab(opts: {
+    mr?: Record<string, unknown> | null;
+    source?: Record<string, unknown> | null;
+    target?: Record<string, unknown> | null;
+    fetchFails?: string;
+  } = {}) {
+    const calls: string[][] = [];
+    const mr = opts.mr === undefined
+      ? { iid: 42, state: 'opened', web_url: 'https://gitlab.com/group/shop/-/merge_requests/42', source_project_id: 100, target_project_id: 100, source_branch: 'feature/login', target_branch: 'main', sha: repo.head }
+      : opts.mr;
+    const runner: CommandRunner = async (command, args, cwd) => {
+      calls.push([command, ...args]);
+      if (command === 'glab') {
+        const endpoint = args[args.indexOf('--include') + 1] ?? '';
+        const respond = (payload: unknown) => ({ ok: true, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(payload)}`, stderr: '' });
+        if (mr === null) return { ok: false, stdout: '', stderr: 'HTTP 404: Not Found' };
+        if (endpoint.endsWith('/merge_requests/42')) return respond(mr);
+        if (endpoint.endsWith('/projects/200') || endpoint === 'projects/200') return respond({ ssh_url_to_repo: `git@gitlab.com:${(opts.source?.path_with_namespace as string | undefined) ?? 'group/shop'}.git`, ...(opts.source ?? { id: 200, path_with_namespace: 'group/shop' }) });
+        if (endpoint.endsWith('/projects/100') || endpoint === 'projects/100') return respond({ ssh_url_to_repo: 'git@gitlab.com:group/shop.git', ...(opts.target ?? { id: 100, path_with_namespace: 'group/shop' }) });
+        return { ok: false, stdout: '', stderr: `unexpected glab path ${endpoint}` };
+      }
+      if (args[0] === 'fetch') {
+        if (opts.fetchFails) return { ok: false, stdout: '', stderr: opts.fetchFails };
+        const target = args.at(-1)!.split(':')[1]!;
+        return runCommand('git', ['update-ref', target, repo.head], cwd);
+      }
+      return runCommand(command, args, cwd);
+    };
+    return { runner, calls };
+  }
+
+  it('resolves a same-project MR head via glab and fetches it into the namespaced ref', async () => {
+    const { runner, calls } = fakeGitlab();
+    const result = await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: runner, env: {} });
+    expect(result).toMatchObject({
+      kind: 'ok',
+      head: { number: 42, repo: 'group/shop', headRepo: 'group/shop', headRef: 'feature/login', headSha: repo.head, baseRef: 'main', ref: 'refs/cezar/pr/42', untrusted: false },
+    });
+    expect(calls.some((call) => call[0] === 'glab' && call.join(' ').includes('merge_requests/42'))).toBe(true);
+    expect(calls.some((call) => call[0] === 'git' && call[1] === 'fetch')).toBe(true);
+  });
+
+  it.each(['git@gitlab.com:group/shop.git', 'ssh://git@gitlab.com:2222/group/shop.git', 'http://gitlab.com/group/shop.git'])('preserves working Git transport %s', async remote => {
+    await run('git', ['remote', 'add', 'upstream', remote], { cwd: repo.root });
+    const { runner, calls } = fakeGitlab();
+    const result = await resolveGitlabMrHead({ root: repo.root, ref: { ...ref, ...(remote.startsWith('http:') ? { webOrigin: 'http://gitlab.com' } : {}) }, number: 42, allowForkHeads: false, run: runner, env: {} });
+    expect(result.kind).toBe('ok');
+    expect(calls.find(call => call[0] === 'git' && call[1] === 'fetch')?.[3]).toBe('upstream');
+  });
+
+  it('skips a fork MR unless the automation admits forks, and marks an admitted one untrusted', async () => {
+    const forkMr = { iid: 42, state: 'opened', web_url: 'https://gitlab.com/group/shop/-/merge_requests/42', source_project_id: 200, target_project_id: 100, source_branch: 'patch-1', target_branch: 'main', sha: repo.head };
+    expect(await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: fakeGitlab({ mr: forkMr, source: { id: 200, path_with_namespace: 'stranger/shop' }, target: { id: 100, path_with_namespace: 'group/shop' } }).runner, env: {} }))
+      .toEqual({ kind: 'skipped', reason: 'fork-head' });
+    const admitted = await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: true, run: fakeGitlab({ mr: forkMr, source: { id: 200, path_with_namespace: 'stranger/shop' }, target: { id: 100, path_with_namespace: 'group/shop' } }).runner, env: {} });
+    expect(admitted).toMatchObject({ kind: 'ok', head: { headRepo: 'stranger/shop', untrusted: true } });
+  });
+
+  it('skips a closed MR and fails when the head SHA is missing', async () => {
+    expect(await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: fakeGitlab({ mr: { iid: 42, state: 'merged', web_url: 'x', source_project_id: 100, target_project_id: 100, source_branch: 'b', target_branch: 'main', sha: repo.head } }).runner, env: {} }))
+      .toEqual({ kind: 'skipped', reason: 'pr-not-open' });
+    const noHead = await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: fakeGitlab({ mr: { iid: 42, state: 'opened', web_url: 'x', source_project_id: 100, target_project_id: 100, source_branch: 'b', target_branch: 'main' } }).runner, env: {} });
+    expect(noHead.kind === 'failed' && noHead.reason).toContain('head is unavailable');
+  });
+
+  it('fails as pr-head-unavailable when the API or the fetch is unreachable', async () => {
+    const api = await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: fakeGitlab({ mr: null }).runner, env: {} });
+    expect(api.kind === 'failed' && api.reason).toMatch(/^pr-head-unavailable/);
+    const fetch = await resolveGitlabMrHead({ root: repo.root, ref, number: 42, allowForkHeads: false, run: fakeGitlab({ fetchFails: "fatal: couldn't find remote ref" }).runner, env: {} });
+    expect(fetch.kind === 'failed' && fetch.reason).toContain('could not fetch');
   });
 });
 

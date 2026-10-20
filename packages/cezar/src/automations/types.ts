@@ -6,6 +6,7 @@ import {
   trackerAssociationSchema,
   trackerKindSchema,
   automationScheduleSchema,
+  gitlabAutomationScanSchema,
   type AutomationSchedule,
 } from '@open-mercato/cezar-contract';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
@@ -19,6 +20,7 @@ export const automationEventSchema = z.enum([
   'pull_request.reviewed',
   'pull_request.review_requested',
   'pull_request.rereview_requested',
+  'pull_request.approval_observed',
 ]);
 
 const boundedString = z.string().trim().min(1).max(200);
@@ -216,6 +218,21 @@ export const automationRuntimeStateSchema = z
     nextRunAt: z.string().datetime().optional(),
     lastRunAt: z.string().datetime().optional(),
     etags: z.record(z.string(), z.string()).optional(),
+    /**
+     * GitLab approval snapshot baseline (spec 2026-10-16-gitlab-forge-parity): the retained
+     * approval identities seen when the poller established its baseline, keyed by
+     * `host:projectPath:iid:approverId:approved_at`. Distinct from `cursor` so enable/restart/
+     * re-enable never replays retained approvals and a failed poll never clears it.
+     */
+    approvalBaseline: z.record(z.string(), z.string()).optional(),
+    /**
+     * The polled GitLab source identity (`host:projectPath`) the approval baseline belongs to.
+     * When the polled source changes (remote moved to a different project), the baseline is
+     * re-established empty rather than launching the new source's retained approvals.
+     */
+    approvalSource: z.string().optional(),
+    gitlabScan: gitlabAutomationScanSchema.optional(),
+    approvalBaselineAt: z.string().optional(),
     backoffUntil: z.string().datetime().optional(),
     consecutiveFailures: z.number().int().nonnegative().optional(),
   })

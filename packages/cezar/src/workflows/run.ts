@@ -75,8 +75,7 @@ import {
   worktreeDiff,
   worktreeShortstat,
 } from '../git-worktree.ts';
-import { commentOnIssue, commentOnPr, fetchGithubChecks, updatePr } from '../server/forge/github.ts';
-import { createDraftPr } from '../server/pr.ts';
+import { commentForge, createForgePr, fetchForgeChecks, updateForgePr } from '../server/forge/operations.ts';
 import { getHeadCommit, getRepoInfo } from '../server/git.ts';
 import { loadWorkflows, newerCatalogWorkflow } from './load.ts';
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
@@ -5202,7 +5201,7 @@ export class RunManager {
       const run = record();
       const ref = run?.prRefs?.find((r) => r.origin === 'created') ?? run?.prRefs?.[0];
       if (ref) return ref.number;
-      const m = run?.pullRequestUrl ? /\/pull\/(\d+)/.exec(run.pullRequestUrl) : null;
+      const m = run?.pullRequestUrl ? /\/(?:pull|merge_requests)\/(\d+)/.exec(run.pullRequestUrl) : null;
       return m ? Number(m[1]) : undefined;
     };
 
@@ -5282,13 +5281,13 @@ export class RunManager {
         // One PR per task: a PR this run already opened (a resumed walk, or a loop back through
         // this node) is reported, never opened twice.
         if (run.pullRequestUrl) {
-          const n = /\/pull\/(\d+)/.exec(run.pullRequestUrl)?.[1];
+          const n = /\/(?:pull|merge_requests)\/(\d+)/.exec(run.pullRequestUrl)?.[1];
           outputs.set(node.id, { url: run.pullRequestUrl, number: n ? Number(n) : '' });
           note(`draft PR already open: ${run.pullRequestUrl}`);
           return 'created';
         }
         const title = node.title ? render(node.title) : undefined;
-        const outcome = await createDraftPr({
+        const outcome = await createForgePr({
           repoRoot: this.repoRoot,
           run: title ? { ...run, title } : run,
           handoffText: readHandoff(this.dataDir, runId),
@@ -5298,7 +5297,7 @@ export class RunManager {
           return 'failed';
         }
         this.store.updateRun(runId, { pullRequestUrl: outcome.url });
-        const number = /\/pull\/(\d+)/.exec(outcome.url)?.[1];
+        const number = /\/(?:pull|merge_requests)\/(\d+)/.exec(outcome.url)?.[1];
         if (number) this.store.recordPrRef(runId, { number: Number(number), url: outcome.url, origin: 'created' });
         outputs.set(node.id, { url: outcome.url, number: number ? Number(number) : '' });
         note(`draft PR opened: ${outcome.url}`);
@@ -5310,7 +5309,7 @@ export class RunManager {
           note('no PR on this task to comment on', 'danger');
           return 'failed';
         }
-        const res = await commentOnPr(this.repoRoot, number, render(node.body));
+        const res = await commentForge(this.repoRoot, 'pr', number, render(node.body));
         if (!res.ok) {
           note(`PR comment failed — ${res.error}`, 'danger');
           return 'failed';
@@ -5400,7 +5399,7 @@ export class RunManager {
           note('no PR on this task to update', 'danger');
           return 'failed';
         }
-        const res = await updatePr(this.repoRoot, number, {
+        const res = await updateForgePr(this.repoRoot, number, {
           ...(node.ready ? { ready: true } : {}),
           ...(node.addLabels?.length ? { addLabels: node.addLabels } : {}),
           ...(node.reviewers?.length ? { reviewers: node.reviewers } : {}),
@@ -5420,7 +5419,7 @@ export class RunManager {
           note('no issue on this task to comment on (set one on the node)', 'danger');
           return 'failed';
         }
-        const res = await commentOnIssue(this.repoRoot, issue, render(node.body));
+        const res = await commentForge(this.repoRoot, 'issue', issue, render(node.body));
         if (!res.ok) {
           note(`issue comment failed — ${res.error}`, 'danger');
           return 'failed';
@@ -5485,7 +5484,8 @@ export class RunManager {
           let stopped = false;
           const poll = async () => {
             if (stopped) return;
-            const data = await fetchGithubChecks(this.repoRoot, [number]);
+            const data = await fetchForgeChecks(this.repoRoot, [number]);
+            if (stopped) return;
             // Unavailable (offline, gh logged out) is not a verdict: keep polling until the timeout.
             const g = data.available ? data.checks[number] : null;
             if (g === 'passing' || g === 'failing') {

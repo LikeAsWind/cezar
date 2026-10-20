@@ -15,6 +15,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AutomationCoordinator } from '../automations/coordinator.ts';
 import type { AutomationStore } from '../automations/store.ts';
 import { GithubPoller } from '../automations/github-poller.ts';
+import { GitlabPoller } from '../automations/gitlab-poller.ts';
+import { automationCapabilities, automationCapabilityIssue, resolveAutomationForge } from '../automations/forge-capabilities.ts';
 import { TrackerPoller } from '../automations/tracker-poller.ts';
 import { ProjectAutomationScheduler, ProjectTrackerAutomationScheduler, WorkspaceAutomationScheduler, type ProjectAutomationHandle } from '../automations/scheduler.ts';
 import { ScheduleRunner } from '../automations/schedule-runner.ts';
@@ -230,8 +232,10 @@ import { agentHomePaths, cezarHomeDir, expandTilde, isAbsolutePath } from '../pa
 import { isLoopbackHostHeader, normalizeHostname, resolveCapabilities } from './capabilities.ts';
 import { createSocketHub, type SocketHub, type WsUpgradeVerdict } from './ws.ts';
 import { browseDirectory, isInsideBrowseRoot, isLexicallyInsideBrowseRoot, resolveBrowseRoot } from './fs-browse.ts';
-import { parseRemote, resolveForge, type ForgeAvailability } from './forge/index.ts';
-import { fetchGithub, fetchGithubChecks, fetchGithubComments, fetchGithubPrDiff, fetchGithubRefStatus, forgetRefStatus, readCachedRefStatuses, refNumberFromUrl, searchGithubItems, GithubPrNotFoundError, GH_CHECKS_MAX, GH_SEARCH_MAX, GH_REF_STATUS_MAX } from './github.ts';
+import { resolveForge, type ForgeAvailability } from './forge/index.ts';
+import { readGitlabHosts } from './forge/gitlab-hosts.ts';
+import { refNumberFromUrl, GithubPrNotFoundError, GH_CHECKS_MAX, GH_SEARCH_MAX, GH_REF_STATUS_MAX } from './github.ts';
+import { fetchForgeList, fetchForgeComments, fetchForgeChecks, fetchForgeRefStatus, searchForgeItems, fetchForgePrDiff, readForgeCachedRefStatuses, resolveProjectForge, invalidateForge } from './forge/operations.ts';
 import { ensureLaunchKey } from './launch-key.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import {
@@ -444,6 +448,17 @@ function automationKindIssue(body: AutomationEditableBody, kind: 'github' | 'sch
 }
 const automationCreateSchema = automationEditableSchema.extend({ enable: z.boolean().optional() });
 const automationUpdateSchema = automationEditableSchema.extend({ expectedRevision: z.number().int().positive() });
+
+/** A GitLab project's automation definition must not select the three unsupported review triggers.
+ *  GitHub projects and plain-Git projects pass; `resolveAutomationForge` is async (it warms host
+ *  metadata), so this is awaited at each entry point rather than folded into `automationKindIssue`. */
+async function automationForgeIssue(root: string, events: AutomationDefinition['events']): Promise<string | null> {
+  if (!events?.length) return null;
+  const forge = await resolveAutomationForge(root);
+  const provider = forge?.kind ?? null;
+  return automationCapabilityIssue(provider, events);
+}
+
 const automationCheckRequestSchema = z.object({ mode: z.enum(['preview', 'execute']) }).strict();
 const automationLogQuerySchema = z.object({
   automationId: z.string().optional(),
@@ -3510,6 +3525,8 @@ export function createApp(deps: ServerDeps) {
       revision: automation.revision,
       baselineAt,
       checkpoint: undefined,
+      gitlabScan: undefined,
+      approvalBaselineAt: undefined,
       cursor: { timestamp: baselineAt },
       nextCheckAt: new Date(now + (automation.intervalSeconds ?? 300) * 1_000).toISOString(),
     }));
@@ -3584,7 +3601,13 @@ export function createApp(deps: ServerDeps) {
     .use('/automation-log/*', requireAutomations)
     .get('/automations', async (c) => {
       const { root, automationStore } = c.get('project');
-      const forge = resolveForge(await getRepoInfo(root));
+      // Warm local GitLab host metadata BEFORE the synchronous classifier: after the ~5s host
+      // cache ages out, `resolveForge` reads `knownGitlabHost` (undefined) and misclassifies a
+      // self-managed GitLab project as plain Git, so the automation editor's `providerCapabilities`
+      // would fall back to null. This read must agree with the mutations below, which resolve the
+      // same identity through the async `resolveAutomationForge` path.
+      const [info] = await Promise.all([getRepoInfo(root), readGitlabHosts()]);
+      const forge = resolveForge(info);
       // Annotated, so the two branches are ONE shape rather than a union of two: the fallback
       // literal always carries `reason`, the cached answer only sometimes does, and the route
       // type is what `contract/src/automations.ts` has to describe.
@@ -3594,6 +3617,12 @@ export function createApp(deps: ServerDeps) {
       const availability: ForgeAvailability = forge
         ? forge.detectCached() ?? (await forge.detect())
         : { available: false, reason: 'No GitHub remote is configured' };
+      // The selected project's provider capability story — which poll events are supported, which
+      // are disabled with a reason, and the GitLab approval-snapshot limitation (spec
+      // 2026-10-16-gitlab-forge-parity). Plain Git (provider null) has no supported events.
+      const providerCapabilities = automationCapabilities(
+        forge ? (forge.kind === 'github' ? 'github' : 'gitlab') : null,
+      );
       const definitions = automationStore.list();
       const logsById = new Map(definitions.map((definition) => [definition.id, automationStore.logs({ automationId: definition.id, limit: 100 })] as const));
       const timeZone = localTimeZone();
@@ -3634,6 +3663,7 @@ export function createApp(deps: ServerDeps) {
       const nextDue = automations.map((item) => item.nextRunAt).filter(Boolean).sort()[0];
       return c.json({
         ...availability,
+        providerCapabilities,
         scheduler: {
           // `as const` on both arms: in an object literal a conditional of two string literals
           // widens to `string`, which would erase the two states this key can hold.
@@ -3652,6 +3682,10 @@ export function createApp(deps: ServerDeps) {
       const kind = parsed.data.kind ?? 'github';
       const kindIssue = automationKindIssue(parsed.data, kind);
       if (kindIssue) return c.json({ error: kindIssue }, 400);
+      if (kind === 'github') {
+        const forgeIssue = await automationForgeIssue(c.get('project').root, parsed.data.events);
+        if (forgeIssue) return c.json({ error: forgeIssue }, 400);
+      }
       if (kind === 'tracker') {
         const issue = await trackerTriggerIssue(c.get('project'), parsed.data.trackerTrigger);
         if (issue) return c.json({ error: issue }, 400);
@@ -3699,6 +3733,10 @@ export function createApp(deps: ServerDeps) {
       if (kind !== current.kind) return c.json({ error: 'change the kind by creating a new automation' }, 409);
       const kindIssue = automationKindIssue(parsed.data, kind);
       if (kindIssue) return c.json({ error: kindIssue }, 400);
+      if (kind === 'github') {
+        const forgeIssue = await automationForgeIssue(c.get('project').root, parsed.data.events);
+        if (forgeIssue) return c.json({ error: forgeIssue }, 400);
+      }
       if (kind === 'tracker') {
         const issue = await trackerTriggerIssue(c.get('project'), parsed.data.trackerTrigger);
         if (issue) return c.json({ error: issue }, 400);
@@ -3741,6 +3779,9 @@ export function createApp(deps: ServerDeps) {
           }
         }
         if (kind !== 'tracker' && automation.enabled && !current.enabled) armAutomation(automationStore, automation);
+        else if (kind === 'github' && automation.enabled && (await resolveAutomationForge(c.get('project').root))?.kind === 'gitlab') {
+          armAutomation(automationStore, automation);
+        }
         emitAutomationChange(c.get('project'), automation.id, automation.revision);
         automationsChanged();
         return c.json({ automation });
@@ -3767,6 +3808,10 @@ export function createApp(deps: ServerDeps) {
       if (current.kind === 'tracker') {
         const issue = await trackerTriggerIssue(c.get('project'), current.trackerTrigger);
         if (issue) return c.json({ error: issue }, 400);
+      }
+      if (current.kind === 'github') {
+        const forgeIssue = await automationForgeIssue(c.get('project').root, current.events);
+        if (forgeIssue) return c.json({ error: forgeIssue }, 400);
       }
       let automation: AutomationDefinition;
       try {
@@ -3803,6 +3848,10 @@ export function createApp(deps: ServerDeps) {
       const automation = store.get(c.req.param('id'));
       if (!automation) return c.json({ error: 'not found' }, 404);
       if (!isGithubAutomation(automation) && !isTrackerAutomation(automation)) return c.json({ error: 'Choose an event to preview, or use run for a schedule' }, 409);
+      if (isGithubAutomation(automation)) {
+        const forgeIssue = await automationForgeIssue(project.root, automation.events);
+        if (forgeIssue) return c.json({ error: forgeIssue }, 400);
+      }
       const parsed = { data: c.req.valid('json') };
       // `string`, not `randomUUID`'s template-literal type: the wire carries an opaque id, and
       // leaking `${string}-${string}-…` into the route type would make the contract describe the
@@ -3824,13 +3873,36 @@ export function createApp(deps: ServerDeps) {
             Object.assign(check, { status: 'complete', completedAt: new Date().toISOString(), matches: result.candidates.length, truncated: result.truncated });
             return;
           }
-          const remote = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
-          if (!remote || remote.host !== 'github.com') throw new Error('No GitHub remote is configured');
+          const forge = await resolveAutomationForge(project.root);
+          if (!forge) throw new Error('No supported repository platform is configured');
+          if (forge.kind === 'gitlab') {
+            const scheduler = new ProjectAutomationScheduler({
+              projectId: project.id,
+              timeZone: localTimeZone(),
+              store,
+              gitlab: { ref: forge.ref, poller: new GitlabPoller({ root: project.root, ref: forge.ref }) },
+              launch: parsed.data.mode === 'execute'
+                ? (definition, candidate, receiptId) => launchAutomationRun({ root: project.root, manager: project.manager, store: project.store, definition, candidate, receiptId, dispatchEnabled: capabilities().dispatch, gitlabRef: forge.ref })
+                : undefined,
+              onChange: (automationId, revision) => emitAutomationChange(project, automationId, revision),
+            });
+            const result = await scheduler.check(automation, parsed.data.mode);
+            const unsupported = 'unsupported' in result ? result.unsupported : undefined;
+            const noBaseline = 'noBaseline' in result ? result.noBaseline : undefined;
+            Object.assign(check, {
+              status: unsupported || noBaseline ? 'error' : 'complete',
+              completedAt: new Date().toISOString(),
+              matches: result.candidates.length,
+              truncated: result.truncated,
+              ...(unsupported ? { error: unsupported } : noBaseline ? { error: noBaseline } : {}),
+            });
+            return;
+          }
           const scheduler = new ProjectAutomationScheduler({
             projectId: project.id,
             timeZone: localTimeZone(),
             store,
-            github: { owner: remote.owner, repo: remote.repo, poller: new GithubPoller() },
+            github: { owner: forge.owner, repo: forge.repo, poller: new GithubPoller() },
             launch: parsed.data.mode === 'execute'
               ? (definition, candidate, receiptId) => launchAutomationRun({ root: project.root, manager: project.manager, store: project.store, definition, candidate, receiptId, dispatchEnabled: capabilities().dispatch })
               : undefined,
@@ -3912,6 +3984,27 @@ export function createApp(deps: ServerDeps) {
       }
       if (!isGithubAutomation(definition)) return c.json({ error: 'automation kind cannot be retried' }, 409);
       if (!receipt.candidate) return c.json({ error: 'receipt predates retry context and cannot be retried safely' }, 409);
+      if (receipt.revision !== definition.revision) return c.json({ error: 'Automation changed since this event; retry is no longer safe' }, 409);
+      const forge = await resolveAutomationForge(project.root);
+      if (!forge) return c.json({ error: 'No supported repository platform is configured' }, 409);
+      const capabilityIssue = automationCapabilityIssue(forge.kind, definition.events);
+      if (capabilityIssue) return c.json({ error: capabilityIssue }, 409);
+      const sourceRepo = forge.kind === 'gitlab' ? forge.ref.projectPath : `${forge.owner}/${forge.repo}`;
+      const sourceOrigin = forge.kind === 'gitlab' ? forge.ref.webOrigin ?? `https://${forge.ref.host}` : 'https://github.com';
+      const itemPath = receipt.candidate.event.startsWith('pull_request.')
+        ? forge.kind === 'gitlab' ? '-/merge_requests' : 'pull'
+        : forge.kind === 'gitlab' ? '-/issues' : 'issues';
+      const expectedUrl = `${sourceOrigin}/${sourceRepo}/${itemPath}/${receipt.candidate.number}`;
+      let sameItem = false;
+      try {
+        const actual = new URL(receipt.candidate.url);
+        const expected = new URL(expectedUrl);
+        sameItem = !actual.username && !actual.password && actual.origin === expected.origin
+          && actual.pathname.replace(/\/$/, '').toLowerCase() === expected.pathname.toLowerCase();
+      } catch { /* Invalid old receipt URLs cannot be retried safely. */ }
+      if (receipt.candidate.repo.toLowerCase() !== sourceRepo.toLowerCase() || !sameItem) {
+        return c.json({ error: 'Repository source changed since this event; retry is no longer safe' }, 409);
+      }
       const lease = store.acquireLease();
       if (!lease) return c.json({ error: 'automation polling lease is held by another process' }, 409);
       const mutation = store.acquireMutationLease();
@@ -3925,7 +4018,8 @@ export function createApp(deps: ServerDeps) {
       const reserved = store.reserveRetry(receipt.receiptId);
       if (!reserved) { mutation.release(); lease.release(); return c.json({ error: 'receipt is not retryable' }, 409); }
       try {
-        const launched = await launchAutomationRun({ root: project.root, manager: project.manager, store: project.store, definition, candidate: receipt.candidate, receiptId: receipt.receiptId, dispatchEnabled: capabilities().dispatch });
+        const launched = await launchAutomationRun({ root: project.root, manager: project.manager, store: project.store, definition, candidate: receipt.candidate, receiptId: receipt.receiptId, dispatchEnabled: capabilities().dispatch,
+          ...(forge.kind === 'gitlab' ? { gitlabRef: forge.ref } : {}) });
         store.appendReceipt({ ...reserved, status: 'launched', runId: launched.runId, updatedAt: new Date().toISOString() });
         emitAutomationChange(project, definition.id, definition.revision);
         return c.json({ receiptId: receipt.receiptId, runId: launched.runId }, 202);
@@ -4768,7 +4862,7 @@ export function createApp(deps: ServerDeps) {
       // per number, so without this the cockpit would keep showing the pre-push answer (up to a
       // minute of "Ready to merge" for a branch that has just been rewritten) about a push the
       // user watched this server make.
-      for (const number of runPrNumbers(run)) forgetRefStatus(repoRoot, number);
+      for (const number of runPrNumbers(run)) await invalidateForge(repoRoot, 'pr', number);
       return c.json({
         pushed: true,
         branch: result.branch,
@@ -4831,7 +4925,7 @@ export function createApp(deps: ServerDeps) {
       // repository has no such number" — which is exactly what a `CEZ:PR=901` marker declared
       // ahead of the push looks like. It exists now.
       const createdNumber = refNumberFromUrl(outcome.url);
-      if (createdNumber !== null) forgetRefStatus(repoRoot, createdNumber);
+      if (createdNumber !== null) await invalidateForge(repoRoot, 'pr', createdNumber);
       store.updateRun(id, {
         pullRequestUrl: outcome.url,
         status: 'done',
@@ -5828,7 +5922,7 @@ export function createApp(deps: ServerDeps) {
         const { root: repoRoot } = c.get('project');
         const query = c.req.valid('query');
         const limit = Number.parseInt(query.limit ?? '', 10);
-        return c.json(await fetchGithub(repoRoot, query.refresh === '1', Number.isFinite(limit) ? limit : 50, {
+        return c.json(await fetchForgeList(repoRoot, { refresh: query.refresh === '1', limit: Number.isFinite(limit) ? limit : 50,
           issuesCursor: query.issuesCursor,
           prsCursor: query.prsCursor,
         }));
@@ -5843,7 +5937,7 @@ export function createApp(deps: ServerDeps) {
       });
       if (!parsed.success) return c.json({ error: 'invalid kind or number' }, 400);
       return c.json(
-        await fetchGithubComments(repoRoot, parsed.data.kind, parsed.data.number, c.req.valid('query').refresh === '1'),
+        await fetchForgeComments(repoRoot, parsed.data.kind, parsed.data.number, c.req.valid('query').refresh === '1'),
       );
     })
 
@@ -5865,7 +5959,7 @@ export function createApp(deps: ServerDeps) {
         if (!Number.isInteger(n) || n <= 0 || String(n) !== part) return c.json({ error: 'invalid prs query' }, 400);
         numbers.push(n);
       }
-      return c.json(await fetchGithubChecks(repoRoot, numbers));
+      return c.json(await fetchForgeChecks(repoRoot, numbers));
     })
 
     // Search across ALL states (#730). Additive sibling of `/github`, which lists the OPEN set
@@ -5886,7 +5980,7 @@ export function createApp(deps: ServerDeps) {
       async (c) => {
         const { root: repoRoot } = c.get('project');
         const { kind, q, limit } = c.req.valid('query');
-        return c.json(await searchGithubItems(repoRoot, kind, q, limit));
+        return c.json(await searchForgeItems(repoRoot, kind, q, limit));
       },
     )
 
@@ -5907,7 +6001,7 @@ export function createApp(deps: ServerDeps) {
         if (parsedPrs.length === 0 && parsedIssues.length === 0) {
           return c.json({ error: 'missing prs or issues query' }, 400);
         }
-        return c.json(await fetchGithubRefStatus(repoRoot, { prs: parsedPrs, issues: parsedIssues }));
+        return c.json(await fetchForgeRefStatus(repoRoot, { prs: parsedPrs, issues: parsedIssues }));
       },
     )
 
@@ -5918,7 +6012,7 @@ export function createApp(deps: ServerDeps) {
       async (c) => {
         const { root: repoRoot } = c.get('project');
         const parsed = { data: c.req.valid('param') };
-        const forge = resolveForge(await getRepoInfo(repoRoot));
+        const { driver: forge } = await resolveProjectForge(repoRoot);
         if (!forge?.prMergeState) return c.json({ available: false, reason: 'GitHub merge state is unavailable' });
         return c.json(await forge.prMergeState(parsed.data.number, { refresh: c.req.valid('query').refresh === '1' }));
       },
@@ -5932,7 +6026,7 @@ export function createApp(deps: ServerDeps) {
         const { root: repoRoot } = c.get('project');
         const parsedNumber = { data: c.req.valid('param') };
         const body = { data: c.req.valid('json') };
-        const forge = resolveForge(await getRepoInfo(repoRoot));
+        const { driver: forge } = await resolveProjectForge(repoRoot);
         if (!forge?.mergePR) return c.json({ error: 'GitHub merge is unavailable' }, 409);
         const result = await forge.mergePR(parsedNumber.data.number, body.data);
         if (result.merged) {
@@ -5940,7 +6034,7 @@ export function createApp(deps: ServerDeps) {
           // known-stale — and its TTL would keep every chip showing the PRE-merge status for up to
           // a minute after the user watched this server merge it. Forget it; the next reader asks
           // the forge, gets `merged`, and then stops polling it at all.
-          forgetRefStatus(repoRoot, parsedNumber.data.number);
+          forge.invalidate?.('pr', parsedNumber.data.number);
           return c.json(result);
         }
         return c.json(
@@ -5967,7 +6061,7 @@ export function createApp(deps: ServerDeps) {
         const parsed = { data: c.req.valid('param') };
         try {
           return c.json(
-            await fetchGithubPrDiff(repoRoot, parsed.data.number, c.req.valid('query').refresh === '1'),
+            await fetchForgePrDiff(repoRoot, parsed.data.number, c.req.valid('query').refresh === '1'),
           );
         } catch (err) {
           if (err instanceof GithubPrNotFoundError) return c.json({ error: err.message }, 404);
@@ -6618,7 +6712,7 @@ export function createApp(deps: ServerDeps) {
           mentioned.push(...mentionedReferenceNumbers(run));
         }
         if (mentioned.length > 0) {
-          const cached = readCachedRefStatuses(project.root, mentioned);
+          const cached = await readForgeCachedRefStatuses(project.root, mentioned);
           // Only when something was actually warm. A project key holding two empty maps is noise
           // that every consumer would have to look past, and it would blur the one rule this
           // payload has: absent means nothing is known.
@@ -6751,16 +6845,20 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   const coordinator = new SkillsUpdateCoordinator(skillsUpdate, async () =>
     effectiveSkillsAutoUpdate(await loadWorkspaceConfig()));
-  // Every registered project gets a handle (spec 2026-09-14): `github` only when the remote is
-  // on github.com — a project without one still fires its scheduled automations.
-  const automationProjects = new Map<string, { root: string; github?: { owner: string; repo: string } }>();
+  // Every registered project gets a handle (spec 2026-09-14): `github`/`gitlab` only when the
+  // remote is on a supported forge — a project without one still fires its scheduled automations.
+  const automationProjects = new Map<string, { root: string; github?: { owner: string; repo: string }; gitlab?: import('../server/forge/types.ts').GitlabRepoRef }>();
   // A second instance from the one the HTTP routes use (out of scope here, built inside the app
   // function) — cheap: `createTrackerService` performs no I/O at construction, only a small
   // per-connection provider cache that duplicating costs nothing correctness-wise.
   const automationTrackers = createTrackerService();
   const registerAutomationProject = async (id: string, root: string): Promise<void> => {
-    const parsed = parseRemote((await getRepoInfo(root))?.remote ?? '');
-    automationProjects.set(id, { root, ...(parsed?.host === 'github.com' ? { github: { owner: parsed.owner, repo: parsed.repo } } : {}) });
+    const forge = await resolveAutomationForge(root);
+    automationProjects.set(id, {
+      root,
+      ...(forge?.kind === 'github' ? { github: { owner: forge.owner, repo: forge.repo } } : {}),
+      ...(forge?.kind === 'gitlab' ? { gitlab: forge.ref } : {}),
+    });
   };
   const automationScheduler = new WorkspaceAutomationScheduler({
     coordinator: automationCoordinator,
@@ -6776,6 +6874,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
         store,
         timeZone: localTimeZone(),
         ...(project.github ? { github: { ...project.github, poller: new GithubPoller() } } : {}),
+        ...(project.gitlab ? { gitlab: { ref: project.gitlab, poller: new GitlabPoller({ root: project.root, ref: project.gitlab }) } } : {}),
         // Present unconditionally (unlike `github`, precomputed above from a sync remote parse):
         // whether the project actually has a tracker connection is resolved lazily, at poll time,
         // by `getDriver()` — a project with none simply fails that call and the scheduler backs off.
@@ -6787,7 +6886,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
           workspaceEvents.emit('automation-change', { project: projectId, automationId, revision }),
         launch: async (definition, candidate, receiptId) => {
           const context = await contextOf();
-          return launchAutomationRun({ root: context.root, manager: context.manager, store: context.store, definition, candidate, receiptId, dispatchEnabled });
+          return launchAutomationRun({ root: context.root, manager: context.manager, store: context.store, definition, candidate, receiptId, dispatchEnabled, ...(project.gitlab ? { gitlabRef: project.gitlab } : {}) });
         },
         launchSchedule: async (definition, occurrence, receiptId) => {
           const context = await contextOf();

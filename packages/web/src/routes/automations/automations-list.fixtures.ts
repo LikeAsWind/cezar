@@ -135,6 +135,11 @@ export const AUTOMATIONS: AutomationListEntry[] = [NIGHTLY, TRIAGE, CI_SWEEP, ST
 export function response(overrides: Partial<AutomationsResponse> = {}): AutomationsResponse {
   return {
     available: true,
+    providerCapabilities: {
+      provider: 'github',
+      supportedEvents: ['pull_request.opened', 'issue.opened', 'issue.labeled', 'issue.unlabeled', 'pull_request.reviewed', 'pull_request.review_requested', 'pull_request.rereview_requested'],
+      unsupportedEvents: [{ event: 'pull_request.approval_observed', reason: 'Approval snapshots are unsupported on GitHub; use pull_request.reviewed' }],
+    },
     scheduler: { state: 'scheduled' },
     timeZone: TIME_ZONE,
     stats: { runs: 66, failed: 2, agentSeconds: 4 * 3600 + 12 * 60, costUsd: 13.4 },

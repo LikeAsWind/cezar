@@ -116,3 +116,31 @@ it('keeps retry available when one source failed and another is still loading', 
   expect(screen.getByText('GitHub needs attention')).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Retry GitHub' })).toBeTruthy()
 })
+
+it('uses provider-neutral forge wording when a GitLab source is present', () => {
+  state.sources = [
+    {
+      key: 'gitlab:gitlab.example/group/proj:issue',
+      state: 'ready',
+      fetchedAt: '2026-09-19T00:00:00Z',
+      truncated: false,
+    },
+  ]
+  show()
+  expect(screen.getByRole('heading', { name: 'Recent results & forge' })).toBeTruthy()
+})
+
+it('keeps GitHub wording when only GitHub sources exist', () => {
+  state.sources = [
+    {
+      key: 'github:github.com/org/repo:issue',
+      state: 'stale',
+      reason: 'Connection failed',
+      fetchedAt: '2026-09-19T00:00:00Z',
+      truncated: false,
+    },
+  ]
+  show()
+  expect(screen.getByText('GitHub needs attention')).toBeTruthy()
+  expect(screen.getByText('Retry GitHub')).toBeTruthy()
+})

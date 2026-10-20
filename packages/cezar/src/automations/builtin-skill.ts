@@ -1,8 +1,8 @@
 /**
  * The built-in `create-cezar-automation` skill (spec `.ai/specs/2026-09-13-automations-from-prompt.md`).
  *
- * cezar ships no skill files of its own — every skill is discovered from the repo, the `npx
- * skills` dirs or a team repo — and this is the one deliberate exception: the playbook for
+ * Most skills are discovered from the repo, the `npx skills` dirs or a team repo. This
+ * automation playbook and the separately packaged unattended workflow are built-in exceptions. The playbook for
  * turning a prompt into a GitHub automation belongs to the cockpit that runs the automations, not
  * to a repository. It is a TypeScript constant rather than a Markdown file in the tarball so the
  * pack gate, the `files` list and the discovery walk stay exactly what they were.

@@ -99,7 +99,8 @@ export const AppShellContainer = memo(function AppShellContainer({ children }: {
         unreadCount={runs.data ?? null}
         skillsUpdateAvailable={skillsUpdateAvailable}
         // Forge and tracker identity belong to the selected registry entry, not global health.
-        forgeAvailable={activeProject?.forge === 'github'}
+        forgeAvailable={activeProject?.forge !== undefined}
+        forgeKind={activeProject?.forge}
         // Hidden unless health reports the opt-in inbox (#471) — same honesty rule as above:
         // the nav must not offer an Inbox this server will never fill.
         inboxAvailable={inboxAvailable}

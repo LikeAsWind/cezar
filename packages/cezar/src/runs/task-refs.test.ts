@@ -42,6 +42,32 @@ describe('extractTaskRefs', () => {
   it('a task naming both a PR and an issue keeps both', () => {
     expect(extractTaskRefs('port the fix from pr 441 onto issue #438')).toEqual({ prNumber: 441, issueNumber: 438 });
   });
+
+  it('reads GitLab merge-request and issue URLs, including self-managed hosts', () => {
+    expect(extractTaskRefs('Review https://lab.example/g/sub/p/-/merge_requests/1 and issue https://lab.example/g/sub/p/-/issues/1'))
+      .toMatchObject({ prNumber: 1, issueNumber: 1 });
+    expect(extractTaskRefs('see https://gitlab.com/group/sub/project/-/merge_requests/42 please')).toEqual({ prNumber: 42 });
+    expect(extractTaskRefs('see https://gitlab.com/group/sub/project/-/issues/12')).toEqual({ issueNumber: 12 });
+  });
+
+  it('keeps GitLab issue #1 and MR !1 independent for the same IID', () => {
+    expect(extractTaskRefs('review merge request 1 and triage issue 1')).toEqual({ prNumber: 1, issueNumber: 1 });
+    expect(extractTaskRefs('fix !7 and close issue 7')).toEqual({ prNumber: 7, issueNumber: 7 });
+  });
+
+  it('reads GitLab worded references: merge request / MR / !N', () => {
+    expect(extractTaskRefs('review merge request 437')).toEqual({ prNumber: 437 });
+    expect(extractTaskRefs('review MR#437')).toEqual({ prNumber: 437 });
+    expect(extractTaskRefs('please land MR !9')).toEqual({ prNumber: 9 });
+    expect(extractTaskRefs('pick up !23 today')).toEqual({ prNumber: 23 });
+  });
+
+  it('does not treat a bare trailing number as a GitLab MR, and preserves GitHub #N ambiguity', () => {
+    // A bare number with no ! / MR / merge-request marker stays ambiguous, exactly like GitHub.
+    expect(extractTaskRefs('469')).toEqual({ ambiguousNumber: 469 });
+    expect(extractTaskRefs('implement the plan from #479 end to end')).toEqual({ ambiguousNumber: 479 });
+    expect(extractTaskRefs('see https://github.com/o/r/pull/441 please')).toEqual({ prNumber: 441 });
+  });
 });
 
 describe('titleRefNumber', () => {

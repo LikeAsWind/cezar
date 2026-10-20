@@ -63,7 +63,7 @@ Five moves that make the cockpit worth the browser tab:
   worktree's disk use with per-row delete and a **Reclaim now** button.
 - 🛡️ **Review gate.** A finished run with changes waits in `review`. Read the diff,
   type notes that go straight back into the agent's session, or push a
-  `gh pr create --draft`. You stay the merge button.
+  `gh pr create --draft` (a GitLab merge request on a GitLab project). You stay the merge button.
 - 📱 **Runs on your coding server, drives from your pocket.** The cockpit is a
   responsive web app streaming over SSE, so the box running cezar can be a
   **VPS, cloud, or dedicated server** you never sit in front of. Point a browser
@@ -83,7 +83,7 @@ One browser window, with live task updates over Server-Sent Events:
 | **All tasks** | Every *registered project's* tasks in one table, filtered and grouped by tag, project, status or workflow — see [Grouping connected repositories](#grouping-connected-repositories-tags-and-the-all-tasks-page). Appears once a second project is registered. |
 | **Inbox** | **Opt-in** (`CEZ_FOLLOWUPS=1`; hidden by default). Follow-ups an agent left behind (`todos.json`) — one click turns a suggestion into the next task, pre-wired to its suggested skill. Off, agents are never asked to leave follow-ups; each task's own **Notes** handoff journal is unaffected. |
 | **Git** | Branch, working-tree status, diff vs HEAD, recent commits (click one for its inline patch + GitHub link), and the configurable base branch that worktrees fork from and PRs target. **Files** browses the whole repository — the tree on the left, the file on the right (syntax-highlighted, images inline, Markdown rendered with a toggle to the source), and a filter box that finds a path as you type. Every file is its own URL (`/git/files/<path>`), so a view can be refreshed or pasted to a colleague. The tree is git's own view of the repository, so `.gitignore`d build output and `node_modules` never appear — and a file git does not list cannot be opened, which is what keeps an ignored `.env` out of reach. Read-only: nothing here edits the checkout. |
-| **GitHub** | Open issues and PRs of the repo's origin, read through your logged-in `gh`. Hand an issue straight to the agent — pick a workflow and skills, one click runs it. |
+| **GitHub** | Open issues and PRs of the repo's origin, read through your logged-in `gh`. Hand an issue straight to the agent — pick a workflow and skills, one click runs it. On a GitLab project the same tab lists issues and merge requests through `glab` (see [GitHub and GitLab](#github-and-gitlab)). |
 | **Skills** | Local skills plus the team skills repo, with a rendered body + prompt preview. Refresh pulls the latest from the remote. |
 | **Workflows** | Build a workflow as a node graph, or let the planner draft one from a description; save it as YAML (a plain stack of skills stays in the portable `skills:` form), import/export, or delete. Built-ins always come back. |
 | **Settings** | Appearance (dark/light theme, accent, density), agent backends, notifications, and the skills catalog. |
@@ -159,6 +159,50 @@ registry facts, its parallel-task ceiling, and Remove), **Agents**,
 repo and live under `/p/<projectId>/settings`; **Appearance**,
 **Notifications**, **Resources**, **Projects** and **Keyboard** are yours or the
 machine's and live at `/settings/global`.
+
+### GitHub and GitLab
+
+cezar speaks to a code forge through its own CLI — **GitHub through `gh`**, **GitLab
+through `glab`** — never through a direct HTTP client, a stored token, or a
+credentials form. The forge is discovered from each project's git remote: a
+`github.com` remote is GitHub; a `gitlab.com` remote, or a remote whose host you
+have configured in `glab`, is GitLab; anything else stays plain Git. A workspace
+mixes all three freely, and each project is classified from its own remote.
+
+**GitLab authentication.** cezar reuses glab's own configuration and login, so
+authenticate the same way you always do:
+
+```bash
+glab auth login --hostname gitlab.com
+glab auth login --hostname code.example.net   # a self-managed instance
+```
+
+**Self-managed hosts.** The instance list comes from glab's own config
+(`hosts:` in `glab-cli/config.yml`), read for host metadata only — never
+credentials, and never a network probe of an arbitrary remote. When glab maps an
+SSH alias to a different web/API host (its `ssh_host`/`api_host` keys), cezar
+honours that mapping: a repo whose remote is `git@ssh.example.net:group/project`
+opens as `https://code.example.net/group/project`. No hostname is hard-coded, and
+a remote is never classified as GitLab merely because its URL contains the
+substring "gitlab" — an unknown host stays plain Git until you configure it in
+glab.
+
+**Degradation.** A missing or unauthenticated CLI disables only the platform
+features — the Issues/MRs tab, checks, MR creation and merge, and forge-triggered
+automations. Git itself is untouched: registration, worktrees, diffs, commits and
+push keep working through your existing git authentication. The cockpit shows a
+hint (`install glab and run \`glab auth login --hostname <host>\``) rather than an
+empty tab.
+
+**Automation limits.** The GitLab poller supports only
+`pull_request.approval_observed` — a snapshot of approvals retained at a
+successful poll, per individual `approved_by` identity. It is not a complete
+approval/unapproval log, so an approval granted and withdrawn between polls may be
+missed, and it never means "all approval rules are satisfied". The GitHub review
+triggers `pull_request.reviewed`, `pull_request.review_requested` and
+`pull_request.rereview_requested` are unsupported on GitLab and disabled with a
+reason. Merge override is always unavailable on GitLab (`canOverride` is `false`,
+the override action is hidden, and override requests are refused server-side).
 
 ### Grouping connected repositories: tags and the All tasks page
 
@@ -405,6 +449,9 @@ whose counter never resets within a run, so every run is finite.
 | `github.issue-comment` (`body`, `issue?` — default: the task's issue) | `done`, `failed` | `issue` |
 | `notify.webhook` (`url`, `body?` — needs `CEZ_WORKFLOW_WEBHOOKS=1`) | `done`, `failed` | `status` |
 
+The `github.*` nodes are named for the historical API, not the provider: on a GitLab project
+they act on merge requests/issues through glab instead (see [GitHub and GitLab](#github-and-gitlab)).
+
 - **Fork / join.** Each fork port leads to one agent node, and every one of those agents
   leads into the same `join`. The agents run at once as subtasks through dispatch — fresh
   sessions, each in its own worktree forked from the task branch (the fork commits the
@@ -483,7 +530,7 @@ Useful environment variables:
 | `CEZ_HIDE_TOKEN_USAGE=1` | Hide raw input/output token counts throughout the browser cockpit while leaving backend-reported cost visible. Only the exact value `1` enables it; API payloads are unchanged, and a restart is required after changing it. |
 | `CEZ_HIDE_COST=1` | Hide backend-reported monetary cost throughout the browser cockpit while leaving raw input/output token counts visible. Only the exact value `1` enables it; API payloads are unchanged, and a restart is required after changing it. |
 | `CEZ_HIDE_TOKEN_METRICS=1` | Legacy master switch that hides both token usage and cost. It takes precedence over the two independent flags; only the exact value `1` enables it, payloads are unchanged, and a restart is required. |
-| `GITHUB_TOKEN` | Fallback for GitHub reads/PRs when `gh` isn't authenticated. |
+| `GITHUB_TOKEN` | Fallback for GitHub reads/PRs when `gh` isn't authenticated. GitLab has no equivalent: it reads glab's own auth (see [GitHub and GitLab](#github-and-gitlab)). |
 | `CEZ_ENV_PASSTHROUGH=A,B` | Forward these extra host env vars to spawned agents. By default agents get a least-privilege env (safe shell/toolchain vars + the backend's own auth + `GITHUB_TOKEN` + `CEZ_*`), not your full environment — use this to add a var an agent needs. |
 | `CEZ_AGENT_ENV_FULL=1` | Escape hatch: give spawned agents the full host environment (pre-hardening behavior). Off by default; only set it if you understand that this hands every host secret to the agent process. |
 | `CEZ_AGENT_TMPDIR=0` | Stop giving each task its own temp directory and hand agents the host `TMPDIR` again (pre-#785 behavior). On by default: every run gets `TMPDIR`/`TEMP`/`TMP` pointing at `.ai/cezar/tmp/<task-id>`, created and write-probed before the agent spawns and reaped when the run ends, so concurrent tasks stop sharing one directory and a task refuses to start rather than run against a temp directory that silently swallows its shell output (see Troubleshooting below). Only an exact `0` disables it, and it disables the whole thing — the pre-spawn check included, so this stays an escape hatch you can actually take. |

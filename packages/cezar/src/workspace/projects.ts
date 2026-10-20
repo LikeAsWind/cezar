@@ -7,6 +7,7 @@ import {
   type TrackerKind,
 } from '@open-mercato/cezar-contract';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
+import { readGitlabHosts } from '../server/forge/gitlab-hosts.ts';
 import { getRepoInfo } from '../server/git.ts';
 import { readTrackerAssociation } from '../tracker-association.ts';
 import { TrackerConnections } from '../server/tracker/connections.ts';
@@ -244,7 +245,7 @@ async function computeProbe(root: string): Promise<RootProbe> {
   }
   // Branch and forge are best-effort garnish: getRepoInfo never throws (null
   // on e.g. an unborn HEAD), and a repo without either is still status ok.
-  const info = await getRepoInfo(root);
+  const [info] = await Promise.all([getRepoInfo(root), readGitlabHosts()]);
   const forge = forgeKindOfRemote(info?.remote);
   // Free: `getRepoInfo` already ran for the branch, and the remote is already parsed for `forge`.
   const repoUrl = forgeWebRoot(info?.remote);

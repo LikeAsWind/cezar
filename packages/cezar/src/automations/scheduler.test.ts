@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutomationStore } from './store.ts';
 import { ProjectAutomationScheduler, WorkspaceAutomationScheduler } from './scheduler.ts';
 import type { GithubAutomationDefinition } from './types.ts';
+import type { GitlabRepoRef } from '../server/forge/types.ts';
+import type { GitlabPollResult } from './gitlab-poller.ts';
 
 const dirs: string[] = [];
 afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))));
@@ -28,6 +30,14 @@ const reviewCandidate = {
 };
 
 describe('ProjectAutomationScheduler', () => {
+  it('rejects unsupported saved GitLab events before scheduled polling', async () => {
+    const { store, definition } = await setup();
+    const poll = vi.fn(async () => ({ candidates: [], truncated: false, pages: 0 }));
+    const scheduler = new ProjectAutomationScheduler({ projectId: 'p', timeZone: 'UTC', store,
+      gitlab: { ref: { host: 'gitlab.com', projectPath: 'g/p' }, poller: { poll } as never } });
+    await expect(scheduler.check({ ...definition, events: ['pull_request.reviewed'] })).rejects.toThrow('reviewed is unsupported');
+    expect(poll).not.toHaveBeenCalled();
+  });
   it('previews without cursor, receipt, or launch mutation', async () => {
     const { store, definition } = await setup();
     const launch = vi.fn(async () => ({ runId: 'run' }));
@@ -607,5 +617,76 @@ describe('WorkspaceAutomationScheduler — a rejected check never re-arms at zer
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('ProjectAutomationScheduler — GitLab approval baseline', () => {
+  const approvalDefinition: GithubAutomationDefinition = {
+    id: 'gl', revision: 1, name: 'Approvals', enabled: true, kind: 'github',
+    events: ['pull_request.approval_observed'], intervalSeconds: 300,
+    filters: { lookbackDays: 7, maxRecords: 25 }, task: { prompt: 'p' },
+    createdAt: '2026-10-15T00:00:00.000Z', updatedAt: '2026-10-15T00:00:00.000Z',
+  };
+  const approval = (approverId: string, timestamp: string) => ({
+    eventId: `gitlab.com:group/shop:1:${approverId}:${timestamp}`,
+    event: 'pull_request.approval_observed' as const, timestamp, tieBreaker: approverId,
+    repo: 'group/shop', nodeId: 'group/shop:1', number: 1, title: 'MR', url: 'https://gitlab.com/group/shop/-/merge_requests/1',
+    author: 'ada', assignees: [], labels: [], reviewer: approverId,
+  });
+
+  async function gitlabSetup(ref: GitlabRepoRef) {
+    const dir = await mkdtemp(join(tmpdir(), 'cezar-scheduler-gitlab-')); dirs.push(dir);
+    const store = AutomationStore.open(dir);
+    store.create({ ...approvalDefinition }, 'gl');
+    return { store };
+  }
+
+  it('re-establishes an empty baseline when the polled source changes, without launching the new source', async () => {
+    const { store } = await gitlabSetup({ host: 'gitlab.com', projectPath: 'group/one' });
+    const launch = vi.fn(async () => ({ runId: 'run' }));
+    // First poll: baseline established on group/one (establish poll returns candidates: []).
+    const first = new ProjectAutomationScheduler({
+      projectId: 'p', timeZone: 'UTC', store,
+      gitlab: { ref: { host: 'gitlab.com', projectPath: 'group/one' }, poller: { poll: async () => ({ candidates: [], truncated: false, pages: 1, approvalBaseline: {} }) } as never },
+      launch,
+    });
+    await first.check(approvalDefinition);
+    expect(store.state('gl')?.approvalSource).toBe('gitlab.com:group/one');
+
+    // The source moves to group/two: its own retained approval must NOT launch (the poller's
+    // establish poll emits candidates: [] and records the baseline).
+    const second = new ProjectAutomationScheduler({
+      projectId: 'p', timeZone: 'UTC', store,
+      gitlab: { ref: { host: 'gitlab.com', projectPath: 'group/two' }, poller: { poll: async () => ({ candidates: [], truncated: false, pages: 1, approvalBaseline: { 'gitlab.com:group/two:1:reviewer:2026-10-16T09:00:00Z': '2026-10-16T09:00:00Z' } }) } as never },
+      launch,
+    });
+    await second.check(approvalDefinition);
+    expect(launch).not.toHaveBeenCalled();
+    expect(store.state('gl')?.approvalSource).toBe('gitlab.com:group/two');
+    expect(store.logs({ automationId: 'gl', result: 'baseline' })[0]?.reason).toContain('source changed');
+  });
+
+  it('launches a newly approved identity after a stable baseline, and not a retained one', async () => {
+    const { store } = await gitlabSetup({ host: 'gitlab.com', projectPath: 'group/one' });
+    const launch = vi.fn(async () => ({ runId: 'run' }));
+    const retained = approval('reviewer', '2026-10-15T09:00:00Z');
+    // Establish poll: records the retained approval, emits nothing.
+    const first = new ProjectAutomationScheduler({
+      projectId: 'p', timeZone: 'UTC', store,
+      gitlab: { ref: { host: 'gitlab.com', projectPath: 'group/one' }, poller: { poll: async () => ({ candidates: [], truncated: false, pages: 1, approvalBaseline: { [retained.eventId]: retained.timestamp } }) } as never },
+      launch,
+    });
+    await first.check(approvalDefinition);
+    expect(launch).not.toHaveBeenCalled();
+
+    // A new timestamp arrives after the baseline.
+    const fresh = approval('reviewer', '2026-10-16T10:00:00Z');
+    const second = new ProjectAutomationScheduler({
+      projectId: 'p', timeZone: 'UTC', store,
+      gitlab: { ref: { host: 'gitlab.com', projectPath: 'group/one' }, poller: { poll: async (): Promise<GitlabPollResult> => ({ candidates: [fresh], truncated: false, pages: 1, approvalBaseline: { [retained.eventId]: retained.timestamp, [fresh.eventId]: fresh.timestamp } }) } as never },
+      launch,
+    });
+    await second.check(approvalDefinition);
+    expect(launch).toHaveBeenCalledTimes(1);
   });
 });

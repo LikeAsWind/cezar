@@ -1,4 +1,5 @@
 import type { RunRecord } from '../../runs/store.ts';
+import type { GithubData, GithubChecksData, GithubRefStatusData } from '@open-mercato/cezar-contract';
 
 /**
  * Forge-driver seam (cockpit-ui redesign spec §"Forge-driver seam"): every
@@ -9,7 +10,14 @@ import type { RunRecord } from '../../runs/store.ts';
  * driver file behind `resolveForge`, no route or UI changes.
  */
 
-export type ForgeKind = 'github';
+export type ForgeKind = 'github' | 'gitlab';
+
+/** GitLab identity keeps every subgroup and the configured instance (including its HTTP port). */
+export interface GitlabRepoRef {
+  host: string;
+  projectPath: string;
+  webOrigin?: string;
+}
 
 /** Availability probe result — mirrors the tab's quiet degradation contract:
  *  no CLI, no remote, offline all land on `available:false` + a human hint. */
@@ -285,6 +293,10 @@ export interface ForgeRecentCreatedData {
 
 export interface ForgeDriver {
   readonly kind: ForgeKind;
+  list(opts?: ForgeListOptions): Promise<GithubData>;
+  comments(kind: 'issue' | 'pr', number: number, refresh?: boolean): Promise<ForgeCommentsData>;
+  checks(numbers: number[]): Promise<GithubChecksData>;
+  refStatuses(input: { prs?: number[]; issues?: number[] }): Promise<GithubRefStatusData>;
   /** Workspace dashboard's Recent results feed (optional, same rationale as `searchItems`): a
    *  driver without it simply has no creation feed, and callers must go through `resolveForge`
    *  to reach one — never construct a driver directly, or a future forge silently bypasses the
@@ -307,6 +319,9 @@ export interface ForgeDriver {
   ): Promise<ForgeSearchData>;
   /** Draft-PR creation for the review gate (spec 009). Never throws. */
   createPR(input: DraftPrInput): Promise<DraftPrOutcome>;
+  updatePR(number: number, input: { ready?: boolean; addLabels?: string[]; reviewers?: string[] }): Promise<{ ok: true } | { ok: false; error: string }>;
+  comment(kind: 'issue' | 'pr', number: number, body: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  invalidate?(kind?: 'issue' | 'pr', number?: number): void;
   /** The branch's open/merged PR, or null when none (or the forge is down). */
   prStatus(branch: string): Promise<ForgePrStatus | null>;
   prMergeState?(number: number, opts?: { refresh?: boolean }): Promise<ForgePrMergeStateResult>;

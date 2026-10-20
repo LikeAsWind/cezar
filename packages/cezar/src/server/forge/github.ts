@@ -3244,6 +3244,10 @@ const GH_PR_STATES: Record<string, ForgePrStatus['state']> = {
 export function createGithubDriver(repoRoot: string, repoRef: GithubRepoRef | null): ForgeDriver {
   return {
     kind: 'github',
+    list: (opts) => fetchGithub(repoRoot, opts?.refresh, opts?.limit, opts),
+    comments: (kind, number, refresh) => fetchGithubComments(repoRoot, kind, number, refresh),
+    checks: (numbers) => fetchGithubChecks(repoRoot, numbers),
+    refStatuses: (input) => fetchGithubRefStatus(repoRoot, input),
 
     recentCreated: (kind, sinceDate) => recentGithubCreated(repoRoot, repoRef, kind, sinceDate),
 
@@ -3261,6 +3265,9 @@ export function createGithubDriver(repoRoot: string, repoRef: GithubRepoRef | nu
     prDiff: (number, opts) => fetchGithubPrDiff(repoRoot, number, opts?.refresh),
 
     createPR: (input) => createDraftPr(input),
+    updatePR: (number, input) => updatePr(repoRoot, number, input),
+    comment: (kind, number, body) => kind === 'issue' ? commentOnIssue(repoRoot, number, body) : commentOnPr(repoRoot, number, body),
+    invalidate: (_kind, number) => { if (number !== undefined) forgetRefStatus(repoRoot, number); },
 
     // Null covers everything from "no PR yet" to "gh missing" — the callers
     // (Create PR → View PR flip) treat all of it as "nothing to link".

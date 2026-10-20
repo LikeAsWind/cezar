@@ -1,12 +1,37 @@
 import type { DashboardFeedSource, DashboardForgeCreated } from '@open-mercato/cezar-contract';
 import { getRepoInfo, isNonRepositoryDirectory } from '../server/git.ts';
-import { parseRemote, resolveForge } from '../server/forge/index.ts';
+import { forgeKindOfRemote, parseRemote, resolveForge } from '../server/forge/index.ts';
+import { knownGitlabHost, readGitlabHosts } from '../server/forge/gitlab-hosts.ts';
 import type { ForgeDriver, ForgeRecentCreatedData } from '../server/forge/types.ts';
 
 const KINDS = ['issue', 'pr'] as const;
 type Kind = (typeof KINDS)[number];
 const WEEK = 7 * 24 * 60 * 60_000;
 const TTL = 60_000;
+
+/** Per-provider wording and key prefix. GitHub strings are the pre-existing surface and stay
+ *  byte-for-byte; GitLab gets its own namespace-preserving identity and labels (spec
+ *  2026-10-16-gitlab-forge-parity § "Workspace dashboard"). */
+const WORDS = {
+  github: {
+    prefix: 'github',
+    noRemote: 'No GitHub remote',
+    loading: 'Still loading GitHub',
+    readError: 'Could not read GitHub repository',
+    refreshError: 'Could not refresh GitHub',
+    unavailable: 'GitHub unavailable',
+  },
+  gitlab: {
+    prefix: 'gitlab',
+    noRemote: 'No GitLab remote',
+    loading: 'Still loading GitLab',
+    readError: 'Could not read GitLab repository',
+    refreshError: 'Could not refresh GitLab',
+    unavailable: 'GitLab unavailable',
+  },
+} as const;
+type ProviderKind = keyof typeof WORDS;
+
 interface CachedKind {
   attemptedAt: number;
   fetchedAt?: number;
@@ -16,6 +41,7 @@ interface CachedKind {
 }
 interface Repository {
   key: string;
+  provider: ProviderKind;
   date: string;
   roots: Set<string>;
   kinds: Partial<Record<Kind, CachedKind>>;
@@ -57,6 +83,7 @@ function pump(): void {
 }
 
 async function runJob(job: Job): Promise<void> {
+  const words = WORDS[job.entry.provider];
   for (const kind of KINDS) {
     if (![...job.readers].some((reader) => !reader.aborted)) break;
     const previous = job.entry.kinds[kind];
@@ -65,7 +92,7 @@ async function runJob(job: Job): Promise<void> {
     try {
       result = await job.driver.recentCreated!(kind, job.entry.date);
     } catch {
-      result = { available: false, items: [], reason: 'Could not refresh GitHub' };
+      result = { available: false, items: [], reason: words.refreshError };
     }
     const at = Date.now();
     job.entry.kinds[kind] = result.available
@@ -80,7 +107,7 @@ async function runJob(job: Job): Promise<void> {
           items: previous?.items ?? [],
           truncated: previous?.truncated ?? false,
           ...(previous?.fetchedAt !== undefined ? { fetchedAt: previous.fetchedAt } : {}),
-          reason: result.reason ?? 'GitHub unavailable',
+          reason: result.reason ?? words.unavailable,
         };
   }
 }
@@ -125,6 +152,11 @@ export async function getDashboardGithub(
   }
   const reader: Reader = { aborted: signal?.aborted ?? false };
   const date = new Date(now - WEEK).toISOString().slice(0, 10);
+  // Warm local GitLab host metadata BEFORE the synchronous classifier runs: after the ~5s host
+  // cache ages out, `forgeKindOfRemote` reads `knownGitlabHost` (undefined) and a self-managed
+  // GitLab project is misclassified as plain Git, losing its `gitlab` key and provider label.
+  // Cheap and idempotent — metadata only, bounded lifetime, no network to arbitrary remotes.
+  await readGitlabHosts();
   const resolved = new Map<string, { entry: Repository; projectIds: string[]; reason?: string }>();
   const unresolved = new Map(projects.map((project) => [project.id, 'Still loading GitHub']));
   const pendingProjects = new Set(projects.map((project) => project.id));
@@ -175,19 +207,27 @@ export async function getDashboardGithub(
         }
         const remote = info.remote ? parseRemote(info.remote) : null;
         // Gate on the same host allowlist every other forge call site uses (resolveForge):
-        // a remote that merely parses (e.g. a GitLab or self-hosted host) is not GitHub.
-        const driver = remote ? resolveForge(info) : null;
-        if (!remote || !driver?.recentCreated) {
+        // a remote that merely parses (e.g. a self-hosted host) is not a known forge.
+        const provider = forgeKindOfRemote(info.remote);
+        const driver = remote && provider ? resolveForge(info) : null;
+        if (!remote || !provider || !driver?.recentCreated) {
           detachRoot(project.root);
-          unresolved.set(project.id, 'No GitHub remote');
+          unresolved.set(project.id, WORDS[provider ?? 'github'].noRemote);
           continue;
         }
-        const key = `${remote.host}/${remote.owner}/${remote.repo}`.toLowerCase();
+        // GitHub keys on owner/repo (its canonical identity); GitLab keys on the full namespace
+        // so nested groups and self-managed instances stay distinct (spec 2026-10-16 § item
+        // identity). Both are lower-cased into one canonical key.
+        const gitlabOrigin = knownGitlabHost(remote)?.webOrigin ?? remote.httpOrigin ?? `https://${remote.host}`;
+        const key = provider === 'gitlab'
+          ? `${gitlabOrigin.replace(/^https:\/\//, '')}/${remote.projectPath}`.toLowerCase()
+          : `${remote.host}/${remote.owner}/${remote.repo}`.toLowerCase();
         detachRoot(project.root, key);
         let entry = cache.get(key);
         if (!entry || entry.date !== date) {
           entry = {
             key,
+            provider,
             date,
             roots: new Set(entry?.roots),
             kinds: entry
@@ -257,12 +297,13 @@ export async function getDashboardGithub(
   const rows: DashboardForgeCreated[] = [];
   const sources: DashboardFeedSource[] = [];
   for (const { entry, projectIds, reason: probeReason } of resolved.values()) {
+    const words = WORDS[entry.provider];
     for (const kind of KINDS) {
       const value = entry.kinds[kind];
       const pending = !value || now - value.attemptedAt >= TTL;
-      const reason = probeReason ?? (pending ? 'Still loading GitHub' : value.reason);
+      const reason = probeReason ?? (pending ? words.loading : value.reason);
       sources.push({
-        key: `github:${entry.key}:${kind}`,
+        key: `${words.prefix}:${entry.key}:${kind}`,
         state: reason ? (value?.fetchedAt !== undefined ? 'stale' : 'unavailable') : 'ready',
         truncated: value?.truncated ?? false,
         ...(value?.fetchedAt !== undefined
@@ -275,7 +316,8 @@ export async function getDashboardGithub(
         if (at < now - WEEK || at > now) continue;
         rows.push({
           kind: 'github-created',
-          key: `github:${entry.key}:${kind}:${item.number}`,
+          provider: entry.provider,
+          key: `${words.prefix}:${entry.key}:${kind}:${item.number}`,
           at: item.createdAt,
           repo: entry.key,
           projectIds: [...new Set(projectIds)].sort(),
@@ -288,7 +330,7 @@ export async function getDashboardGithub(
     }
   }
   // An unresolved remote has no canonical repository identity yet. Name its project explicitly
-  // rather than hiding a read failure or pretending the workspace has no GitHub sources.
+  // rather than hiding a read failure or pretending the workspace has no forge sources.
   for (const [id, reason] of unresolved)
     for (const kind of KINDS) {
       sources.push({

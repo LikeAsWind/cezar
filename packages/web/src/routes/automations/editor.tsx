@@ -236,6 +236,7 @@ export function AutomationEditor({ data, automation, actions, onBack, onSaved, o
                   events={draft.events}
                   intervalSeconds={draft.intervalSeconds}
                   filters={draft.filters}
+                  providerCapabilities={data?.providerCapabilities}
                   onChange={(next) => patch(next)}
                 />
               )}
