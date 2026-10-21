@@ -68,6 +68,7 @@ describe('getRepoInfo — remote discovery', () => {
     const bare = mkdtempSync(join(tmpdir(), 'cez-nogit-'));
     try {
       expect(await getRepoInfo(bare)).toBeNull();
+      expect(await getRepoInfo(bare, { throwOnError: true })).toBeNull();
       expect(await getHeadCommit(bare)).toBeNull();
     } finally {
       rmSync(bare, { recursive: true, force: true });
@@ -82,6 +83,7 @@ it('preserves the default non-isolated path for repositories before their first 
     g(dir, 'init', '-q', '-b', 'main');
     // RunManager uses this null result to select serial in-place execution.
     expect(await getRepoInfo(dir)).toBeNull();
+    expect(await getRepoInfo(dir, { throwOnError: true })).toBeNull();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

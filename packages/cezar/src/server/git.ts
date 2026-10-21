@@ -41,7 +41,7 @@ async function git(
  * remote read (including successful discovery of an empty remote list). */
 export async function getRepoInfo(
   dir: string,
-  options: { requireRemoteRead?: boolean; allowUnborn?: boolean } = {},
+  options: { requireRemoteRead?: boolean; allowUnborn?: boolean; throwOnError?: boolean } = {},
 ): Promise<RepoInfo | null> {
   try {
     const root = (await git(dir, ['rev-parse', '--show-toplevel'])).trim();
@@ -70,7 +70,20 @@ export async function getRepoInfo(
       }
     }
     return { root, branch, remote };
-  } catch {
+  } catch (error) {
+    if (options.throwOnError && !(await isNonRepositoryDirectory(dir))) {
+      // An unborn repository is still the supported serial/in-place case.
+      let unborn = false;
+      try {
+        await git(dir, ['symbolic-ref', '--short', 'HEAD']);
+        try { await git(dir, ['rev-parse', '--verify', '--quiet', 'HEAD']); }
+        catch (headError) { unborn = (headError as { code?: unknown }).code === 1; }
+      } catch { /* A failed command is not evidence of an unborn repository. */ }
+      if (!unborn) {
+        const failure = error as { message?: string; stderr?: string; code?: unknown };
+        throw new Error(`Git repository probe failed: ${failure.stderr?.trim() || failure.message || String(error)}`, { cause: error });
+      }
+    }
     return null;
   }
 }

@@ -6122,7 +6122,9 @@ export function createApp(deps: ServerDeps) {
   const repoRoutes = new Hono<ProjectApiEnv>()
     .get('/repo', async (c) => {
       const { root: repoRoot, store } = c.get('project');
-      const info = await getRepoInfo(repoRoot);
+      const info = await getRepoInfo(repoRoot, { throwOnError: true }).catch(error => {
+        throw new HTTPException(503, { message: error instanceof Error ? error.message : String(error) });
+      });
       if (!info)
         return c.json({
           info: null,
