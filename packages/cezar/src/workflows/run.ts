@@ -58,9 +58,9 @@ import { discoverSkills, type Skill } from '../skills.ts';
 import { pinSuperpowersRun } from './superpowers-pin.ts';
 import { guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
 import { unattendedRecoveryPoint } from './unattended-recovery.ts';
-import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions } from './unattended-probe.ts';
-import { workflowActionOf } from './workflow-actions.ts';
-import { artifactPath } from '../../scripts/workflow/artifacts.mjs';
+import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext } from './unattended-probe.ts';
+import { WORKFLOW_ACTION_SCRIPT, workflowActionOf } from './workflow-actions.ts';
+import { startSessionWithInput } from './step-input.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
 import { AUTOMATIONS_PROMPT } from '../automations/prompts.ts';
 import { materializeSkillDir } from '../skills-remote.ts';
@@ -3694,12 +3694,6 @@ export class RunManager {
           const foreign = opts.runner !== undefined && opts.runner !== run.runner;
           const model = opts.model !== undefined ? opts.model || undefined : foreign ? undefined : run.model;
           const agentProfile = opts.agentProfile ?? (foreign ? undefined : run.agentProfile);
-          const cwd = run.worktreePath ?? this.repoRoot;
-          try {
-            const path = artifactPath(cwd, runId, 'resume-message.md');
-            const previous = existsSync(path) ? readFileSync(path, 'utf8') : '';
-            writeFileSync(path, `${previous}\n## User continuation ${new Date().toISOString()}\n${prompt}\n`);
-          } catch (error) { if (!(error instanceof Error) || error.message !== 'Run artifacts have not been initialized') throw error; }
           this.clearAutoResume(runId);
           this.store.updateRun(runId, { status: 'queued', error: undefined, finishedAt: undefined, currentStepId: undefined, runner, model, agentProfile, queuedMessages,
             graphState: { ...run.graphState!, cursor } });
@@ -4276,11 +4270,22 @@ export class RunManager {
     const openingPrompt = treeBlocks.length ? `${treeBlocks.join('\n\n')}\n\n---\n\n${expandedPrompt}` : expandedPrompt;
     // The previous runner's portable context (#954) opens the session first, then the tree
     // blocks above, then the instruction that prompted this continuation.
-    const contextualOpeningPrompt = portableContext
+    let contextualOpeningPrompt = portableContext
       ? `${portableContext}\n\n---\n\n## New user instruction\n${openingPrompt}`
       : openingPrompt;
+    let continuationEnv = continueProfile.env;
+    if (record?.workflowDef?.graph && isUnattendedGraph(this.dataDir, runId, record.workflowDef.graph)) {
+      try {
+        continuationEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, continuationEnv);
+        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId))}`;
+      } catch (error) {
+        this.failOwnedContinuation(runId, effectiveOwnerToken, error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    if (state.cancelled) return;
     state.grantedAttachmentLibrary = this.prepareAttachmentLibrary();
-    const session = runner.startSession(
+    const session = startSessionWithInput(this.store, runId, stepId, runner,
       {
         // The Continue step is a fresh agent session on the same run — the
         // run's extra system prompt (already resolved at execute time and
@@ -4302,14 +4307,14 @@ export class RunManager {
           additionalDirectories: agentDirectories(
             join(this.dataDir, 'runs'),
             state.grantedAttachmentLibrary,
-          continueProfile.env,
+          continuationEnv,
         ),
-        env: continueProfile.env,
+        env: continuationEnv,
         mcpServers: continueMcp,
         model: continueModel,
         sessionId: spawnSessionId,
         resume: sessionId !== undefined,
-        timeoutMs: 0,
+        timeoutMs: toolsStep?.timeoutMs ?? 0,
       },
       onEvent,
       { onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event) },
@@ -4459,7 +4464,16 @@ export class RunManager {
     // `.ai/cezar/worktrees/<id>`, never in the user's working tree. A Git task
     // that requests isolation fails closed if the worktree cannot be
     // established; only explicit opt-out and non-Git modes run in place.
-    const repo = await getRepoInfo(this.repoRoot);
+    let repo: Awaited<ReturnType<typeof getRepoInfo>>;
+    try {
+      repo = await getRepoInfo(this.repoRoot, { throwOnError: true });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.store.updateRun(runId, { status: 'failed', error, finishedAt: new Date().toISOString() });
+      emit({ type: 'lifecycle', message: `run failed — ${error}` });
+      this.dropActive(runId, state);
+      return;
+    }
     if (state.cancelled) {
       this.dropActive(runId, state);
       return;
@@ -4475,7 +4489,7 @@ export class RunManager {
       // In-place runs never fork, so nothing will ever read the namer's branch answer.
       this.pendingBranchNames.delete(runId);
       emit({ type: 'note', message: 'worktree off — running in the repo working tree' });
-    } else if (repo) {
+    } else if (repo || (input.worktree !== false && this.store.getRun(runId)?.worktreePath)) {
       emit({
         type: 'note',
         message: `worktree on — using an isolated task worktree (${input.worktree === true ? 'explicit request' : 'default'})`,
@@ -4496,16 +4510,20 @@ export class RunManager {
       const recorded = recordedRun?.baseBranch;
       const base =
         recorded ??
-        (await chooseForkBase(this.repoRoot, repo.branch, config.baseBranch, (message) =>
+        (repo ? await chooseForkBase(this.repoRoot, repo.branch, config.baseBranch, (message) =>
           emit({ type: 'note', message }),
-        ));
+        ) : undefined);
       try {
+        // Failed Git discovery does not make an existing isolated task an in-place run.
+        // Revalidate/reuse its recorded worktree through createWorktree, or fail closed.
+        if (!base) throw new Error('Git repository metadata is unavailable and the existing task has no recorded fork base; cannot safely recover its worktree');
         // A recorded branch (restart, rematerialize) always wins — a named branch cannot be
         // recomputed from the id. A fresh run waits, bounded, for the namer's branch instead.
         const branch =
           recordedRun?.branch ??
-          (await this.awaitGeneratedBranch(runId, config.branchNaming, (message) =>
-            emit({ type: 'note', message }),
+          (await this.awaitGeneratedBranch(runId, config.branchNaming,
+            (message) => emit({ type: 'note', message }),
+            workflow.steps.some(step => step.skill === 'cezar:project-probe'),
           ));
         // The wait can last the namer's whole timeout; a Cancel during it must not fork.
         if (state.cancelled) {
@@ -5111,7 +5129,7 @@ export class RunManager {
     const own = managedUnattended ? this.graphResumeSession(runId, node, backend, emit, true) : this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
     if (!own || !RESUMABLE_BACKENDS.has(backend)) return { lastTurn };
     const freshPrompt = rendered.prompt;
-    rendered.prompt = managedUnattended ? `${RESTART_CONTINUATION_PROMPT}\n\nRead the mapped resume-message.md if present for additional user evidence. Continue this node, not a standalone follow-up. ${node.verdicts?.length ? verdictInstruction(node.verdicts) : ''}` : RESTART_CONTINUATION_PROMPT;
+    rendered.prompt = managedUnattended ? `${RESTART_CONTINUATION_PROMPT}\n\nUse the queued user continuation already supplied in this session; do not create a duplicate resume-message file. Continue this node, not a standalone follow-up. ${node.verdicts?.length ? verdictInstruction(node.verdicts) : ''}` : RESTART_CONTINUATION_PROMPT;
     return { resumeSessionId: own, lastTurn, ...(freshPrompt ? { freshPrompt } : {}) };
   }
 
@@ -6148,7 +6166,8 @@ export class RunManager {
     if (step.skill === 'cezar:project-probe' && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
       try {
         probe = await prepareUnattendedProbe(this.dataDir, runId, state.cwd, stepBackend,
-          stageGraph.nodes.some(node => node.type === 'check' && workflowActionOf(node.command) === 'verify'));
+          stageGraph.nodes.some(node => node.type === 'check' && workflowActionOf(node.command) === 'verify'),
+          this.store.getRun(runId)?.titleSummary?.trim() || this.store.getRun(runId)?.task || this.store.getRun(runId)?.title || 'task');
         userPrompt += `\n\n${probe.instructions}`;
       } catch (error) { return error instanceof Error ? error.message : String(error); }
     }
@@ -6210,6 +6229,7 @@ export class RunManager {
       try {
         launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
         userPrompt += `\n\n${artifactInstructions(state.cwd, runId)}`;
+        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId))}`;
       }
       catch (error) { return error instanceof Error ? error.message : String(error); }
     }
@@ -6218,7 +6238,7 @@ export class RunManager {
     this.beginUsageInvocation(runId, state, step.id);
     if (state.cancelled) return 'cancelled';
     try {
-      session = runner.startSession(
+      session = startSessionWithInput(this.store, runId, step.id, runner,
         {
           // Skill body, then the dispatch prompt (spec 2026-09-10-dispatch — how a task dispatches,
           // reports and asks), then the automations prompt (spec 2026-09-13-automations-from-prompt
@@ -6261,7 +6281,7 @@ export class RunManager {
           // strand the run — both close the session, and a park whose session
           // closed unanswered settles as `failed` with a Continue button (see
           // the `askPark` branch in `execute`), never as a run stuck `waiting`.
-          timeoutMs: probe?.timeoutMs ?? (interactive ? 0 : undefined),
+          timeoutMs: probe?.timeoutMs ?? step.timeoutMs ?? (interactive ? 0 : undefined),
           ...(probe ? { probePolicy: probe.policy } : {}),
         },
         onEvent,
@@ -6494,17 +6514,20 @@ export class RunManager {
   /**
    * The branch a fresh fork should use (spec 2026-10-11-branch-naming-instructions): the
    * namer's answer, made unique against existing branches, awaited for at most
-   * `BRANCH_NAME_WAIT_MS` and only when instructions are set — the zero-config fork stays
-   * instant. Undefined means `cez/<id8>`; a late answer is dropped, never applied as a rename.
+   * `BRANCH_NAME_WAIT_MS` when branch instructions are set or probe needs the same title
+   * result for its artifact prefix. Other default forks stay instant. Undefined means
+   * `cez/<id8>`; a late answer never renames the branch or initialized artifacts.
    */
   private async awaitGeneratedBranch(
     runId: string,
     branchNaming: string | undefined,
     note: (message: string) => void,
+    requireTitle = false,
   ): Promise<string | undefined> {
     const pending = this.pendingBranchNames.get(runId);
     this.pendingBranchNames.delete(runId);
-    if (!pending || !branchNaming) return undefined;
+    // Probe filenames reuse this same naming result, even with the default branch.
+    if (!pending || (!branchNaming && !requireTitle)) return undefined;
     const TIMED_OUT = Symbol('timed out');
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
@@ -6512,9 +6535,10 @@ export class RunManager {
     });
     const wanted = await Promise.race([pending, timeout]).finally(() => clearTimeout(timer));
     if (wanted === TIMED_OUT) {
-      note('branch name not ready in time — using the default cez/ branch');
+      note(branchNaming ? 'branch name not ready in time — using the default cez/ branch' : 'task title not ready in time — using the request title for probe artifacts');
       return undefined;
     }
+    if (!branchNaming) return undefined;
     if (!wanted) {
       note('the namer answered no branch name — using the default cez/ branch');
       return undefined;
@@ -7192,6 +7216,7 @@ export class RunManager {
     const context: Record<string, string> = {
       CEZ_RUN_ID: runId,
       CEZ_WORKTREE: state.cwd,
+      CEZ_HANDOFF_FILE: handoffPath(this.dataDir, runId),
       CEZ_STEP_ID: stepId,
       CEZ_ATTEMPT: String(run?.steps.find((step) => step.id === stepId)?.iterations ?? 1),
     };
@@ -7235,13 +7260,19 @@ export class RunManager {
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
   ): Promise<{ ok: boolean; output: string; exitCode: number }> {
     const command = step.command as string;
+    const action = workflowActionOf(command);
     emit({ type: 'note', stepId: step.id, message: `$ ${command}` });
     const env = await this.checkStepEnv(runId, state, step, emit);
+    this.store.recordStepInput(runId, step.id, { cwd: state.cwd, command });
+    // The host reporter reads this index; publish the current transition before spawning it.
+    if (action === 'blocked') this.store.flush({ throwOnError: true });
     // A cancel that landed during the read had no child to interrupt; do not spawn one now.
     if (state.cancelled) return { ok: false, output: 'cancelled', exitCode: -1 };
     return new Promise((resolve) => {
       // Check steps run in the same cwd as the agent steps — the worktree.
-      const child = spawn('bash', ['-lc', command], { cwd: state.cwd, env });
+      const child = action
+        ? spawn(process.execPath, [WORKFLOW_ACTION_SCRIPT, action], { cwd: state.cwd, env, windowsHide: true })
+        : spawn('bash', ['-lc', command], { cwd: state.cwd, env });
       state.interrupt = () => child.kill('SIGTERM');
 
       let output = '';
@@ -7296,6 +7327,7 @@ export class RunManager {
  */
 export const CHECK_CONTEXT_VARS = [
   'CEZ_RUN_ID',
+  'CEZ_HANDOFF_FILE',
   'CEZ_PROJECT_ID',
   'CEZ_WORKTREE',
   'CEZ_BRANCH',

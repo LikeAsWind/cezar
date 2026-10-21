@@ -1393,9 +1393,7 @@ export class RunStore extends EventEmitter {
     // tool-result output is persisted verbatim and served back over the API, so
     // a secret in an agent's command output would otherwise land in `.ai/cezar/`.
     const full: RunEvent = this.redact({ ...event, seq, ts: new Date().toISOString() }, runId);
-    // Sync append keeps event order without a write queue; local NDJSON
-    // appends at agent-event rates are effectively free.
-    appendFileSync(this.eventsPath(runId), `${JSON.stringify(full)}\n`, 'utf8');
+    this.appendEventLine(runId, `${JSON.stringify(full)}\n`);
     this.emit('event', { runId, event: full });
     if (this.janitorSettled(run)) return full;
 
@@ -1777,6 +1775,29 @@ export class RunStore extends EventEmitter {
 
   private eventsPath(runId: string): string {
     return join(this.dataDir, 'runs', `${runId}.ndjson`);
+  }
+
+  /**
+   * Persist one event line, re-creating the transcript directory if it vanished.
+   *
+   * `open()` makes `runs/` once, but a user can delete `.ai/cezar/runs/` while a task runs
+   * (or reclaim it out from under the process). The house zero-config rule says deleting
+   * `.ai/cezar/` must degrade to a smaller cockpit, never crash a live run — yet `appendEvent`
+   * is the hottest path in the engine and `appendFileSync` on a missing parent throws `ENOENT`,
+   * which the engine turns into `engine crashed: ENOENT … <runId>.ndjson` and a `failed` run.
+   *
+   * `mkdirSync` with `recursive` is a no-op when the directory exists (one `stat` per event),
+   * so the happy path pays nothing measurable for the guarantee. When the directory is gone the
+   * next event silently rebuilds it and the run continues — the same "rebuild what it needs on
+   * the next run" contract, applied per event instead of per boot. It is not wrapped in try/catch:
+   * a store over a read-only or otherwise unwritable data dir must still fail its append loudly,
+   * exactly as before.
+   */
+  private appendEventLine(runId: string, line: string): void {
+    mkdirSync(join(this.dataDir, 'runs'), { recursive: true });
+    // Sync append keeps event order without a write queue; local NDJSON
+    // appends at agent-event rates are effectively free.
+    appendFileSync(this.eventsPath(runId), line, 'utf8');
   }
 
   /** Same location `handoffPath()` in handoff.ts produces — inlined to keep
