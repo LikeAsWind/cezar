@@ -2378,6 +2378,21 @@ describe('RunStore — seq rehydration from the persisted high-water mark', () =
     const store = RunStore.open(dataDir);
     expect(store.appendEvent(LEGACY_RUN.id, { type: 'note', message: 'next' }).seq).toBe(10);
   });
+
+  it('rebuilds a deleted runs/ directory on the next event instead of crashing the run', () => {
+    const store = RunStore.open(dataDir);
+    const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
+    store.appendEvent(run.id, { type: 'note', message: 'before' });
+
+    // The user deletes the transcript directory while the task is still running.
+    rmSync(join(dataDir, 'runs'), { recursive: true, force: true });
+
+    expect(() => store.appendEvent(run.id, { type: 'note', message: 'after' })).not.toThrow();
+    // The deleted events are gone (the user removed the whole directory); the run carries on
+    // with its in-memory seq counter intact, so the surviving event keeps its number.
+    expect(store.readEvents(run.id).map((e) => e.message)).toEqual(['after']);
+    expect(store.readEvents(run.id)[0]?.seq).toBe(2);
+  });
 });
 
 describe('RunStore — runs.json encoding', () => {

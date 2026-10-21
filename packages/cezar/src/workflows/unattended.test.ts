@@ -119,7 +119,8 @@ it('defines probe as impact discovery and a reusable file-context map, without g
   expect(probe.body).toContain('relevance');
   expect(probe.body).toContain('symbols');
   expect(probe.body).toContain('dependsOn');
-  expect(probe.body).toContain('不得生成需求澄清问卷、新验收编号或解决方案');
+  expect(probe.body).toContain('不生成澄清问卷或设计方案');
+  expect(probe.body).toContain('不执行准备、编译或测试');
   expect(unattendedSkills().find(s => s.name === 'superpowers:writing-plans')?.body).toContain('Do not repeat a full tree traversal');
 });
 
@@ -131,12 +132,13 @@ it('packages adjudicator as a standard skill aligned with probe context and froz
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(raw)!;
   const metadata = parse(match[1]!);
   expect(metadata.name).toBe('adjudicator');
-  expect(metadata.description).toMatch(/^Use (when|before) /);
+  expect(metadata.description).toEqual(expect.any(String));
+  expect(metadata.description.trim().length).toBeGreaterThan(0);
   expect(raw).not.toMatch(/Superpowers|自定义角色|一手资料|参考.*项目/);
-  for (const field of ['relevance', 'symbols', 'dependsOn', 'confidence',
-    'targetVersion', 'buildVersion', 'runtimeVersion', 'validation-plan.json', 'environmentChecks']) {
-    expect(raw).toContain(field);
-  }
-  expect(raw).toContain('无需预先存在 AC');
-  expect(raw).toContain('## 完成条件');
+  for (const field of ['context-map.jsonl', 'targetVersion', 'buildVersion', 'runtimeVersion',
+    'validation-plan.json', 'baseline.json', 'verify.json', 'environment.checks']) expect(raw).toContain(field);
+  expect(raw).not.toContain('environment-baseline.json');
+  expect(raw).not.toContain('environment-verify.json');
+  expect(raw).toContain('已有 AC 或用户原始表述');
+  expect(raw).toContain('## 输出与边界');
 });

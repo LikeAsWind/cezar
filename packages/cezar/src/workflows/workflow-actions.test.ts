@@ -13,7 +13,7 @@ import { stringify } from 'yaml';
 
 it('loads the new template using host actions without a bundle runtime dependency', () => {
   const workflow = unattendedWorkflows(BUILTIN_SUPERPOWERS_BUNDLE)[0]!;
-  for (const action of ['baseline', 'route', 'execution', 'verify', 'seal'] as const) {
+  for (const action of ['baseline', 'route', 'execution', 'verify', 'seal', 'blocked'] as const) {
     const node = workflow.graph!.nodes.find(n => n.type === 'check' && workflowActionOf(n.command) === action);
     expect(node, action).toBeDefined();
   }
@@ -29,8 +29,9 @@ it('protects a copied graph with renamed nodes and no Superpowers pin', async ()
   try {
     const data = join(root, 'host'), cwd = join(root, 'task');
     await mkdir(join(data, 'runs'), { recursive: true });
-    await mkdir(join(cwd, 'docs/superpowers/probe'), { recursive: true });
     const paths = newArtifactPaths(cwd, 'generic');
+    await mkdir(join(paths.directory, 'probe'), { recursive: true });
+    await mkdir(join(paths.directory, 'logs'), { recursive: true });
     await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'generic', root: await realpath(cwd), artifactPrefix: paths.prefix }));
     const graph = { nodes: [{ id: 'custom-validation', type: 'check' as const, command: workflowActionCommand('verify') }], edges: [] };
     expect(isUnattendedGraph(data, 'generic', graph)).toBe(true);
