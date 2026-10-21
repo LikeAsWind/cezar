@@ -12,8 +12,10 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'cez-unattended-guard-')); roots.push(root);
   const data = join(root, 'host'), cwd = join(root, 'worktree'), runId = 'test-run';
   const paths = newArtifactPaths(cwd, runId);
-  await mkdir(join(data, 'runs'), { recursive: true }); await mkdir(join(cwd, 'docs/superpowers/specs'), { recursive: true }); await mkdir(join(cwd, 'docs/superpowers/plans'), { recursive: true });
-  await mkdir(join(cwd, 'docs/superpowers/probe'), { recursive: true });
+  await mkdir(join(data, 'runs'), { recursive: true }); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
+  await writeFile(join(data, 'runs', `${runId}.handoff.md`), '# Handoff\n\n## Goal\nOriginal task\n\n## Progress log\n');
+  await mkdir(join(paths.directory, 'probe'), { recursive: true });
+    await mkdir(join(paths.directory, 'logs'), { recursive: true });
   await writeFile(paths.file('run.json'), JSON.stringify({ runId, root: await realpath(cwd), artifactPrefix: paths.prefix }));
   await writeFile(join(data, 'runs', `${runId}.superpowers.json`), JSON.stringify({ schemaVersion: 1, ref: { version: '7.0.0', commit: 'b'.repeat(40), digest: 'a'.repeat(64) } }));
   const command = (action: string) => `'${process.execPath.replaceAll('\\', '/')}' '${snapshotPath('a'.repeat(64)).replaceAll('\\', '/')}/runtime.mjs' ${action}`;
@@ -70,14 +72,14 @@ it('preserves artifact and question contracts when agent nodes are renamed', asy
 });
 it('rejects an incomplete context map rather than trusting probe ready', async () => {
   const f = await fixture();
-  for (const file of ['request.md','probe.md']) await writeFile(f.path(file), '# Requirement evidence');
+  for (const file of ['probe.md']) await writeFile(f.path(file), '# Requirement evidence');
   for (const file of ['environment.json','routing-input.json']) await writeFile(f.path(file), '{}');
   await writeFile(f.path('context-map.jsonl'), JSON.stringify({ path: 'invented' }));
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'probe', 'ready')).rejects.toThrow();
 });
 it('requires context-map paths to locate existing files inside the task worktree', async () => {
   const f = await fixture();
-  for (const file of ['request.md', 'probe.md']) await writeFile(f.path(file), '# Observed context');
+  for (const file of ['probe.md']) await writeFile(f.path(file), '# Observed context');
   for (const file of ['environment.json', 'routing-input.json']) await writeFile(f.path(file), '{}');
   const entry = { schemaVersion: 1, stage: 'probe', path: 'query.java', summary: 'Query entry', relevance: 'Task input', symbols: [], dependsOn: [], confidence: 'high' };
   await writeFile(join(f.cwd, 'query.java'), 'class Query {}');
@@ -85,6 +87,11 @@ it('requires context-map paths to locate existing files inside the task worktree
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'probe', 'ready')).resolves.toBeUndefined();
   await writeFile(f.path('context-map.jsonl'), JSON.stringify({ ...entry, path: 'missing.java' }));
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'probe', 'ready')).rejects.toThrow();
+});
+it('requires the original handoff Goal instead of a duplicated request report', async () => {
+  const f = await fixture();
+  await writeFile(join(f.data, 'runs', `${f.runId}.handoff.md`), '# Handoff\n\n## Goal\n\n## Progress log\n');
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'probe', 'ready')).rejects.toThrow('handoff Goal');
 });
 it('binds adjudication to the pending question and its origin, requiring an appended answer', async () => {
   const f = await fixture();

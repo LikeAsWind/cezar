@@ -109,14 +109,19 @@ export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd
     return;
   }
   if (verdict === 'blocked') return;
+  if (stage === 'probe' && verdict === 'ready') {
+    const handoff = await readFile(join(dataDir, 'runs', `${runId}.handoff.md`), 'utf8');
+    const goal = handoff.split(/^## Goal\s*$/m)[1]?.split(/^## Progress log\s*$/m)[0]?.trim();
+    if (!goal) throw new Error('Original task is missing from handoff Goal');
+  }
   const required: Record<string, string[]> = {
-    'probe.ready': ['request.md', 'probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json'],
+    'probe.ready': ['probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json'],
     'design.ready': ['design.md', 'ledger.md'],
-    'deliver.ready': ['delivery.md', 'ledger.md'],
+    'deliver.ready': ['ledger.md'],
   };
   if (['fast-plan', 'plan'].includes(stage) && ['fast', 'standard', 'deep'].includes(verdict)) required[`${stage}.${verdict}`] = ['plan.md', 'ledger.md'];
   if (executionStrategy && stage === 'plan' && verdict === 'deep') required['plan.deep']!.push('execution-input.json');
-  if (stage.startsWith('execute-') && verdict === 'complete' || stage === 'fix' && verdict === 'fixed') required[`${stage}.${verdict}`] = ['implementation.md', 'ledger.md'];
+  if (stage.startsWith('execute-') && verdict === 'complete' || stage === 'fix' && verdict === 'fixed') required[`${stage}.${verdict}`] = ['ledger.md'];
   for (const name of required[`${stage}.${verdict}`] ?? []) {
     const text = await artifact(name);
     if (name === 'context-map.jsonl') for (const line of text.trim().split(/\r?\n/)) {

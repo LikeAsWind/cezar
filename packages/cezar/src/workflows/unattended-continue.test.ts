@@ -12,6 +12,18 @@ import * as guards from './unattended-guards.ts';
 import { RunManager } from './run.ts';
 import { newArtifactPaths } from '../../scripts/workflow/artifacts.mjs';
 
+const gitState = vi.hoisted(() => ({ missing: false, creationFails: false, recordedPath: '' }));
+vi.mock('../server/git.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../server/git.ts')>();
+  return { ...actual, getRepoInfo: (...args: Parameters<typeof actual.getRepoInfo>) => gitState.missing ? Promise.resolve(null) : actual.getRepoInfo(...args) };
+});
+vi.mock('../git-worktree.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('../git-worktree.ts')>();
+  return { ...actual,
+    createWorktree: (...args: Parameters<typeof actual.createWorktree>) => gitState.creationFails ? Promise.reject(new Error('Git unavailable during recovery')) : gitState.recordedPath ? Promise.resolve({ path: gitState.recordedPath, branch: args[3]!.branch!, baseBranch: args[2] }) : actual.createWorktree(...args),
+  };
+});
+
 const captures = vi.hoisted(() => ({ prompts: [] as string[], specs: [] as AgentRunSpec[], onLaunch: undefined as ((spec: AgentRunSpec) => void) | undefined }));
 vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
   backend: 'claude', startSession: (spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void) => {
@@ -28,7 +40,7 @@ vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
   }, interrupt: async () => {},
 }) }));
 
-it('Continue reenters the pinned graph through verification, review and seal without resetting loops', async () => {
+it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated despite missing repo detection', isolated: true, fail: false }, { name: 'isolated with unavailable Git', isolated: true, fail: true }])('Continue preserves worktree and verification guarantees: $name', async ({ isolated, fail }) => {
   const root = await mkdtemp(join(tmpdir(), 'cez-unattended-continue-')), data = join(root, '.ai/cezar');
   let manager: RunManager | undefined;
   const store = RunStore.open(data);
@@ -40,22 +52,32 @@ it('Continue reenters the pinned graph through verification, review and seal wit
     const bundled = unattendedWorkflows(snapshot.root)[0]!;
     const verify = bundled.graph!.nodes.find(node => node.id === 'verify')!;
     const seal = bundled.graph!.nodes.find(node => node.id === 'seal')!;
-    const graph: NonNullable<WorkflowDef['graph']> = { nodes: [{ id: 'start', type: 'start' }, { id: 'design', type: 'agent', prompt: 'DESIGN', verdicts: ['ready'] }, verify,
+    const graph: NonNullable<WorkflowDef['graph']> = { nodes: [{ id: 'start', type: 'start' }, { id: 'design', type: 'agent', prompt: 'DESIGN', timeoutMs: 90 * 60_000, verdicts: ['ready'] }, verify,
       { id: 'review', type: 'agent', prompt: 'REVIEW', verdicts: ['approve'] }, { id: 'deliver', type: 'agent', prompt: 'DELIVER', verdicts: ['ready'] }, seal,
       { id: 'done', type: 'end', status: 'success' }], edges: [{ from: 'start.next', to: 'design' }, { from: 'design.ready', to: 'verify' }, { from: 'verify.pass', to: 'review' }, { from: 'review.approve', to: 'deliver' }, { from: 'deliver.ready', to: 'seal' }, { from: 'seal.pass', to: 'done' }] };
     const workflow: WorkflowDef = { name: 'managed-resume-test', source: 'file', steps: graphToSteps(graph), graph };
     const run = store.createRun({ title: 'Resume', workflow: workflow.name, task: 'Implement filter', steps: workflow.steps.map(step => ({ id: step.id, name: step.id, kind: step.command ? 'check' : 'agent' })) });
-    store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: 'design', loops: { 'clarification-round': 3, 'final-retry': 1 }, taken: [] } });
+    let cwd = root;
+    if (isolated) {
+      cwd = join(root, '.ai/cezar/worktrees', run.id); await mkdir(cwd, { recursive: true });
+      store.updateRun(run.id, { worktreePath: cwd, branch: `cez/${run.id.slice(0, 8)}`, baseBranch: 'recorded-base' });
+      gitState.recordedPath = cwd;
+      gitState.missing = true;
+      gitState.creationFails = fail;
+    }
+    store.updateRun(run.id, { status: 'failed', worktree: isolated ? undefined : false, workflowDef: workflow, graphState: { cursor: 'design', loops: { 'clarification-round': 3, 'final-retry': 1 }, taken: [] } });
     await mkdir(join(data, 'runs'), { recursive: true });
     await writeFile(join(data, 'runs', `${run.id}.superpowers.json`), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
-    const paths = newArtifactPaths(root, run.id); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
+    const paths = newArtifactPaths(cwd, run.id); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
     await mkdir(join(paths.directory, 'probe'), { recursive: true });
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(root), artifactPrefix: paths.prefix }));
-    for (const name of ['design.md', 'ledger.md', 'delivery.md']) await writeFile(paths.file(name), '# Existing evidence');
+    await mkdir(join(paths.directory, 'logs'), { recursive: true });
+    await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(cwd), artifactPrefix: paths.prefix }));
+    await writeFile(paths.file('context-map.jsonl'), JSON.stringify({ schemaVersion: 1, stage: 'probe', path: 'src/ExistingCounter.java', summary: 'Existing fixture counter', relevance: 'Continue existing work', symbols: ['recordFailure'], dependsOn: [], confidence: 'high' }) + '\n');
+    for (const name of ['design.md', 'ledger.md']) await writeFile(paths.file(name), '# Existing evidence');
     await writeFile(paths.file('validation-plan.json'), '{}');
     const baseline = bundled.graph!.nodes.find(node => node.id === 'baseline');
     if (baseline?.type !== 'check') throw Error('missing baseline');
-    await guards.guardUnattendedCheck(data, run.id, root, baseline.command, 'after');
+    await guards.guardUnattendedCheck(data, run.id, cwd, baseline.command, 'after');
     manager = new RunManager(store, root);
     expect(store.getRun(run.id)?.workflowDef?.graph).toBeDefined();
     expect(guards.isUnattendedGraph(data, run.id, graph)).toBe(true);
@@ -78,15 +100,28 @@ it('Continue reenters the pinned graph through verification, review and seal wit
     };
     expect(manager.continueRun(run.id, { text: 'Use exact matching.' })).toEqual({ ok: true });
     await expect.poll(() => ['done', 'review', 'failed'].includes(store.getRun(run.id)?.status ?? ''), { timeout: 20_000 }).toBe(true);
+    if (fail) {
+      expect(store.getRun(run.id)?.error).toContain('worktree creation failed');
+      expect(captures.specs).toHaveLength(0);
+      expect(store.getRun(run.id)?.worktreePath).toBe(cwd);
+      expect(await readFile(paths.file('validation-plan.json'), 'utf8')).toBe('{}');
+      return;
+    }
     expect(store.getRun(run.id)?.status, store.getRun(run.id)?.error).not.toBe('failed');
     expect(store.getRun(run.id)?.graphState?.taken).toContain('seal.pass->done');
     expect(captures.specs[0]?.resume).toBe(false);
+    expect(captures.specs[0]?.timeoutMs).toBe(90 * 60_000);
+    expect(captures.specs[0]?.userPrompt).toContain('src/ExistingCounter.java');
+    expect(captures.specs[0]?.userPrompt).toContain('recordFailure');
+    expect(store.getRun(run.id)?.steps.find(step => step.id === 'design')?.input?.userPrompt).toBe(captures.specs[0]?.userPrompt);
+    expect(await realpath(captures.specs[0]!.cwd)).toBe(await realpath(cwd));
     expect(captures.specs[0]?.sessionId).not.toBe('old-design-account-session');
     expect(checks).toEqual(['verify', 'seal']);
     expect(captures.prompts.some(prompt => prompt.includes('DESIGN'))).toBe(true);
     expect(captures.prompts.some(prompt => prompt.includes('REVIEW'))).toBe(true);
     expect(store.getRun(run.id)?.graphState?.loops).toEqual({ 'clarification-round': 3, 'final-retry': 1 });
     expect(store.getRun(run.id)?.steps.some(step => step.id.startsWith('continue-'))).toBe(false);
-    expect(await readFile(paths.file('resume-message.md'), 'utf8')).toContain('Use exact matching.');
-  } finally { captures.onLaunch = undefined; manager?.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
-}, 30_000);
+    await expect(readFile(paths.file('resume-message.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(captures.specs[0]?.userPrompt).toContain('Use exact matching.');
+  } finally { gitState.missing = false; gitState.creationFails = false; gitState.recordedPath = ''; captures.onLaunch = undefined; manager?.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+}, 60_000);

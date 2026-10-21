@@ -22,6 +22,25 @@ vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
   },
 }) }));
 
+it('waits for the existing title result before probe initialization even without branch naming', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-probe-name-race-'));
+  const store = RunStore.open(join(root, '.ai/cezar'));
+  const manager = new RunManager(store, root, { branchNameWaitMs: 1000 });
+  try {
+    const run = store.createRun({ title: '中文原始需求', workflow: 'probe', task: '中文原始需求', steps: [] });
+    const naming = manager as unknown as {
+      pendingBranchNames: Map<string, Promise<string | undefined>>;
+      awaitGeneratedBranch: (id: string, branch: string | undefined, note: (message: string) => void, requireTitle: boolean) => Promise<string | undefined>;
+    };
+    naming.pendingBranchNames.set(run.id, new Promise(resolve => setTimeout(() => {
+      store.updateRun(run.id, { titleSummary: 'adding audience package fallback' });
+      resolve(undefined);
+    }, 20)));
+    await naming.awaitGeneratedBranch(run.id, undefined, () => {}, true);
+    expect(store.getRun(run.id)?.titleSummary).toBe('adding audience package fallback');
+  } finally { manager.dispose(); store.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
 it('passes the trusted single toolchain to implementation without leaking arbitrary host environment or choosing between modules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cez-agent-toolchain-'));
   try {
@@ -40,7 +59,7 @@ it('passes the trusted single toolchain to implementation without leaking arbitr
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-it('initializes before launch, supplies the eight-minute limit, and refuses unsupported backends', async () => {
+it('initializes before launch, supplies the thirty-minute limit, and refuses unsupported backends', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cez-probe-launch-'));
   try {
     const git = (...args: string[]) => {
@@ -54,12 +73,16 @@ it('initializes before launch, supplies the eight-minute limit, and refuses unsu
     const snapshot = await ensureBundleSnapshot();
     await mkdir(join(dataDir, 'runs'), { recursive: true });
     await writeFile(join(dataDir, 'runs', 'probe-run.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
-    const launch = await prepareUnattendedProbe(dataDir, 'probe-run', cwd, 'claude');
+    const launch = await prepareUnattendedProbe(dataDir, 'probe-run', cwd, 'claude', false, '/cezar:project-probe Work on tracker ticket [story:123]: 【sales】 Sale Control Thread Pool');
     expect(launch.policy).toEqual({ root: cwd, runId: 'probe-run' });
+    expect(artifactPaths(cwd, 'probe-run').topic).toBe('sale-control-thread-pool');
     expect(launch.timeoutMs).toBe(PROBE_TIMEOUT_MS);
-    expect(launch.timeoutMs).toBe(480_000);
+    expect(launch.timeoutMs).toBe(1_800_000);
     expect(launch.instructions).toContain('probe-policy.mjs');
     expect(launch.instructions).toContain('No compile/test');
+    expect(launch.instructions).toContain('at most 3 independent tool calls');
+    expect(launch.instructions).toContain('CEZ_HANDOFF_FILE');
+    expect(launch.instructions).not.toContain('request.md');
     const { readFile } = await import('node:fs/promises');
     expect(JSON.parse(await readFile(artifactPaths(cwd, 'probe-run').file('run.json'), 'utf8')).runId).toBe('probe-run');
     await expect(prepareUnattendedProbe(dataDir, 'probe-run', cwd, 'codex')).rejects.toThrow('cannot enforce');
@@ -79,7 +102,7 @@ it('initializes before launch, supplies the eight-minute limit, and refuses unsu
       const run = store.createRun({ title: 'Probe recovery', workflow: workflow.name, task: 'Locate relevant Java files', steps: workflow.steps.map(step => ({ id: step.id, name: step.id, kind: step.command ? 'check' : 'agent' })) });
       // Remove the manually initialized identity; the host must create this run's own context.
       await rm(join(cwd, 'docs/superpowers'), { recursive: true });
-      store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: 'probe', taken: [], loops: {} } });
+      store.updateRun(run.id, { titleSummary: 'adding audience package fallback', status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: 'probe', taken: [], loops: {} } });
       await mkdir(join(cwd, '.ai/cezar/runs'), { recursive: true });
       await writeFile(join(cwd, '.ai/cezar/runs', `${run.id}.superpowers.json`), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
       vi.spyOn(manager as unknown as { agentEnvForStep: () => Promise<{ env: Record<string, string>; profileId: string }> }, 'agentEnvForStep').mockResolvedValue({ env: {}, profileId: 'fixture' });
@@ -87,11 +110,35 @@ it('initializes before launch, supplies the eight-minute limit, and refuses unsu
       expect(manager.continueRun(run.id, { text: 'Resume discovery only.' })).toEqual({ ok: true });
       await expect.poll(() => captures.specs.length > 0, { timeout: 15_000 }).toBe(true);
       expect(captures.specs[0]?.probePolicy).toEqual({ root: cwd, runId: run.id });
-      expect(captures.specs[0]?.timeoutMs).toBe(480_000);
+      expect(captures.specs[0]?.timeoutMs).toBe(1_800_000);
       expect(captures.specs[0]?.mcpServers).toBeUndefined();
       expect(captures.specs[0]?.userPrompt).toContain('Host initialized');
+      expect(artifactPaths(cwd, run.id).topic).toBe('adding-audience-package-fallback');
       await expect.poll(() => store.getRun(run.id)?.status, { timeout: 15_000 }).toBe('failed');
       expect(captures.specs.filter(spec => spec.probePolicy)).toHaveLength(1);
     } finally { manager.dispose(); store.flush(); }
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 60_000);
+
+
+it.each([false, true])('passes an explicit agent timeout on launch (Continue=%s)', async continuation => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-agent-deadline-'));
+  const store = RunStore.open(join(root, '.ai/cezar'));
+  const manager = new RunManager(store, root);
+  try {
+    captures.specs = [];
+    vi.spyOn(manager as unknown as { agentEnvForStep: () => Promise<{ env: Record<string, string>; profileId: string }> }, 'agentEnvForStep').mockResolvedValue({ env: {}, profileId: 'fixture' });
+    const workflow = { name: 'deadline-test', source: 'file' as const, steps: [{ id: 'implement', prompt: 'Implement existing plan', timeoutMs: 90 * 60_000 }] };
+    const run = continuation
+      ? store.createRun({ title: 'Continue deadline', workflow: workflow.name, task: 'test', steps: [{ id: 'implement', name: 'Implement', kind: 'agent' }] })
+      : manager.startRun(workflow, { task: 'test', worktree: false });
+    if (continuation) {
+      store.updateStep(run.id, 'implement', { sessionId: 'existing-session', backend: 'claude', status: 'failed' });
+      store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow });
+      expect(manager.continueRun(run.id, { text: 'Resume unfinished work.' })).toEqual({ ok: true });
+    }
+    await expect.poll(() => captures.specs.length, { timeout: 15_000 }).toBe(1);
+    expect(captures.specs[0]?.timeoutMs).toBe(90 * 60_000);
+    await expect.poll(() => ['done', 'review', 'failed'].includes(store.getRun(run.id)?.status ?? ''), { timeout: 15_000 }).toBe(true);
+  } finally { manager.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+}, 30_000);
