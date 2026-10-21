@@ -289,9 +289,9 @@ unchanged to `dist/workflows/assets/superpowers/`; the package ships that built 
 New immutable snapshots serialize the canonical definition as `workflow.json`;
 historical snapshots continue to read their own YAML and executable assets.
 New templates invoke
-host workflow actions (`cezar workflow-action init|route|execution|baseline|verify|seal`)
+host workflow actions (`cezar workflow-action init|route|execution|baseline|verify|seal|blocked`)
 instead of a Superpowers snapshot runtime. These actions resolve dependencies from
-the cezar installation, not the target repository. Other graph templates can reuse
+the cezar installation, not the target repository. The host launches these exact actions directly through its own Node executable with an argument array; they do not require Bash on PATH. Other graph templates can reuse
 the same command operations and their frozen validation-plan/receipt checks.
 Legacy snapshots retain their original runtime commands and artifact layout.
 It preserves the Superpowers 7.0.0 prompts, probes the target project's code map and toolchain,
@@ -299,9 +299,11 @@ and selects a fast, standard, or deep execution path. Host checks execute the di
 validation commands (for example Maven for a Java repo), followed by independent review and bounded
 repair. It ends at review, never auto-pushes or merges, and does not change the default `quick-task`.
 Role nodes directly select the pinned original Superpowers 7 skills or role templates; their bodies are injected into node input without an entry skill or adapter-reading chain.
-Workflow artifacts use a persisted `YYYY-MM-DD-<runId>` prefix under `docs/superpowers/`: `probe/<prefix>-probe.md`, `probe/<prefix>-context-map.jsonl`, `specs/<prefix>-design.md`, `plans/<prefix>-plan.md`, and same-prefix environment, clarification, implementation, review, delivery and verification files. The host gives each node an exact path map; Continue keeps its original date and legacy frozen runs keep their saved layout. Current-run generated artifacts are excluded from the seal diff, without excluding unrelated docs. Host-private trust and bundle pins remain in `.ai/cezar/runs/`.
-Probe is limited to eight minutes, file reads/searches, five discovery reports and bounded installed-tool version queries. It cannot build, test, set up dependencies or delegate. Claude currently enforces this boundary; selecting another backend for probe produces an explicit blocker. Other nodes retain their selected backend. The host initializes the context before launch, and partial reports survive timeouts. Java/Maven/Gradle validation commands must reference a frozen toolchain with an observed Java home; setup, version checks, baseline and verification receive that binding through child JAVA_HOME/PATH rather than inheriting the terminal default. Missing installations and version drift block instead of triggering environment repair or weaker checks.
+Design uses the original brainstorming skill, including its one builder check and follow-up. The skill dispatches a fresh subagent using its original builder-check-prompt.md, or reads the document as that builder when no subagent tool exists. It incorporates existing answers, settles minor decisions, and sends only missing requirement-authority decisions to the unattended adjudicator. After updating the design it proceeds to writing-plans under the existing unattended approval policy. There is no additional host builder node, design-retry loop, finding-ID protocol or convergence heuristic. Recovery reuses an already completed builder check. The `blocked` host action packages existing failure evidence without another model call; it never repairs code or grants approval. Existing tasks retain their pinned workflow unless explicitly migrated, preserving consumed budgets.
+Workflow artifacts use sibling directories under `docs/superpowers/`: discovery under `probe/`, designs under `specs/`, plans under `plans/`, and all other workflow reports and command logs under `logs/`. Filenames use the persisted `YYYY-MM-DD-<topic>-<name>` prefix. The host derives the readable topic from the existing session titleSummary when available, falling back to the original request title without an extra model call; duplicate topics get a numeric suffix. `run.json` persists `runId`, `topic`, `artifactDate` and `artifactPrefix`; identity lookup uses the stored runId, and Continue/title edits never rename artifacts. Task/subagent reports use `logs/<prefix>-tasks/`. The official `specs/` and `plans/` locations remain unchanged. The host gives every node an exact path map; Continue keeps the original date. Only this layout is read. Current-run artifacts are excluded from the seal diff; unrelated docs are retained. Host-private trust and bundle pins remain in `.ai/cezar/runs/`.
+The original request is read from CEZ_HANDOFF_FILE / ## Goal rather than copied to another file. Independent reads and selected-tool version queries use at most three native tool calls per batch; writes to each report stay serialized. Probe is limited to thirty minutes, file reads/searches, four discovery reports and bounded installed-tool version queries. It cannot build, test, set up dependencies or delegate. Claude currently enforces this boundary; selecting another backend for probe produces an explicit blocker. Other nodes retain their selected backend. The host initializes the context before launch, and partial reports survive timeouts. Java/Maven/Gradle validation commands must reference a frozen toolchain with an observed Java home; setup, version checks, baseline and verification receive that binding through child JAVA_HOME/PATH rather than inheriting the terminal default. Missing installations and version drift block instead of triggering environment repair or weaker checks.
 A project file of the same name overrides it. See the [bundle guide](../packages/cezar/src/workflows/assets/superpowers/README.md).
+Downstream agents and Continue receive existing context-map rows, selected toolchains, current HEAD, step status, validation evidence and recent ledger progress directly in their input as reference data. Plan-referenced rows take priority within the bounded map payload; omitted entries remain available at the supplied artifact path. This reuses discovery without replacing source reads before editing. Legacy test results with only an exit code are explicitly unverified. Maven test validation additionally requires an actual Surefire test summary with at least one test executed (not all skipped); skipped or absent execution fails even when Maven exits zero. Literal plugin skip configuration cannot be overridden solely by CLI properties. Use an explicit project test profile or supported test entry while preserving release defaults; the host does not silently rewrite project configuration or frozen validation plans.
 
 The **Skills → Superpowers updates** card checks official stable releases from `obra/superpowers`.
 Checking is manual by default. Optional automatic checking runs at most once per six hours;
@@ -351,6 +353,7 @@ steps:
     # model: opus                # optional per-step model override
     # runner: codex              # optional per-step backend: claude · codex · junie · opencode · pi
     # allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
+    # timeoutMs: 5400000 # optional agent session limit (90 minutes), also used on Continue
   - id: verify
     name: Verify
     command: "npm test"          # a check step: exit 0 passes
@@ -415,6 +418,7 @@ and a value inherited from the server's own environment is replaced:
 | `CEZ_BASE` | the recorded fork point |
 | `CEZ_STEP_ID` | this check step's id |
 | `CEZ_ATTEMPT` | 1-based attempt number of this check within the run |
+| `CEZ_HANDOFF_FILE` | Host handoff path for this run; the blocker reporter uses its directory to read the flushed task index |
 | `CEZ_SHARED_CACHE_DIR` | `~/.cezar/cache/<projectId>` (`0700`), shared by the project's tasks — e.g. an e2e replay cache |
 | `CEZ_GITHUB_REPO`, `CEZ_GITHUB_NUMBER`, `CEZ_GITHUB_EVENT` | runs a GitHub automation launched only |
 | `CEZ_PR_HEAD_SHA`, `CEZ_PR_HEAD_REF`, `CEZ_PR_BASE_REF` | runs a `checkout: "pr-head"` automation launched on a pull request's head only |
@@ -1097,3 +1101,8 @@ published package carries the built app, so `npx` users never run a bundler.
 Every module is meant to be read in one sitting.
 
 ---
+
+
+### Unattended workflow evidence
+
+The unattended template preserves the original Superpowers design, plan, native ledger and task reports. Host implementation/delivery summaries and blocker diagnostics use existing node responses, run events and the handoff rather than duplicate Markdown reports. User continuations use the existing message queue and history rather than a separate resume file. Environment check evidence is embedded in `baseline.json` / `verify.json`; successful version-query logs are removed after recording their results, while failures retain diagnostic logs. Full build/test logs and verification receipts remain available. Shared context includes a bounded map index (12,000 characters) and recent ledger tail (4,000 characters); omitted evidence is read only when needed.

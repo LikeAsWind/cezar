@@ -136,7 +136,7 @@ Use the shared helper so the mapping is uniform:
 
 ```ts
 prependSystemPrompt(spec.systemPrompt, spec.userPrompt)
-// claude:          --append-system-prompt   (native channel, do NOT prepend)
+// claude:          --append-system-prompt[-file] (native channel; long prompts use a private temp file, never prepend)
 // codex / opencode: prepended here
 ```
 

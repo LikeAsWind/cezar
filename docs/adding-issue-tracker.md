@@ -84,6 +84,10 @@ Reads begin only on user demand. Credentials stay on the server.
    Use `TrackerConnections` for atomic owner-only storage outside checkouts; never persist
    credentials in `tracker.json` or return them through GET. Replacement creates a fresh
    connection ID; association selection must carry that ID and stale selections must fail.
+   Credential-bound workspace selections are stored in private `<project-hash>.scope.json` records
+   beside credentials. `tracker.json` is a project-local cache. An explicit null selection means
+   disconnected; it must override a surviving stale cache. Credential replacement invalidates the
+   selection revision, and local credential removal deletes its scope record too.
    Custom/self-hosted origins require explicit origin validation and credential routing.
 6. **Use project readiness.** `/tracker/connection` exposes ID/kind, demo mode and controlled local-storage
    diagnostics, never secrets. Settings reads this project-scoped endpoint. Do not add global
