@@ -60,6 +60,8 @@ export const graphNodeSchema = z.discriminatedUnion('type', [
     runner: z.enum(RUNNER_IDS).optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** Explicit agent session wall-clock limit; omitted preserves backend defaults. */
+    timeoutMs: z.number().int().positive().max(7 * 24 * 60 * 60_000).optional(),
     /** Author-declared outcomes (D10/D17). The agent picks one by ending its turn with
      *  `CEZ:VERDICT <name>`; each becomes an output port in place of `done`. */
     verdicts: z.array(verdictName).min(1).optional(),

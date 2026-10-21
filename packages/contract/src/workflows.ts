@@ -32,6 +32,8 @@ export const workflowStepDefSchema = z
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** Explicit agent session wall-clock limit; omitted preserves backend defaults. */
+    timeoutMs: z.number().int().positive().max(7 * 24 * 60 * 60_000).optional(),
     // check step
     command: z.string().optional(),
     onFail: z
@@ -103,6 +105,8 @@ export const workflowGraphNodeSchema = z.discriminatedUnion('type', [
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** Explicit agent session wall-clock limit; omitted preserves backend defaults. */
+    timeoutMs: z.number().int().positive().max(7 * 24 * 60 * 60_000).optional(),
     verdicts: z.array(verdictName).min(1).optional(),
     session: z.object({ continue: nodeId }).optional(),
     review: z.boolean().optional(),

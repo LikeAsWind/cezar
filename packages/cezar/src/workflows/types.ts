@@ -43,6 +43,8 @@ export const workflowStepSchema = z
     runner: z.enum(RUNNER_IDS).optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** Explicit agent session wall-clock limit; omitted preserves backend defaults. */
+    timeoutMs: z.number().int().positive().max(7 * 24 * 60 * 60_000).optional(),
     // check step
     command: z.string().optional(),
     onFail: z
