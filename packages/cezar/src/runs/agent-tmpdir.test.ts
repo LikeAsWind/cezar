@@ -1,3 +1,4 @@
+import { runFilePath } from './files.ts';
 import {
   chmodSync,
   existsSync,
@@ -194,10 +195,10 @@ describe('reaping the per-run temp directories (#785)', () => {
     agentTmpEnv(dataDir, 'orphan', {});
     mkdirSync(join(dataDir, 'runs'), { recursive: true });
     writeFileSync(join(dataDir, 'runs.json'), '[]', 'utf8');
-    writeFileSync(join(dataDir, 'runs', 'a.ndjson'), '{}', 'utf8');
+    writeFileSync(runFilePath(dataDir, 'a', '.ndjson'), '{}', 'utf8');
     sweepAgentTmpDirs(dataDir, []);
     expect(existsSync(join(dataDir, 'runs.json'))).toBe(true);
-    expect(existsSync(join(dataDir, 'runs', 'a.ndjson'))).toBe(true);
+    expect(existsSync(runFilePath(dataDir, 'a', '.ndjson'))).toBe(true);
   });
 
   it('is a no-op before any run has minted a directory', () => {

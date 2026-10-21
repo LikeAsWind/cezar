@@ -1,8 +1,9 @@
+import { runFilePath } from './runs/files.ts';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 
 /**
- * Per-task handoff journal (spec 007): `.ai/cezar/runs/<runId>.handoff.md`,
+ * Per-task handoff journal (spec 007): `.ai/cezar/runs/<runId>/handoff.md`,
  * next to the run's NDJSON events and outside the task worktree — it survives
  * worktree removal. Cez seeds the skeleton and appends heartbeats; the agent
  * (told via CEZ_HANDOFF_FILE + the system-prompt fragment below) keeps the
@@ -11,7 +12,7 @@ import { dirname, join } from 'node:path';
  */
 
 export function handoffPath(dataDir: string, runId: string): string {
-  return join(dataDir, 'runs', `${runId}.handoff.md`);
+  return runFilePath(dataDir, runId, '.handoff.md');
 }
 
 export interface HandoffSeed {

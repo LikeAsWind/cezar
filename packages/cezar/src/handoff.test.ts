@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { appendHandoffHeartbeat, HANDOFF_INSTRUCTIONS, handoffPath } from './handoff.ts';
@@ -10,7 +10,7 @@ const RUN_ID = 'run-1215';
 
 function journal(dataDir: string, progress: string, resume = 'keep this') {
   const file = handoffPath(dataDir, RUN_ID);
-  mkdirSync(join(dataDir, 'runs'), { recursive: true });
+  mkdirSync(dirname(file), { recursive: true });
   writeFileSync(
     file,
     `# Handoff\n\n## Goal\n\nGoal\n\n## Progress log\n\n${progress}\n## Resume notes\n\n${resume}\n`,
@@ -124,7 +124,7 @@ describe('appendHandoffHeartbeat bounded progress log', () => {
 
   it('keeps header-less append and missing-file no-op behavior', () => {
     const file = handoffPath(dataDir, RUN_ID);
-    mkdirSync(join(dataDir, 'runs'), { recursive: true });
+    mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, '# Handoff without the progress marker');
     vi.setSystemTime(new Date('2026-10-08T01:00:00.000Z'));
 

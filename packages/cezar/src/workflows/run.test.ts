@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import {
   existsSync,
@@ -1132,12 +1133,12 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:monitoring keep going', worktree: false });
     currentId = record.id;
     await waitFor(record.id, () => {
-      const path = join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`);
+      const path = runFilePath(join(repoRoot, '.ai/cezar'), record.id, '.ndjson');
       if (!existsSync(path)) return false;
       const ndjson = readFileSync(path, 'utf8');
       return ndjson.includes('automatic monitoring wake-up (1/40)');
     });
-    const events = readFileSync(join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`), 'utf8')
+    const events = readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), record.id, '.ndjson'), 'utf8')
       .trim().split('\n').map((line) => JSON.parse(line) as { type: string; message?: string });
     expect(events.some((event) => event.type === 'note' && event.message?.includes('(1/40)'))).toBe(true);
     expect(events.some((event) => event.type === 'user-message')).toBe(false);
@@ -1156,7 +1157,7 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     await waitFor(record.id, (r) => r?.activity === 'monitoring');
     // v1 `text` events are stripped server-side (like CEZ:DONE); v2 message items carry
     // the raw text and the thread reducer strips it on display (thread-state.test.ts).
-    const ndjson = readFileSync(join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), record.id, '.ndjson'), 'utf8');
     const v1Text = ndjson
       .trim()
       .split('\n')
@@ -1334,7 +1335,7 @@ describe('a turn that parks on its sub-agents while declaring its PR is not "nee
     });
     currentId = record.id;
     await waitFor(record.id, hasParked);
-    const v1Text = readFileSync(join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`), 'utf8')
+    const v1Text = readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), record.id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string })
@@ -1418,7 +1419,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   };
 
   const readEvents = (id: string): Array<Record<string, unknown>> =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l));
@@ -3089,7 +3090,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     });
     runId = record.id;
     await waitFor(() => store.getRun(record.id)?.status === 'waiting');
-    const eventsPath = join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`);
+    const eventsPath = runFilePath(join(repoRoot, '.ai/cezar'), record.id, '.ndjson');
     expect(readFileSync(eventsPath, 'utf8')).toContain('"type":"ask.requested"');
     expect(manager.sendMessage(record.id, [{ type: 'text', text: 'Library: Vitest' }])).toBe(true);
     await waitFor(() => readFileSync(eventsPath, 'utf8').includes('"type":"turn-end"'));
@@ -3165,7 +3166,7 @@ describe('a context-compaction boundary keeps the run working (#955)', () => {
   };
 
   const eventsOf = (id: string) => {
-    const path = join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`);
+    const path = runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson');
     if (!existsSync(path)) return [] as Array<Record<string, string>>;
     return readFileSync(path, 'utf8')
       .trim()
@@ -3353,7 +3354,7 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
   });
 
   const eventsOf = (id: string) =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string; stepId?: string });
@@ -3518,7 +3519,7 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
   const eventsOf = (id: string) => {
     let raw: string;
     try {
-      raw = readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8').trim();
+      raw = readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8').trim();
     } catch {
       return [] as { type: string; text?: string; stepId?: string }[];
     }

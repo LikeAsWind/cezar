@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -76,7 +77,7 @@ describe('project and workspace secrets in check steps', () => {
   };
 
   const checkOutputs = (id: string): string[] =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string })
@@ -84,7 +85,7 @@ describe('project and workspace secrets in check steps', () => {
       .map((event) => event.text ?? '');
 
   const notes = (id: string): string[] =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; message?: string })

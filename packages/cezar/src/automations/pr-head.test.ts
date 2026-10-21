@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -345,7 +346,7 @@ describe('a pr-head automation launch', () => {
     const { runner } = fakeGithub(pull('0'.repeat(40)), { fetchSha: repo.head });
     const { runId } = await launchAutomationRun({ root: repo.root, manager, store, definition: definition(), candidate, receiptId: 'r3', runCommand: runner });
     await settle(runId);
-    const notes = readFileSync(join(repo.root, '.ai/cezar/runs', `${runId}.ndjson`), 'utf8');
+    const notes = readFileSync(runFilePath(join(repo.root, '.ai/cezar'), runId, '.ndjson'), 'utf8');
     expect(notes).toContain('moved while launching');
   }, 40_000);
 

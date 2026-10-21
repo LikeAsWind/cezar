@@ -1,3 +1,4 @@
+import { runFilePath } from './files.ts';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -481,7 +482,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
     }
   });
 
-  const eventsFile = (dir: string, id: string) => readFileSync(join(dir, 'runs', `${id}.ndjson`), 'utf8');
+  const eventsFile = (dir: string, id: string) => readFileSync(runFilePath(dir, id, '.ndjson'), 'utf8');
 
   it('scrubs a host secret value from the NDJSON transcript', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
@@ -2358,7 +2359,7 @@ describe('RunStore — seq rehydration from the persisted high-water mark', () =
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', steps: [] });
     store.appendEvent(run.id, { type: 'note', message: 'one' });
     store.flush();
-    const events = join(dataDir, 'runs', `${run.id}.ndjson`);
+    const events = runFilePath(dataDir, run.id, '.ndjson');
     for (let seq = 2; seq <= 5; seq += 1) {
       appendFileSync(events, `${JSON.stringify({ seq, ts: 'x', type: 'note', message: String(seq) })}\n`);
     }
@@ -2373,7 +2374,8 @@ describe('RunStore — seq rehydration from the persisted high-water mark', () =
     const lines = [9, 4].map((seq) => JSON.stringify({ seq, ts: 'x', type: 'note', message: String(seq) }));
     writeFileSync(join(dataDir, 'runs.json'), JSON.stringify([LEGACY_RUN]));
     mkdirSync(join(dataDir, 'runs'), { recursive: true });
-    writeFileSync(join(dataDir, 'runs', `${LEGACY_RUN.id}.ndjson`), `${lines.join('\n')}\n`);
+    mkdirSync(join(dataDir, 'runs', LEGACY_RUN.id), { recursive: true });
+    writeFileSync(runFilePath(dataDir, LEGACY_RUN.id, '.ndjson'), `${lines.join('\n')}\n`);
 
     const store = RunStore.open(dataDir);
     expect(store.appendEvent(LEGACY_RUN.id, { type: 'note', message: 'next' }).seq).toBe(10);

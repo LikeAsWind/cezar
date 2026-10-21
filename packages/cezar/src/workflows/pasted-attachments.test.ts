@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -592,7 +593,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const queued = store.getRun(record.id);
     expect(queued?.status).toBe('queued');
     expect(queued?.taskImages).toEqual([`/api/v1/p/alpha/runs/${record.id}/images/pasted-1.png`]);
-    expect(existsSync(join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png'))).toBe(true);
+    expect(existsSync(join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.png'))).toBe(true);
 
     await waitForStatus(record.id, ['done', 'review', 'failed', 'cancelled']);
 
@@ -601,10 +602,10 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     expect(after?.taskImages?.length).toBe(1);
     expect(after?.taskImages?.[0]).toMatch(/\/images\/pasted-1\.png$/);
 
-    const filePath = join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png');
+    const filePath = join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.png');
     expect(existsSync(filePath)).toBe(true);
     expect(readFileSync(filePath).equals(Buffer.from(TINY_PNG_B64, 'base64'))).toBe(true);
-    expect(readdirSync(join(dataDir, 'runs', `${record.id}-images`)).filter((name) => name.startsWith('pasted-'))).toEqual([
+    expect(readdirSync(runFilePath(dataDir, record.id, '-images')).filter((name) => name.startsWith('pasted-'))).toEqual([
       'pasted-1.png',
     ]);
 
@@ -615,7 +616,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     expect(lines[0]?.userText).toContain(`- ${filePath}`);
 
     // The base64 bytes never enter the NDJSON event log (only the name/url pair does).
-    const ndjson = readFileSync(join(dataDir, 'runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(runFilePath(dataDir, record.id, '.ndjson'), 'utf8');
     expect(ndjson).not.toContain(TINY_PNG_B64);
   }, 30_000);
 
@@ -664,8 +665,8 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const after = store.getRun(record.id);
     expect(after?.status, after?.error).toMatch(/^(done|review)$/);
 
-    const mdPath = join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.md');
-    const pdfPath = join(dataDir, 'runs', `${record.id}-images`, 'pasted-2.pdf');
+    const mdPath = join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.md');
+    const pdfPath = join(runFilePath(dataDir, record.id, '-images'), 'pasted-2.pdf');
     expect(readFileSync(mdPath, 'utf8')).toBe(BRIEF_MD);
     expect(readFileSync(pdfPath, 'utf8')).toBe(TINY_PDF);
 
@@ -680,7 +681,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     // run a path, not a fifth of its prompt budget.
     expect(lines[0]?.userText).not.toContain('Ship the alpha-particle report');
     expect(lines[0]?.userText).not.toContain(BRIEF_MD_B64);
-    const ndjson = readFileSync(join(dataDir, 'runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(runFilePath(dataDir, record.id, '.ndjson'), 'utf8');
     expect(ndjson).not.toContain(BRIEF_MD_B64);
     expect(ndjson).not.toContain(TINY_PDF_B64);
   }, 30_000);
@@ -729,8 +730,8 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
 
     const lines = readStdinLines();
     // Both run-folder paths are still announced — the library is additive, not a replacement.
-    expect(lines[0]?.userText).toContain(`- ${join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.md')}`);
-    expect(lines[0]?.userText).toContain(`- ${join(dataDir, 'runs', `${record.id}-images`, 'pasted-2.pdf')}`);
+    expect(lines[0]?.userText).toContain(`- ${join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.md')}`);
+    expect(lines[0]?.userText).toContain(`- ${join(runFilePath(dataDir, record.id, '-images'), 'pasted-2.pdf')}`);
     // …and the library is named, so a later task can find `alpha-brief.md` by the name the user
     // knows it by rather than by this run's `pasted-1.md`.
     expect(lines[0]?.userText).toContain(`kept under their original names in ${attachmentLibraryDir(dataDir)}`);
@@ -802,7 +803,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const record = manager.startRun(workflow, { task: 'look at this', images: [image] });
     await waitForStatus(record.id, ['waiting']);
     // The mock takes its own tool screenshot during turn 1, so this covers both origins at once.
-    expect(existsSync(join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png'))).toBe(true);
+    expect(existsSync(join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.png'))).toBe(true);
     const after = existsSync(attachmentLibraryDir(dataDir)) ? readdirSync(attachmentLibraryDir(dataDir)) : [];
     expect(after).toEqual(before);
     manager.finish(record.id);
@@ -842,7 +843,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const opening = readStdinLines().find((line) => line.userText.includes('wait for my brief'));
     expect(opening).toBeDefined();
     expect(opening?.userText).toContain('here is the brief');
-    expect(opening?.userText).toContain(`- ${join(dataDir, 'runs', `${record.id}-images`, stackedName)}`);
+    expect(opening?.userText).toContain(`- ${join(runFilePath(dataDir, record.id, '-images'), stackedName)}`);
   }, 30_000);
 
   /** #926 — the exact reported interaction: a screenshot pasted into a task that is still
@@ -873,14 +874,14 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: TINY_PNG_B64 } },
     ]);
     expect(queuedMessage?.images).toEqual([`/api/v1/p/alpha/runs/${record.id}/images/pasted-1.png`]);
-    expect(existsSync(join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png'))).toBe(true);
+    expect(existsSync(join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.png'))).toBe(true);
 
     await waitForStatus(record.id, ['done', 'review', 'failed', 'cancelled']);
     const opening = readStdinLines().find((line) => line.userText.includes('wait for my screenshot'));
     expect(opening).toBeDefined();
     expect(opening?.imageCount).toBe(1);
     expect(opening?.userText).toContain('please inspect this screenshot');
-    expect(opening?.userText).toContain(`- ${join(dataDir, 'runs', `${record.id}-images`, 'pasted-1.png')}`);
+    expect(opening?.userText).toContain(`- ${join(runFilePath(dataDir, record.id, '-images'), 'pasted-1.png')}`);
   }, 30_000);
 
   it('a follow-up pasted image is saved and its path is appended to the delivered message', async () => {
@@ -955,7 +956,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const pathMatch = followUp?.userText.match(/- (.*pasted-\d+\.jpg)/);
     expect(pathMatch).toBeTruthy();
     const filePath = pathMatch?.[1] as string;
-    expect(filePath).toMatch(new RegExp(`^${join(liveDataDir, 'runs', `${record.id}-images`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pasted-\\d+\\.jpg$`));
+    expect(filePath).toMatch(new RegExp(`^${runFilePath(liveDataDir, record.id, '-images').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pasted-\\d+\\.jpg$`));
     expect(existsSync(filePath)).toBe(true);
     expect(readFileSync(filePath).equals(Buffer.from(TINY_PNG_B64, 'base64'))).toBe(true);
 
@@ -1051,7 +1052,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
 
     // The thread renders the bubble's image, not a bare count — and the base64 stays out of
     // the event log, exactly as on the task-start and follow-up paths.
-    const ndjson = readFileSync(join(dataDir, 'runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(runFilePath(dataDir, record.id, '.ndjson'), 'utf8');
     const userMessage = ndjson
       .trim()
       .split('\n')

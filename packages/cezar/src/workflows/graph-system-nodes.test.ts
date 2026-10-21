@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -82,7 +83,7 @@ describe('graph system nodes', () => {
     const id = manager.startRun(def(GATE), { task: 'the fix', worktree: false }).id;
     const parked = await until(id, parkedAt('gate'));
     expect(parked.askParked).toBe(true);
-    const events = readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8');
+    const events = readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8');
     expect(events).toContain('"ask.requested"');
     expect(events).toContain('Ship the fix?');
 

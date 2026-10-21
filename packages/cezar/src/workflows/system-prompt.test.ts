@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -509,7 +510,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     // The opt-out must survive an inherited CEZ_TODOS_FILE (nested cezar):
     // omitting the key instead of shadowing it leaks into the parent's inbox.
     expect(existsSync(inheritedTodos)).toBe(false);
-    expect(readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.handoff.md'), 'utf8')).toContain(
       'mock: implemented the change',
     );
 
@@ -655,7 +656,7 @@ describe('the global follow-up gate (dry run)', () => {
     expect(capturedSystemPrompt()).toContain('CEZ:PR=<number>');
     expect(capturedSystemPrompt()).toContain('CEZ:ISSUE=<number>');
     expect(capturedSystemPrompt()).toContain('CEZ:TITLE=');
-    expect(readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.handoff.md'), 'utf8')).toContain(
       'mock: implemented the change',
     );
   }, 30_000);

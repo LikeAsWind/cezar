@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -75,7 +76,7 @@ describe('autonomous mode nudges at turn end instead of parking (#autonomous)', 
   };
 
   const readEvents = (id: string): Array<{ type: string; message?: string; stepId?: string }> => {
-    const path = join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`);
+    const path = runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson');
     if (!existsSync(path)) return [];
     return readFileSync(path, 'utf8')
       .trim()

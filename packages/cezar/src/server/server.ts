@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import {
   trackerWatchInputSchema, trackerWatchParamsSchema, trackerWatchQuerySchema,
   trackerCandidatesQuerySchema, trackerListQuerySchema, trackerSearchQuerySchema, trackerItemQuerySchema, trackerReadScope,
@@ -4323,7 +4324,7 @@ export function createApp(deps: ServerDeps) {
         if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
         try {
           return c.json(
-            await readRunHistoryPage(join(dataDir, 'runs', `${id}.ndjson`), c.req.valid('query').cursor),
+            await readRunHistoryPage(runFilePath(dataDir, id, '.ndjson'), c.req.valid('query').cursor),
           );
         } catch (error) {
           if (error instanceof HistoryCursorError) return c.json({ error: error.message }, error.status);
@@ -4339,7 +4340,7 @@ export function createApp(deps: ServerDeps) {
         const { store, dataDir } = c.get('project');
         const { id } = c.req.valid('param');
         if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
-        return c.json(await deriveRunContextEvents(join(dataDir, 'runs', `${id}.ndjson`)));
+        return c.json(await deriveRunContextEvents(runFilePath(dataDir, id, '.ndjson')));
       },
     )
 
@@ -4727,7 +4728,7 @@ export function createApp(deps: ServerDeps) {
       const run = store.getRun(c.req.param('id'));
       if (!run) return c.json({ error: 'not found' }, 404);
       const file = basename(c.req.param('file'));
-      const path = join(dataDir, 'runs', `${run.id}-images`, file);
+      const path = join(runFilePath(dataDir, run.id, '-images'), file);
       if (!existsSync(path)) return c.json({ error: 'not found' }, 404);
       const ext = file.split('.').pop() ?? '';
       const image = IMAGE_TYPES[ext];
@@ -5432,7 +5433,7 @@ export function createApp(deps: ServerDeps) {
       const { id } = c.req.valid('param');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
       const query = c.req.valid('query');
-      const eventsPath = join(dataDir, 'runs', `${id}.ndjson`);
+      const eventsPath = runFilePath(dataDir, id, '.ndjson');
       if (query.cursor) {
         try {
           await validateLiveCursor(eventsPath, query.cursor);

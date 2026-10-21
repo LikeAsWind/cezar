@@ -1,3 +1,4 @@
+import { runDirectory, runFilePath } from './files.ts';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import {
@@ -13,7 +14,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { StreamRedaction } from './stream-redaction.ts';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
@@ -1686,6 +1687,7 @@ export class RunStore extends EventEmitter {
         rmSync(this.eventsPath(id), { force: true });
         rmSync(this.handoffPath(id), { force: true }); // spec 007: the journal goes with the task
         rmSync(this.imagesDir(id), { recursive: true, force: true }); // agent screenshots
+        rmSync(runDirectory(this.dataDir, id), { recursive: true, force: true });
         // Unsent drafts go with the task (#939): a draft for a run that no longer exists is
         // unreachable by definition, and it may be holding megabytes of pasted screenshots.
         deleteRunDrafts(this.dataDir, id);
@@ -1774,7 +1776,7 @@ export class RunStore extends EventEmitter {
   }
 
   private eventsPath(runId: string): string {
-    return join(this.dataDir, 'runs', `${runId}.ndjson`);
+    return runFilePath(this.dataDir, runId, '.ndjson');
   }
 
   /**
@@ -1794,7 +1796,7 @@ export class RunStore extends EventEmitter {
    * exactly as before.
    */
   private appendEventLine(runId: string, line: string): void {
-    mkdirSync(join(this.dataDir, 'runs'), { recursive: true });
+    mkdirSync(dirname(this.eventsPath(runId)), { recursive: true });
     // Sync append keeps event order without a write queue; local NDJSON
     // appends at agent-event rates are effectively free.
     appendFileSync(this.eventsPath(runId), line, 'utf8');
@@ -1803,12 +1805,12 @@ export class RunStore extends EventEmitter {
   /** Same location `handoffPath()` in handoff.ts produces — inlined to keep
    *  the store free of upward imports. */
   private handoffPath(runId: string): string {
-    return join(this.dataDir, 'runs', `${runId}.handoff.md`);
+    return runFilePath(this.dataDir, runId, '.handoff.md');
   }
 
   /** Agent screenshots persisted by the run manager (see persistImage). */
   private imagesDir(runId: string): string {
-    return join(this.dataDir, 'runs', `${runId}-images`);
+    return runFilePath(this.dataDir, runId, '-images');
   }
 
   private touch(run: RunRecord): void {
@@ -1838,6 +1840,7 @@ export class RunStore extends EventEmitter {
         rmSync(this.eventsPath(stale.id), { force: true });
         rmSync(this.handoffPath(stale.id), { force: true });
         rmSync(this.imagesDir(stale.id), { recursive: true, force: true });
+        rmSync(runDirectory(this.dataDir, stale.id), { recursive: true, force: true });
         deleteRunDrafts(this.dataDir, stale.id);
       } catch {
         // best effort

@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -70,7 +71,7 @@ describe('a parked in-place run releases the working-tree lease', () => {
   };
 
   const notes = (id: string): string[] => {
-    const path = join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`);
+    const path = runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson');
     if (!existsSync(path)) return [];
     return readFileSync(path, 'utf8')
       .trim()
@@ -122,7 +123,7 @@ describe('a parked in-place run releases the working-tree lease', () => {
     expect(notes(parked.id).filter((m) => m.startsWith('parked — released')).length).toBe(2);
     // Somebody else held the tree meanwhile, so the session is told its view of it may be stale
     // rather than left to clobber the other task's work.
-    expect(readFileSync(join(repoRoot, '.ai/cezar/runs', `${parked.id}.ndjson`), 'utf8'))
+    expect(readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), parked.id, '.ndjson'), 'utf8'))
       .toContain('another task held this repository working tree');
   }, 40_000);
 

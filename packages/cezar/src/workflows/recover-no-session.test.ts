@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,7 +47,7 @@ describe('recover() and a running run with no agent session', () => {
   };
 
   const lifecycle = (id: string): string[] =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(runFilePath(join(repoRoot, '.ai/cezar'), id, '.ndjson'), 'utf8')
       .trim()
       .split('\n')
       .filter(Boolean)
