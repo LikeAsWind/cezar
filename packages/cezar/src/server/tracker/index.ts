@@ -106,13 +106,13 @@ export function createTrackerService(env: NodeJS.ProcessEnv = process.env, fetch
         ? { ...result, association: { ...result.association, connectionId: handle.id } } : result;
     },
     async driver(root: string, dataDir: string): Promise<TrackerDriver | TrackerFailure> {
-      const association = await readTrackerAssociation(dataDir);
+      const association = await readTrackerAssociation(dataDir, store);
       if (!association) return { available: false, code: 'not_configured', reason: 'Connect a tracker in project Settings.' };
       const handle = await get(root, association.kind);
       if (!handle) { const status = await connection(root); return status.error ? { available: false, code: 'unavailable', reason: status.error } : missing(); }
       if (!demo && association.connectionId !== handle.id) return changed();
       const driver = handle.provider.driver(association);
-      const current = async () => await handle.current() && JSON.stringify(await readTrackerAssociation(dataDir)) === JSON.stringify(association);
+      const current = async () => await handle.current() && JSON.stringify(await readTrackerAssociation(dataDir, store)) === JSON.stringify(association);
       const read = async (query: TrackerListQuery | TrackerSearchQuery): Promise<TrackerItemsResult> => {
         if (!await current()) return changed();
         const operation = 'q' in query ? 'searchItems' : 'listIssues';

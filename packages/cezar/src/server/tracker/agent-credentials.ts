@@ -14,8 +14,9 @@ export async function resolveTrackerAgentEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Record<string, string>> {
   if (!expected || env.CEZ_DRY_RUN === '1') return {};
-  const current = await readTrackerAssociation(join(root, '.ai/cezar'));
-  const record = await new TrackerConnections(env).read(root);
+  const store = new TrackerConnections(env);
+  const current = await readTrackerAssociation(join(root, '.ai/cezar'), store);
+  const record = await store.read(root);
   if (!expected.connectionId || !current || !record
     || current.kind !== expected.kind || current.externalId !== expected.externalId
     || current.source.id !== expected.source.id || current.source.webUrl !== expected.source.webUrl

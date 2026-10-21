@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, constants } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
-import type { TrackerCredentials } from '@open-mercato/cezar-contract';
+import { trackerAssociationSchema, type TrackerAssociation, type TrackerCredentials } from '@open-mercato/cezar-contract';
+import { z } from 'zod';
 import { cezarHomeDir, assertCezarHomeWriteIsSandboxed } from '../../paths.ts';
 import { connectionRecordSchema, decodeConnectionEnv, encodeConnectionEnv, type StoredTrackerConnection } from './connection-env.ts';
 export type { StoredTrackerConnection } from './connection-env.ts';
+
+const savedScopeSchema = z.object({ connectionId: z.uuid(), association: trackerAssociationSchema.nullable() }).strict();
 
 /** Private per-project dotenv storage. Not an OS-user/sandbox boundary. */
 export class TrackerConnections {
@@ -98,6 +101,29 @@ export class TrackerConnections {
   async read(root: string): Promise<StoredTrackerConnection | null> {
     return (await this.inspect(root)).record;
   }
+  /** Undefined means no selection for this credential revision; null is an explicit disconnect. */
+  async association(root: string, connectionId: string): Promise<TrackerAssociation | null | undefined> {
+    try {
+      const canonical = await fs.realpath(root);
+      await this.checkDirectory();
+      const saved = savedScopeSchema.parse(JSON.parse(await this.readFile(join(this.directory, this.id(canonical) + '.scope.json'))));
+      return saved.connectionId === connectionId ? saved.association : undefined;
+    } catch { return undefined; }
+  }
+  async saveAssociation(root: string, connectionId: string, association: TrackerAssociation | null): Promise<boolean> {
+    if (this.demo) return false;
+    try {
+      const canonical = await fs.realpath(root);
+      const id = this.id(canonical);
+      return await this.locked(id, async () => {
+        const record = await this.readId(id);
+        if (record.id !== connectionId || association && (association.connectionId !== record.id || association.kind !== record.credentials.kind)) return false;
+        const saved = savedScopeSchema.parse({ connectionId, association });
+        await this.save(join(this.directory, id + '.scope.json'), JSON.stringify(saved));
+        return true;
+      });
+    } catch { return false; }
+  }
   async write(root: string, credentials: TrackerCredentials): Promise<StoredTrackerConnection | null> {
     if (this.demo) return null;
     try {
@@ -133,6 +159,9 @@ export class TrackerConnections {
     try {
       await this.checkDirectory();
       await this.locked(id, async () => {
+        await fs.unlink(join(this.directory, id + '.scope.json')).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOENT') throw error;
+        });
         await fs.unlink(join(this.directory, id + '.env')).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== 'ENOENT') throw error;
         });

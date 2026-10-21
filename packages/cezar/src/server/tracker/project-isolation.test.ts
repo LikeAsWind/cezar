@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { createTrackerService } from './index.ts';
-import { writeTrackerAssociation } from '../../tracker-association.ts';
+import { TrackerConnections } from './connections.ts';
+import { clearTrackerAssociation, writeTrackerAssociation } from '../../tracker-association.ts';
 
 let root: string;
 let a: string;
@@ -33,13 +34,14 @@ beforeEach(async () => {
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const service = () => createTrackerService({ CEZ_HOME: join(root, 'home'), JIRA_API_TOKEN: 'ignored', LINEAR_API_KEY: 'ignored' }, fetcher);
+const connectionStore = () => new TrackerConnections({ CEZ_HOME: join(root, 'home') });
 const data = (project: string) => join(project, '.ai/cezar');
 it('restores a saved TAPD workspace and connection after creating a fresh service', async () => {
   const first = service();
   const saved = await first.saveConnection(a, { kind: 'tapd', accessToken: 'restart-test-token', timeZone: 'Asia/Shanghai' });
   expect(saved?.connection).toMatchObject({ kind: 'tapd' });
   const association = { kind: 'tapd' as const, source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '69280376', externalName: 'Saved workspace', connectionId: saved!.connection!.id };
-  expect(await writeTrackerAssociation(data(a), association)).toBe(true);
+  expect(await writeTrackerAssociation(data(a), association, connectionStore())).toBe(true);
   const before = await readFile(join(data(a), 'tracker.json'), 'utf8');
   const restarted = service();
   expect(await restarted.connection(a)).toEqual(saved);
@@ -51,7 +53,7 @@ it('restores a saved TAPD workspace and connection after creating a fresh servic
 async function connect(s: ReturnType<typeof service>, project: string) {
   const result = await s.resolve(project, { kind: 'linear', sourceId: 'same-org', externalId: team, connectionId: (await s.connection(project)).connection?.id });
   if (!result.available) throw new Error(result.reason);
-  await writeTrackerAssociation(data(project), result.association);
+  await writeTrackerAssociation(data(project), result.association, connectionStore());
   return result.association;
 }
 async function driver(s: ReturnType<typeof service>, project: string) {
@@ -93,7 +95,7 @@ it('fails closed after key replacement, copied association, deletion and cross-p
   await s.saveConnection(a, { kind: 'linear', key: 'A' });
   await s.saveConnection(b, { kind: 'linear', key: 'B' });
   const association = await connect(s, a);
-  await writeTrackerAssociation(data(b), association);
+  await writeTrackerAssociation(data(b), association, connectionStore());
   expect(await s.driver(b, data(b))).toMatchObject({ code: 'source_changed' });
   const old = await driver(s, a);
   const otherServer = service();
@@ -161,10 +163,10 @@ it.each(['list', 'search', 'detail'].flatMap(operation => ['disconnect', 'reasso
   const read = operation === 'detail' ? d.getItem('ENG-1') : operation === 'search'
     ? d.searchItems({ q: 'test', state: 'all', limit: 1 }) : d.listIssues({ state: 'all', limit: 1 });
   await vi.waitFor(() => expect(entered).toHaveBeenCalled());
-  if (mutation === 'disconnect') await rm(join(data(a), 'tracker.json'));
+  if (mutation === 'disconnect') await clearTrackerAssociation(data(a), connectionStore());
   else {
     const association = d.association;
-    await writeTrackerAssociation(data(a), { ...association, externalId: 'another-team' });
+    await writeTrackerAssociation(data(a), { ...association, externalId: 'another-team' }, connectionStore());
   }
   release();
   expect(await read).toMatchObject({ available: false, code: 'source_changed' });

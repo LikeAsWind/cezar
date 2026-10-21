@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { TrackerConnections } from './server/tracker/connections.ts';
 import {
   trackerAssociationSchema,
   trackerSourceSchema,
@@ -11,6 +12,13 @@ import {
 const persistedSchema = trackerAssociationSchema.extend({ source: trackerSourceSchema.passthrough() }).passthrough();
 
 const mutationQueues = new Map<string, Promise<void>>();
+
+async function projectConnection(dataDir: string, store: TrackerConnections) {
+  if (basename(dataDir) !== 'cezar' || basename(dirname(dataDir)) !== '.ai') return null;
+  const root = dirname(dirname(dataDir));
+  const record = await store.read(root);
+  return record ? { root, store, record } : null;
+}
 
 function associationPath(dataDir: string): string {
   return join(dataDir, 'tracker.json');
@@ -69,25 +77,39 @@ async function lockedMutation<T>(dataDir: string, mutation: () => Promise<T>): P
   }
 }
 
-/** Missing, unreadable, malformed, or schema-invalid state is simply unassociated. */
-export async function readTrackerAssociation(dataDir: string): Promise<TrackerAssociation | null> {
+/** Credential-bound selections survive disposable project state; explicit disconnects win. */
+export async function readTrackerAssociation(dataDir: string, store = new TrackerConnections()): Promise<TrackerAssociation | null> {
+  const connection = await projectConnection(dataDir, store);
+  if (connection) {
+    const saved = await connection.store.association(connection.root, connection.record.id);
+    if (saved !== undefined) return saved;
+  }
   try {
     const raw: unknown = JSON.parse(await fs.readFile(associationPath(dataDir), 'utf8'));
     const parsed = trackerAssociationSchema.strip().extend({ source: trackerSourceSchema.strip() }).safeParse(raw);
-    return parsed.success ? parsed.data : null;
+    if (!parsed.success) return null;
+    if (connection && parsed.data.connectionId === connection.record.id && parsed.data.kind === connection.record.credentials.kind) {
+      await connection.store.saveAssociation(connection.root, connection.record.id, parsed.data);
+    }
+    return parsed.data;
   } catch {
     return null;
   }
 }
 
-/** Atomic replacement. A failed validation/write/rename leaves any old association intact. */
+/** Save credential-bound selections outside the checkout; tracker.json remains a local cache. */
 export async function writeTrackerAssociation(
   dataDir: string,
   association: TrackerAssociation,
+  store = new TrackerConnections(),
 ): Promise<boolean> {
   const parsed = persistedSchema.safeParse(association);
   if (!parsed.success) return false;
   return serializeMutation(dataDir, async () => {
+    const connection = await projectConnection(dataDir, store);
+    const bound = connection && parsed.data.connectionId === connection.record.id && parsed.data.kind === connection.record.credentials.kind;
+    const saved = bound ? await connection.store.saveAssociation(connection.root, connection.record.id, parsed.data) : false;
+    if (bound && !saved) return false;
     const path = associationPath(dataDir);
     const temporary = `${path}.${randomUUID()}.tmp`;
     try {
@@ -99,19 +121,21 @@ export async function writeTrackerAssociation(
       return true;
     } catch {
       await fs.unlink(temporary).catch(() => undefined);
-      return false;
+      return saved;
     }
   }).catch(() => false);
 }
 
 /** Idempotent removal; missing state is already the requested result. */
-export async function clearTrackerAssociation(dataDir: string): Promise<boolean> {
+export async function clearTrackerAssociation(dataDir: string, store = new TrackerConnections()): Promise<boolean> {
   return serializeMutation(dataDir, async () => {
+    const connection = await projectConnection(dataDir, store);
+    if (connection && !await connection.store.saveAssociation(connection.root, connection.record.id, null)) return false;
     try {
       await fs.unlink(associationPath(dataDir));
       return true;
     } catch (error) {
-      return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+      return !!connection || error instanceof Error && 'code' in error && error.code === 'ENOENT';
     }
   }).catch(error => (error as NodeJS.ErrnoException).code === 'ENOENT');
 }

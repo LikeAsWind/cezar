@@ -9,6 +9,17 @@ import { TrackerConnections } from './connections.ts';
 let root: string;
 beforeEach(async () => { root = await realpath(await mkdtemp(join(tmpdir(), 'tracker-secret-'))); });
 afterEach(async () => { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
+it('binds durable workspace selections to credentials and removes them with the connection', async () => {
+  const home = join(root, 'home');
+  const store = new TrackerConnections({ CEZ_HOME: home });
+  const record = await store.write(root, { kind: 'linear', key: 'test-key' });
+  const association = { kind: 'linear' as const, source: { id: 'org', webUrl: 'https://linear.app/org' }, externalId: 'team', externalName: 'Team', connectionId: record!.id };
+  expect(await store.saveAssociation(root, record!.id, association)).toBe(true);
+  expect(await store.saveAssociation(root, randomUUID(), null)).toBe(false);
+  expect(await store.association(root, record!.id)).toEqual(association);
+  expect(await store.remove(root)).toBe(true);
+  expect(await readdir(join(home, 'tracker-connections'))).not.toContainEqual(expect.stringMatching(/\.scope\.json$/));
+});
 it('stores each project outside its checkout with private permissions and fresh revisions', async () => {
   const home = join(root, 'home');
   const a = join(root, 'a'); const b = join(root, 'b');

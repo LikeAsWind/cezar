@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrackerAssociation } from '@open-mercato/cezar-contract';
+import { TrackerConnections } from './server/tracker/connections.ts';
 import {
   classifyTracker,
   clearTrackerAssociation,
@@ -38,6 +39,46 @@ describe('tracker association persistence', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('restores a connection-bound TAPD workspace after project state is removed', async () => {
+    const connection = await new TrackerConnections().write(root, { kind: 'tapd', accessToken: 'test-token', timeZone: 'Asia/Shanghai' });
+    expect(connection).not.toBeNull();
+    const association: TrackerAssociation = { kind: 'tapd', source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '69280376', externalName: 'Saved workspace', connectionId: connection!.id };
+    expect(await writeTrackerAssociation(dataDir, association)).toBe(true);
+    await fs.rm(dataDir, { recursive: true });
+    expect(await readTrackerAssociation(dataDir)).toEqual(association);
+    expect(await clearTrackerAssociation(dataDir)).toBe(true);
+    expect(await readTrackerAssociation(dataDir)).toBeNull();
+  });
+
+  it('does not restore a disconnected workspace from a surviving old project file', async () => {
+    const connection = await new TrackerConnections().write(root, { kind: 'linear', key: 'test-key' });
+    const association = { ...linear, connectionId: connection!.id };
+    expect(await writeTrackerAssociation(dataDir, association)).toBe(true);
+    const old = await fs.readFile(path(), 'utf8');
+    expect(await clearTrackerAssociation(dataDir)).toBe(true);
+    await fs.writeFile(path(), old);
+    expect(await readTrackerAssociation(dataDir)).toBeNull();
+  });
+
+  it('does not restore a saved workspace under replacement credentials', async () => {
+    const store = new TrackerConnections();
+    const connection = await store.write(root, { kind: 'linear', key: 'old-key' });
+    expect(await writeTrackerAssociation(dataDir, { ...linear, connectionId: connection!.id })).toBe(true);
+    await fs.rm(dataDir, { recursive: true });
+    await store.write(root, { kind: 'linear', key: 'new-key' });
+    expect(await readTrackerAssociation(dataDir)).toBeNull();
+  });
+
+  it('persists an existing project selection on read without contacting its provider', async () => {
+    const connection = await new TrackerConnections().write(root, { kind: 'linear', key: 'existing-key' });
+    const association = { ...linear, connectionId: connection!.id };
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(path(), JSON.stringify(association));
+    expect(await readTrackerAssociation(dataDir)).toEqual(association);
+    await fs.rm(dataDir, { recursive: true });
+    expect(await readTrackerAssociation(dataDir)).toEqual(association);
   });
 
   it('reads absent, malformed, and schema-invalid files as no association', async () => {
