@@ -2772,5 +2772,12 @@
   "This comparison covers upstream changes. Local custom skills are preserved.": "此比较展示上游变更，本地自定义技能会保留。",
   "Structural checks do not prove behavioral compatibility. Review the changes.": "结构检查通过不代表行为兼容，请审阅变更。",
   "I have reviewed these changes": "我已审阅这些变更",
-  "Activate reviewed version": "启用已审阅版本"
+  "Activate reviewed version": "启用已审阅版本",
+  "Latest launch input supplied by cezar": "cezar 最近一次启动时传入的输入",
+  "Inputs": "输入",
+  "No recorded launch input. Showing node configuration only.": "未记录实际启动输入，当前仅展示节点配置。",
+  "Captured at": "记录时间",
+  "Working directory": "工作目录",
+  "Resumed session; previous conversation history is not repeated here.": "这是恢复的会话；先前会话历史未在此重复展示。",
+  "Display snapshot truncated": "展示快照已截断"
 }

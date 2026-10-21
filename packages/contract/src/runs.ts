@@ -74,6 +74,19 @@ export type StepStatus = z.infer<typeof stepStatusSchema>;
 const usageCounterSchema = z.number().finite().nonnegative();
 
 /** One step of a run's chain. */
+/** Latest launch input supplied by cezar; excludes process environment and credentials. */
+export const stepInputSchema = z.object({
+  capturedAt: z.string(),
+  cwd: z.string(),
+  systemPrompt: z.string().optional(),
+  userPrompt: z.string().optional(),
+  command: z.string().optional(),
+  model: z.string().optional(),
+  resume: z.boolean().optional(),
+  truncatedFields: z.array(z.enum(['userPrompt', 'systemPrompt', 'command'])).optional(),
+});
+export type StepInput = z.infer<typeof stepInputSchema>;
+
 export const stepStateSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -91,6 +104,7 @@ export const stepStateSchema = z.object({
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
   error: z.string().optional(),
+  input: stepInputSchema.optional(),
   /** Latest agent session id — `claude --resume <id>` and friends. */
   sessionId: z.string().optional(),
   /** Backend that owns `sessionId`; absent on records written before backend affinity. */

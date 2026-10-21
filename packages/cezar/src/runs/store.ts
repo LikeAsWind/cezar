@@ -25,7 +25,7 @@ import { MAX_REF } from './task-refs.ts';
 import { workflowDefSchema } from '../workflows/types.ts';
 // A contract VALUE, like `workspaceUiStateSchema` in `workspace/migrations.ts`: the persisted
 // `dispatch` object and its wire half are literally the same schema, so they cannot drift.
-import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema } from '@open-mercato/cezar-contract';
+import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema, stepInputSchema, type StepInput } from '@open-mercato/cezar-contract';
 
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
@@ -93,6 +93,7 @@ const stepStateSchema = z.object({
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
   error: z.string().optional(),
+  input: stepInputSchema.optional(),
   /** Latest backend-owned session id, used for same-backend Continue. */
   sessionId: z.string().optional(),
   /** Backend that owns `sessionId`. Optional so pre-affinity runs.json files still parse;
@@ -1163,16 +1164,34 @@ export class RunStore extends EventEmitter {
   }
 
   /**
-   * Step-level counterpart of `redactPatch` (#456 review). `error` is the only
-   * free-text `StepState` field — it is set from raw `err.message` /process
+   * Step-level counterpart of `redactPatch` (#456 review). Error and recorded
+   * launch inputs contain free text, including raw `err.message` / process
    * output (`run.ts` `finishStep`), and `touch()` fans the whole record out
    * over SSE, so an unscrubbed copy leaked to `runs.json` AND to the browser.
    * The remaining fields are ids, enums, counters and timestamps.
    */
   private redactStepPatch(patch: Partial<Omit<StepState, 'id'>>, runId: string): Partial<Omit<StepState, 'id'>> {
     if (process.env.CEZ_REDACT_SECRETS === '0') return patch;
-    if (typeof patch.error !== 'string') return patch;
-    return { ...patch, error: this.redactText(patch.error, runId) };
+    return { ...patch,
+      ...(typeof patch.error === 'string' ? { error: this.redactText(patch.error, runId) } : {}),
+      ...(patch.input ? { input: redactDeep(patch.input, this.secretsForRun(runId)) as StepInput } : {}),
+    };
+  }
+
+  recordStepInput(runId: string, stepId: string, input: Omit<StepInput, 'capturedAt' | 'truncatedFields'>): void {
+    const parsed = stepInputSchema.parse({ ...input, capturedAt: new Date().toISOString() });
+    const safe = this.redactStepPatch({ input: parsed }, runId).input!;
+    let remaining = 64_000;
+    const truncated: NonNullable<StepInput['truncatedFields']> = [];
+    for (const key of ['userPrompt', 'systemPrompt', 'command'] as const) {
+      const text = safe[key];
+      if (text === undefined) continue;
+      if (text.length > remaining) truncated.push(key);
+      safe[key] = text.slice(0, remaining);
+      remaining -= safe[key].length;
+    }
+    if (truncated.length) safe.truncatedFields = truncated;
+    this.updateStep(runId, stepId, { input: safe });
   }
 
   /** Append a step to an existing run (used by "Continue" — spec 003). */

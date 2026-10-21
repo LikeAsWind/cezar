@@ -33,6 +33,7 @@ import {
 } from '@/lib/workflow-graph'
 
 import { GitTabLoadError, GitTabLoading } from '../task-git/git-tab-loading'
+import { NodeInput } from './node-input'
 import { RunHeader } from '../task-thread/run-header'
 import { backLanes, edgeStyle, edgeTypes, GraphNodeView } from './graph-node'
 import { FloatingPanel } from './workflow-graph'
@@ -200,6 +201,9 @@ function TaskGraphView({ run }: { run: ApiRun }) {
           {selected && overlay ? (
             <FloatingPanel side="right" label={t('Node details')} title={selected.name ?? selected.id} onClose={() => setSelectedId(null)}>
               <NodeDetails
+                node={selected}
+                input={run.steps.find(step => step.id === selected.id)?.input}
+                task={run.task}
                 state={overlay.nodes.get(selected.id) ?? { status: 'pending' }}
                 outputs={run.graphState?.outputs?.[selected.id]}
                 childRunId={childOf(run, selected.id).childRunId}
@@ -221,11 +225,17 @@ function childOf(run: ApiRun, nodeId: string): { childRunId?: string } {
 
 /** What one node did in this run: its state, and every `{{nodes.<id>.<field>}}` it produced. */
 function NodeDetails({
+  node,
+  input,
+  task,
   state,
   outputs,
   loopMax,
   childRunId,
 }: {
+  node: WorkflowGraphNode
+  input?: ApiRun['steps'][number]['input']
+  task: string
   state: NodeRunState
   outputs: Record<string, string | number> | undefined
   loopMax?: number
@@ -252,6 +262,7 @@ function NodeDetails({
         <Link to={`/tasks/${childRunId}`} className="inline-flex items-center gap-1 text-primary hover:underline">{t('Open the subtask')}{' '}<ExternalLinkIcon className="size-3" />
         </Link>
       ) : null}
+      <NodeInput node={node} input={input} task={task} />
       <div>
         <div className="mb-1 text-[11px] text-muted-foreground uppercase">{t('Outputs')}</div>
         {fields.length === 0 ? (
