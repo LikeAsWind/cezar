@@ -4,11 +4,24 @@ import { mkdtemp, mkdir, rm, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { initialize } from './workflow-action.mjs';
 import { artifactPaths } from './workflow/artifacts.mjs';
 
 const script = fileURLToPath(new URL('./probe-policy.mjs', import.meta.url));
+test('a slow first turn does not block bootstrap reads before any evidence report exists', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-probe-bootstrap-'));
+  try {
+    await initialize(root, 'slow-run', 'HEAD');
+    await writeFile(join(root, 'pom.xml'), '<project/>');
+    const result = spawnSync(process.execPath, [script, 'hook', root, 'slow-run', String(Date.now() - 180_000)], {
+      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: join(root, 'pom.xml') } }), encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'allow');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 test('version lookup uses the selected Java bin before a conflicting terminal default', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cez-probe-version-'));
   try {
@@ -28,6 +41,11 @@ test('version lookup uses the selected Java bin before a conflicting terminal de
     const absolute = spawnSync(process.execPath, [script, 'version', join(javaHome, 'bin', 'java'), '-version', javaHome], { cwd: project, encoding: 'utf8' });
     assert.equal(absolute.status, 0, absolute.stderr);
     assert.match(absolute.stdout, /SELECTED_JAVA_8/);
+    const results = await Promise.all([javaHome, join(root, 'jdk11'), javaHome].map(home =>
+      promisify(execFile)(process.execPath, [script, 'version', 'java', '-version', home], { cwd: project, env: { ...process.env, PATH: wrong } })));
+    assert.match(results[0].stdout, /SELECTED_JAVA_8/);
+    assert.match(results[1].stdout, /WRONG_JAVA_11/);
+    assert.match(results[2].stdout, /SELECTED_JAVA_8/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('probe denies build, shell chaining, code writes and delegation before tool execution', async () => {
@@ -36,13 +54,18 @@ test('probe denies build, shell chaining, code writes and delegation before tool
     await initialize(root, 'probe-run', 'HEAD');
     const paths = artifactPaths(root, 'probe-run');
     await writeFile(join(root, 'App.java'), 'class App {}');
-    const hook = (tool_name, tool_input, startedAt = Date.now()) => {
-      const result = spawnSync(process.execPath, [script, 'hook', root, 'probe-run', String(startedAt)], { input: JSON.stringify({ tool_name, tool_input, cwd: root }), encoding: 'utf8' });
+    const handoff = join(root, 'host', 'probe-run.handoff.md');
+    await mkdir(join(root, 'host')); await writeFile(handoff, '# Handoff\n## Goal\nOriginal request');
+    const hookResult = (tool_name, tool_input, startedAt = Date.now()) => {
+      const result = spawnSync(process.execPath, [script, 'hook', root, 'probe-run', String(startedAt)], { input: JSON.stringify({ tool_name, tool_input, cwd: root }), encoding: 'utf8', env: { ...process.env, CEZ_HANDOFF_FILE: handoff } });
       assert.equal(result.status, 0, result.stderr);
-      return JSON.parse(result.stdout).hookSpecificOutput.permissionDecision;
+      return JSON.parse(result.stdout).hookSpecificOutput;
     };
+    const hook = (...args) => hookResult(...args).permissionDecision;
     assert.equal(hook('Read', { file_path: join(root, 'App.java') }), 'allow');
     assert.equal(hook('Grep', { pattern: 'App' }), 'deny');
+    assert.match(hookResult('Grep', { pattern: 'App', path: root }).permissionDecisionReason, /Grep.*specific file or module/);
+    assert.match(hookResult('Bash', { command: 'ls' }).permissionDecisionReason, /Use Glob/);
     assert.equal(hook('Grep', { pattern: 'App', path: join(root, 'App.java') }), 'allow');
     assert.equal(hook('Glob', { pattern: '**/java.exe', path: tmpdir() }), 'deny');
     assert.equal(hook('Glob', { pattern: join(tmpdir(), '**/java.exe') }), 'deny');
@@ -60,7 +83,13 @@ test('probe denies build, shell chaining, code writes and delegation before tool
     assert.equal(hook('Bash', { command: command + ' && mvn test' }), 'deny');
     assert.equal(hook('Bash', { command: command.replace('--version', 'test') }), 'deny');
     const earlier = Date.now() - 180_000;
-    assert.equal(hook('Read', { file_path: join(root, 'App.java') }, earlier), 'deny');
+    assert.equal(hook('Read', { file_path: handoff }, earlier), 'allow');
+    assert.equal(hook('Write', { file_path: handoff }), 'deny');
+    assert.equal(hook('Write', { file_path: join(paths.directory, 'probe', `${paths.prefix}-request.md`) }), 'deny');
+    // Slow model startup must not prevent the evidence reads needed to write a truthful map.
+    assert.equal(hook('Read', { file_path: join(root, 'App.java') }, earlier), 'allow');
+    assert.equal(hook('Glob', { pattern: '**/*.java', path: root }, earlier), 'allow');
+    assert.equal(hook('Grep', { pattern: 'App', path: join(root, 'App.java') }, earlier), 'allow');
     assert.equal(hook('Read', { file_path: paths.file('run.json') }, earlier), 'allow');
     await writeFile(paths.file('probe.md'), '# Entry: App.java');
     await writeFile(paths.file('context-map.jsonl'), JSON.stringify({ path: 'App.java', summary: 'App entry read earlier' }));

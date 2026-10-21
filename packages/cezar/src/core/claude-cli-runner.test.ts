@@ -21,14 +21,20 @@ import type { UiEvent } from './ui-events.ts';
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning its real stub binary through the untouched `spawn`. */
-const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+const spawnHook = vi.hoisted(() => ({ override: null as null | ((args: readonly string[]) => unknown) }));
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
     ...actual,
-    spawn: (...args: Parameters<typeof actual.spawn>) =>
-      spawnHook.override ? spawnHook.override() : actual.spawn(...args),
+    spawn: (...args: Parameters<typeof actual.spawn>) => {
+      if (spawnHook.override) return spawnHook.override(Array.isArray(args[1]) ? args[1] : []);
+      // Windows cannot execute a fixture's Node shebang directly.
+      if (process.platform === 'win32' && typeof args[0] === 'string' && args[0].endsWith('.mjs')) {
+        return actual.spawn(process.execPath, [args[0], ...(Array.isArray(args[1]) ? args[1] : [])], args[2]);
+      }
+      return actual.spawn(...args);
+    },
   };
 });
 
@@ -40,6 +46,29 @@ vi.mock('node:child_process', async (importOriginal) => {
  */
 describe('buildClaudeArgs systemPrompt', () => {
   const spec = { userPrompt: 'do it', cwd: '/tmp' };
+
+  it('spawns long system prompts through a file and cleans it when spawn fails', () => {
+    const prompt = '原始探测指令\n'.repeat(10_000);
+    let captured: readonly string[] = [];
+    let file = '';
+    let content = '';
+    spawnHook.override = args => {
+      captured = args;
+      const index = args.indexOf('--append-system-prompt-file');
+      if (index >= 0) {
+        file = args[index + 1]!;
+        content = readFileSync(file, 'utf8');
+      }
+      throw new Error('fixture spawn failure');
+    };
+    try {
+      expect(() => new ClaudeCliRunner({ bin: 'claude' }).startSession({ cwd: process.cwd(), userPrompt: 'probe', systemPrompt: prompt })).toThrow('fixture spawn failure');
+      expect(captured).toContain('--append-system-prompt-file');
+      expect(captured.join(' ').length).toBeLessThan(8_000);
+      expect(content).toBe(appendClaudeSystemPrompt(prompt));
+      expect(existsSync(file)).toBe(false);
+    } finally { spawnHook.override = null; }
+  });
 
   it('emits --append-system-prompt with the exact text', () => {
     const args = buildClaudeArgs({ ...spec, systemPrompt: 'Extra rules.\n\n---\n\nContract.' });
@@ -140,7 +169,8 @@ describe('a teardown cezar initiated', () => {
     new URL('./__fixtures__/claude/stub-ignores-eof-exits-143.mjs', import.meta.url),
   );
 
-  it('settles the session instead of failing it when the CLI exits 143', async () => {
+  // Windows terminates the process instead of invoking a POSIX SIGTERM handler.
+  it.skipIf(process.platform === 'win32')('settles the session instead of failing it when the CLI exits 143', async () => {
     const runner = new ClaudeCliRunner({ bin: stubBin, timeoutMs: 0 });
     const events: AgentEvent[] = [];
     const uiEvents: UiEvent[] = [];
@@ -365,6 +395,7 @@ describe('ClaudeCliRunner private MCP (spec 2026-10-07-private-project-mcp)', ()
       await runner.run({
         userPrompt: 'do it',
         cwd,
+        systemPrompt: 'Preserve the original workflow instructions.\n'.repeat(2_000),
         env: { CEZ_HANDOFF_FILE: '', CEZ_MOCK_ARGS_FILE: argsFile, CEZ_TODOS_FILE: '' },
         allowedTools: ['Read'],
         mcpServers: [{ name: 'tracker', transport: 'stdio', command: 'tracker-mcp', args: [], env: { TOKEN: 's3cret' }, headers: {} }],
@@ -375,6 +406,8 @@ describe('ClaudeCliRunner private MCP (spec 2026-10-07-private-project-mcp)', ()
       expect(argv[argv.indexOf('--allowedTools') + 1]).toBe('Read,mcp__tracker');
       expect(argv.join(' ')).not.toContain('s3cret');
       expect(existsSync(configPath)).toBe(false);
+      expect(argv).toContain('--append-system-prompt-file');
+      expect(existsSync(argv[argv.indexOf('--append-system-prompt-file') + 1]!)).toBe(false);
     } finally {
       rmSync(cwd, { force: true, recursive: true });
     }

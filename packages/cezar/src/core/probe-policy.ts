@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import type { AgentBackend, AgentRunSpec } from './agent-runner.ts';
 
-export const PROBE_TIMEOUT_MS = 8 * 60_000;
+export const PROBE_TIMEOUT_MS = 30 * 60_000;
 export const PROBE_POLICY_SCRIPT = fileURLToPath(new URL('../../scripts/probe-policy.mjs', import.meta.url));
 const quote = (value: string) => {
   if (/[\r\n\0'"`$%!^&|<>]/.test(value)) throw new Error('Probe policy paths contain unsupported shell characters');
@@ -15,7 +15,7 @@ export function assertProbeSupport(backend: AgentBackend, policy: AgentRunSpec['
 }
 
 export function claudeProbeArgs(policy: NonNullable<AgentRunSpec['probePolicy']>): string[] {
-  const command = `${quote(process.execPath)} ${quote(PROBE_POLICY_SCRIPT)} hook ${quote(policy.root)} ${quote(policy.runId)} ${quote(String(Date.now()))}`;
+  const command = `${quote(process.execPath)} ${quote(PROBE_POLICY_SCRIPT)} hook ${quote(policy.root)} ${quote(policy.runId)}`;
   return ['--tools', 'Read,Glob,Grep,Write,Edit,Bash', '--disallowedTools', 'mcp__*,Agent,Task,Skill',
     '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     '--settings', JSON.stringify({ disableAllHooks: false, hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command, timeout: 10 }] }] } })];

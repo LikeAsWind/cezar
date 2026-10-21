@@ -11,7 +11,7 @@ const quote = value => `'${value.replaceAll('\\', '/')}'`;
 const prefix = `${quote(process.execPath)} ${quote(script)} version `;
 const safe = value => !/[\r\n\0'"`$%!^&|<>]/.test(value);
 const flags = new Set(['--version', '-version', '-v']);
-const reports = new Set(['request.md', 'probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json']);
+const reports = new Set(['probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json']);
 
 async function writable(root, runId, path) {
   if (typeof path !== 'string') return false;
@@ -23,31 +23,34 @@ async function writable(root, runId, path) {
   return !existsSync(target) || await realpath(target) === join(directory, basename(target));
 }
 
-async function decide(root, runId, event, startedAt) {
+function deny(reason) { throw new Error(reason); }
+
+async function decide(root, runId, event) {
   const tool = event.tool_name, input = event.tool_input;
   if (!input || typeof input !== 'object') return false;
   if (['Read', 'Glob', 'Grep'].includes(tool)) {
-    const paths = artifactPaths(root, runId);
+    artifactPaths(root, runId);
     const inside = async path => { const rel = relative(await realpath(root), await realpath(resolve(root, path))); return rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\') && !isAbsolute(rel); };
-    if (tool === 'Grep' && (typeof input.path !== 'string' || resolve(root, input.path) === resolve(root) || !await inside(input.path))) return false;
+    if (tool === 'Grep' && (typeof input.path !== 'string' || resolve(root, input.path) === resolve(root) || !await inside(input.path))) deny('Grep requires a specific file or module directory inside this worktree. Use Glob to locate the relevant module/file first, then search that path.');
     if (tool === 'Glob') {
-      if (typeof input.pattern !== 'string' || input.pattern.startsWith('~') || input.pattern.startsWith('/') || input.pattern.includes(':') || input.pattern.replaceAll('\\', '/').split('/').includes('..') || isAbsolute(input.pattern)) return false;
-      if (typeof input.path === 'string' && !await inside(input.path)) return false;
+      if (typeof input.pattern !== 'string' || input.pattern.startsWith('~') || input.pattern.startsWith('/') || input.pattern.includes(':') || input.pattern.replaceAll('\\', '/').split('/').includes('..') || isAbsolute(input.pattern)) deny('Glob requires a repository-relative pattern such as **/pom.xml; pass the worktree directory as path.');
+      if (typeof input.path === 'string' && !await inside(input.path)) deny('Glob path must stay inside the task worktree; use host-discovered tool locations instead of scanning external installations.');
     }
-    const ownReport = tool === 'Read' && typeof input.file_path === 'string' && ['run.json', ...reports].some(name => resolve(root, input.file_path) === paths.file(name));
-    if (!ownReport && startedAt > 0 && Date.now() - startedAt > 120_000) {
-      for (const name of ['probe.md', 'context-map.jsonl']) if (!existsSync(paths.file(name)) || (await stat(paths.file(name))).size === 0) return false;
-    }
+    // Saving early is advisory: a slow first turn must not prevent the reads needed for a truthful map.
     return true;
   }
-  if (['Write', 'Edit'].includes(tool)) return writable(root, runId, input.file_path);
-  if (tool !== 'Bash' || typeof input.command !== 'string') return false;
+  if (['Write', 'Edit'].includes(tool)) {
+    if (!await writable(root, runId, input.file_path)) deny('Probe may write only the four mapped probe reports. The host handoff, run.json, source and configuration are read-only in this stage.');
+    return true;
+  }
+  if (tool !== 'Bash' || typeof input.command !== 'string') deny('This tool is unavailable during probe; use native Read/Glob/Grep and mapped report writes, without delegation.');
   // Only the exact host executable and script, no shell syntax or appended commands.
-  if (!input.command.startsWith(prefix)) return false;
+  if (!input.command.startsWith(prefix)) deny('Probe Bash permits only the exact host version-query command. Use Glob to list repository files; compilation, tests and arbitrary shell commands belong to later stages.');
   const match = /^'([^']+)' '([^']+)' '([^']*)'$/.exec(input.command.slice(prefix.length));
-  if (!match) return false;
+  if (!match) deny('Version query requires exactly three single-quoted arguments: executable, version flag and Java home (or empty string); no shell chaining.');
   const [, file, flag, javaHome] = match;
-  return [file, flag, javaHome].every(safe) && flags.has(flag) && (isAbsolute(file) || /^[\w.-]+$/.test(file)) && (!javaHome || isAbsolute(javaHome));
+  if (![file, flag, javaHome].every(safe) || !flags.has(flag) || !(isAbsolute(file) || /^[\w.-]+$/.test(file)) || javaHome && !isAbsolute(javaHome)) deny('Version query needs an observed executable, --version/-version/-v, and an absolute Java home or empty string.');
+  return true;
 }
 
 async function version(file, flag, javaHome = '') {
@@ -85,13 +88,14 @@ async function version(file, flag, javaHome = '') {
 
 if (process.argv[2] === 'hook') {
   let allowed = false;
+  let reason = 'Malformed probe tool input.';
   try {
     let text = '';
     for await (const chunk of process.stdin) { text += chunk; if (text.length > 1024 * 1024) throw new Error('hook input too large'); }
-    allowed = await decide(process.argv[3], process.argv[4], JSON.parse(text), Number(process.argv[5]));
-  } catch { /* Malformed input and inaccessible paths deny. */ }
+    allowed = await decide(process.argv[3], process.argv[4], JSON.parse(text));
+  } catch (error) { reason = error instanceof Error ? error.message : 'Probe boundary check failed.'; }
   console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny',
-    permissionDecisionReason: allowed ? 'Probe read/report/version operation.' : 'Probe permits scoped reads/searches, five probe reports and the exact host version query. Grep requires an explicit file/module subdirectory; external Glob and root-wide Grep are denied. After two minutes, save nonempty mapped probe.md and context-map.jsonl from evidence already read before further source searches. Compilation, tests, setup, shell chaining, source edits and delegation belong to later stages. Do not bypass.' } }));
+    permissionDecisionReason: allowed ? 'Probe read/report/version operation.' : reason } }));
 } else if (process.argv[2] === 'version' && process.argv.length <= 6) {
   version(...process.argv.slice(3)).catch(error => { console.error(error.message); process.exitCode = 1; });
 } else { console.error('expected hook or version'); process.exitCode = 1; }

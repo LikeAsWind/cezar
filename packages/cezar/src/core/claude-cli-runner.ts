@@ -126,16 +126,20 @@ export class ClaudeCliRunner implements AgentRunner {
   ): AgentSession {
     const mcpConfig = writeClaudeMcpConfig(spec.probePolicy ? undefined : spec.mcpServers);
     const args = buildClaudeArgs(spec, process.env, mcpConfig?.path);
-    const probeSettings = writeClaudeProbeSettings(spec, args);
+    let probeSettings: ReturnType<typeof writeClaudeProbeSettings>;
+    let promptFile: ReturnType<typeof writeClaudePromptFile>;
 
     let child: ChildProcessWithoutNullStreams;
     try {
+      probeSettings = writeClaudeProbeSettings(spec, args);
+      promptFile = writeClaudePromptFile(args);
       const env = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
       const [file, argv] = disclaimedCommand(this.bin, args, env);
       child = nodeSpawn(file, argv, { cwd: spec.cwd, env });
     } catch (err) {
       mcpConfig?.cleanup();
       probeSettings?.cleanup();
+      promptFile?.cleanup();
       throw wrapSpawnError(err, this.bin);
     }
 
@@ -329,6 +333,7 @@ export class ClaudeCliRunner implements AgentRunner {
         // stdout closed: the CLI read `--mcp-config` at startup long ago, so the file can go.
         mcpConfig?.cleanup();
         probeSettings?.cleanup();
+        promptFile?.cleanup();
       }
 
       const exitCode = await waitForExit(child);
@@ -393,6 +398,22 @@ export class ClaudeCliRunner implements AgentRunner {
   }
 }
 
+function writeClaudePromptFile(args: string[]): { cleanup: () => void } | undefined {
+  const index = args.indexOf('--append-system-prompt');
+  const prompt = args[index + 1];
+  // Leave room for the executable, policy and quoting under Windows' command-line limit.
+  if (index < 0 || !prompt || prompt.length < 8_000) return;
+  const directory = mkdtempSync(join(tmpdir(), 'cez-claude-prompt-'));
+  const path = join(directory, 'system-prompt.txt');
+  const cleanup = () => rmSync(directory, { recursive: true, force: true });
+  try {
+    writeFileSync(path, prompt, { mode: 0o600 });
+    args.splice(index, 2, '--append-system-prompt-file', path);
+    return { cleanup };
+  } catch (error) { cleanup(); throw error; }
+}
+
+
 /**
  * Build the headless argv. `--print` is spelled out because both stream-json
  * formats are documented as "only works with --print"; `--input-format
@@ -404,6 +425,7 @@ export class ClaudeCliRunner implements AgentRunner {
  * `CEZ_APPROVAL_GATE=1` selects Claude's `acceptEdits` mode, but cezar still
  * has no cockpit permission response channel.
  */
+
 export function buildClaudeArgs(
   spec: AgentRunSpec,
   env: NodeJS.ProcessEnv = process.env,
