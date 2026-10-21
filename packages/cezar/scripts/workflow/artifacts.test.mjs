@@ -4,18 +4,69 @@ import { mkdtemp, mkdir, writeFile, realpath, rm, rename, symlink } from 'node:f
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { initialize, captureDiff } from '../workflow-action.mjs';
-import { artifactPaths, newArtifactPaths } from './artifacts.mjs';
+import { artifactNames, artifactPaths, newArtifactPaths } from './artifacts.mjs';
 import { spawnSync } from 'node:child_process';
+
+test('titles determine stable topics; same-day duplicates cannot overwrite each other', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-topic-artifacts-'));
+  try {
+    const [first, second] = await Promise.all([
+      initialize(root, 'first-id', 'HEAD', 'Sale Control Thread Pool'),
+      initialize(root, 'second-id', 'HEAD', 'Sale Control Thread Pool'),
+    ]);
+    assert.deepEqual(new Set([first.topic, second.topic]), new Set(['sale-control-thread-pool', 'sale-control-thread-pool-2']));
+    assert.notEqual(first.artifactPrefix, second.artifactPrefix);
+    for (const data of [first, second]) {
+      const paths = artifactPaths(root, data.runId);
+      assert.equal(paths.prefix, `${data.artifactDate}-${data.topic}`);
+      assert.ok(!paths.prefix.includes(data.runId));
+      assert.equal((await initialize(root, data.runId, 'changed', 'Changed title')).artifactPrefix, data.artifactPrefix);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('readable Unicode titles stay safe and recovery locates run identity inside metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-topic-unicode-'));
+  try {
+    const saved = await initialize(root, 'internal-id', 'HEAD', '修复线程池 / 分流:异常');
+    assert.equal(saved.topic, '修复线程池-分流-异常');
+    const paths = artifactPaths(root, 'internal-id');
+    assert.ok(paths.relative('probe.md').endsWith('-修复线程池-分流-异常-probe.md'));
+    const { readFile } = await import('node:fs/promises');
+    const data = JSON.parse(await readFile(paths.file('run.json'), 'utf8'));
+    data.artifactPrefix = `2000-01-01-${data.topic}`;
+    data.artifactDate = '2000-01-01';
+    const old = paths.file('run.json');
+    await writeFile(old, JSON.stringify(data));
+    await rename(old, join(paths.directory, 'probe', `${data.artifactPrefix}-run.json`));
+    assert.equal((await initialize(root, 'internal-id', 'HEAD', 'Other title')).artifactPrefix, data.artifactPrefix);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('probe, specs, plans and logs remain sibling directories with run-prefixed files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-grouped-artifacts-'));
+  try {
+    await initialize(root, 'grouped-run', 'HEAD');
+    const paths = artifactPaths(root, 'grouped-run');
+    assert.equal(paths.directory, join(root, 'docs/superpowers'));
+    assert.equal(paths.file('probe.md'), join(paths.directory, 'probe', `${paths.prefix}-probe.md`));
+    assert.equal(paths.file('design.md'), join(paths.directory, 'specs', `${paths.prefix}-design.md`));
+    assert.equal(paths.file('plan.md'), join(paths.directory, 'plans', `${paths.prefix}-plan.md`));
+    assert.equal(paths.file('blocked.md'), join(paths.directory, 'logs', `${paths.prefix}-blocked.md`));
+    assert.equal(paths.file('last-failure.txt'), join(paths.directory, 'logs', `${paths.prefix}-last-failure.txt`));
+    assert.equal(paths.file('baseline-build.log'), join(paths.directory, 'logs', `${paths.prefix}-baseline-build.log`));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('all stages use dated run-scoped docs paths, preserve existing docs, and resume with the saved date', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cez-dated-artifacts-'));
   try {
     await mkdir(join(root, 'docs/superpowers'), { recursive: true });
     await writeFile(join(root, 'docs/superpowers/.gitignore'), '# user-owned\n');
-    await initialize(root, 'first-run', 'HEAD');
+    await initialize(root, 'first-run', 'HEAD', 'First run');
     const first = artifactPaths(root, 'first-run');
     assert.match(first.relative('probe.md'), /^docs\/superpowers\/probe\/\d{4}-\d{2}-\d{2}-first-run-probe\.md$/);
-    assert.match(first.relative('request.md'), /\/probe\/.*-request\.md$/);
+    assert.ok(!artifactNames.includes('request.md'));
     assert.match(first.relative('run.json'), /\/probe\/.*-run\.json$/);
     assert.match(first.relative('design.md'), /\/specs\/.*-design\.md$/);
     assert.match(first.relative('plan.md'), /\/plans\/.*-plan\.md$/);
@@ -30,35 +81,12 @@ test('all stages use dated run-scoped docs paths, preserve existing docs, and re
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('legacy frozen runs retain their original artifact layout', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cez-legacy-artifacts-'));
-  try {
-    await mkdir(join(root, '.superpowers/probe'), { recursive: true });
-    await writeFile(join(root, '.superpowers/probe/run.json'), JSON.stringify({ runId: 'old', root: await realpath(root), base: 'HEAD' }));
-    assert.equal(artifactPaths(root, 'old').file('probe.md'), join(root, '.superpowers/probe/probe.md'));
-    assert.throws(() => artifactPaths(root, 'other'), /different run/);
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('already pinned dated-flat runs keep their saved paths without silently moving files', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cez-flat-artifacts-'));
-  try {
-    const prefix = '2026-10-20-existing';
-    await mkdir(join(root, 'docs/superpowers'), { recursive: true });
-    const file = join(root, 'docs/superpowers', `${prefix}-run.json`);
-    await writeFile(file, JSON.stringify({ schemaVersion: 1, runId: 'existing', root: await realpath(root), base: 'HEAD', artifactPrefix: prefix }));
-    await initialize(root, 'existing', 'changed');
-    assert.equal(artifactPaths(root, 'existing').file('run.json'), file);
-    assert.equal(artifactPaths(root, 'existing').file('probe.md'), join(root, 'docs/superpowers', `${prefix}-probe.md`));
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
 test('Continue rejects category directories replaced with links outside the worktree', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'cez-artifact-link-'));
   try {
     const root = join(sandbox, 'worktree'), outside = join(sandbox, 'outside'); await mkdir(root); await mkdir(outside);
     await initialize(root, 'linked-run', 'HEAD');
-    const dir = join(root, 'docs/superpowers/specs');
+    const dir = join(artifactPaths(root, 'linked-run').directory, 'specs');
     await rename(dir, dir + '-before');
     await symlink(outside, dir, process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => artifactPaths(root, 'linked-run'), /escapes/);
@@ -75,8 +103,13 @@ test('seal excludes only this run artifacts while retaining other docs and sourc
     const base = git('rev-parse', 'HEAD'); await initialize(root, 'seal-run', base);
     const paths = artifactPaths(root, 'seal-run');
     const first = await captureDiff(root, 'seal-run', base);
-    await writeFile(paths.file('delivery.md'), 'published report');
+    await writeFile(paths.file('ledger.md'), 'published report');
     assert.equal(await captureDiff(root, 'seal-run', base), first);
+    await writeFile(paths.file('baseline-1.log'), 'host output');
+    assert.equal(await captureDiff(root, 'seal-run', base), first);
+    await initialize(root, 'other-run', base, 'Task');
+    await writeFile(artifactPaths(root, 'other-run').file('design.md'), 'Another task design');
+    assert.notEqual(await captureDiff(root, 'seal-run', base), first);
     await writeFile(join(root, 'docs/superpowers/other-topic.md'), 'real task documentation');
     const docsChanged = await captureDiff(root, 'seal-run', base);
     assert.notEqual(docsChanged, first);

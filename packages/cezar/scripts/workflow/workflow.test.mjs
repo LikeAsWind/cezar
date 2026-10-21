@@ -51,7 +51,7 @@ test('host actions import without target-project node_modules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cez-host-import-'));
   try {
     const result = spawnSync(process.execPath, ['--input-type=module', '-e',
-      `const { routeDecision } = await import(${JSON.stringify(pathToFileURL(hostAction).href)}); if (routeDecision({ candidateFiles: ['src/example.ts'], highRisk: false, crossModule: false, requirementsClear: true }).tier !== 'fast') process.exit(2);`],
+      `const { routeDecision } = await import(${JSON.stringify(pathToFileURL(hostAction).href)}); if (routeDecision({ likelyChangeFiles: ['src/example.ts'], highRisk: false, crossModule: false, requirementsClear: true }).tier !== 'fast') process.exit(2);`],
       { cwd: root, encoding: 'utf8', env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' } });
     assert.equal(result.status, 0, result.stderr);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -91,29 +91,29 @@ test('an evidenced product baseline failure is recorded without accepting final 
     assert.notEqual(cli('baseline').status, 0, 'a different failure remains blocked');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
-const input = { candidateFiles: ['packages/web/src/components/icons.tsx'], highRisk: false,
+const input = { likelyChangeFiles: ['packages/web/src/components/icons.tsx'], highRisk: false,
   crossModule: false, requirementsClear: true };
 
 test('small, known, local changes are fast; high risk and cross-module override file count', () => {
   assert.equal(routeDecision(input).tier, 'fast');
   assert.equal(routeDecision({ ...input, highRisk: true }).tier, 'deep');
   assert.equal(routeDecision({ ...input, crossModule: true }).tier, 'deep');
-  assert.equal(routeDecision({ ...input, candidateFiles: ['packages/contract/src/projects.ts'] }).tier, 'deep');
+  assert.equal(routeDecision({ ...input, likelyChangeFiles: ['packages/contract/src/projects.ts'] }).tier, 'deep');
 });
 
 test('unknown, zero-match, and ambiguous scope cannot silently become fast', () => {
-  assert.equal(routeDecision({ ...input, candidateFiles: null }).tier, 'standard');
-  assert.equal(routeDecision({ ...input, candidateFiles: [] }).tier, 'standard');
+  assert.equal(routeDecision({ ...input, likelyChangeFiles: null }).tier, 'standard');
+  assert.equal(routeDecision({ ...input, likelyChangeFiles: [] }).tier, 'standard');
   assert.equal(routeDecision({ ...input, requirementsClear: false }).tier, 'standard');
   assert.equal(routeDecision({ ...input, requirementsClear: false, highRisk: true }).tier, 'deep');
   assert.equal(routeDecision({ ...input, requirementsClear: false }, 'deep').tier, 'deep');
-  assert.throws(() => routeDecision({ candidateFiles: [] }));
-  assert.throws(() => routeDecision({ ...input, candidateFiles: ['../outside.ts'] }));
+  assert.throws(() => routeDecision({ likelyChangeFiles: [] }));
+  assert.throws(() => routeDecision({ ...input, likelyChangeFiles: ['../outside.ts'] }));
 });
 
 test('full candidate counts, cross-workspace detection and monotonic upgrades', () => {
-  assert.equal(routeDecision({ ...input, candidateFiles: Array.from({ length: 11 }, (_, n) => `src/f${n}.ts`) }).tier, 'deep');
-  assert.equal(routeDecision({ ...input, candidateFiles: ['packages/web/src/a.ts', 'packages/cezar/src/b.ts'] }).tier, 'deep');
+  assert.equal(routeDecision({ ...input, likelyChangeFiles: Array.from({ length: 11 }, (_, n) => `src/f${n}.ts`) }).tier, 'deep');
+  assert.equal(routeDecision({ ...input, likelyChangeFiles: ['packages/web/src/a.ts', 'packages/cezar/src/b.ts'] }).tier, 'deep');
   assert.equal(routeDecision(input, 'deep').tier, 'deep');
   assert.equal(routeDecision(input, 'standard').tier, 'standard');
 });
@@ -160,16 +160,18 @@ test('Java validation uses discovered Maven commands, never cezar npm scripts', 
     await writeFile(join(root, 'pom.xml'), '<project/>');
     const javaHome = join(root, 'jdk8'); await mkdir(join(javaHome, 'bin'), { recursive: true });
     for (const tool of ['java', 'javac']) await writeFile(join(javaHome, 'bin', tool + (process.platform === 'win32' ? '.exe' : '')), 'fixture');
-    const command = { file: 'mvn', args: ['-B', 'test'], cwd: '.', source: 'pom.xml', kind: 'test', toolchain: 'java' };
+    const command = { file: 'mvn', args: ['-B', 'test', '-DskipTests=false', '-Dmaven.test.skip=false'], cwd: '.', source: 'pom.xml', kind: 'test', toolchain: 'java' };
     const environment = { schemaVersion: 1, toolchains: [{ name: 'java', module: '.', targetVersion: '8', buildVersion: '8', runtimeVersion: null, sources: ['pom.xml'], execution: { javaHome } }], environmentChecks: [{ ...command, kind: 'check', args: ['-version'], expectedOutput: ['1.8'] }], baseline: [command], verify: [command] };
     const plan = await validationPlan(root, environment);
+    await assert.rejects(validationPlan(root, { ...environment, toolchains: [...environment.toolchains, { ...environment.toolchains[0], name: 'other-jdk' }], environmentChecks: [...environment.environmentChecks, { ...environment.environmentChecks[0], toolchain: 'other-jdk' }] }), /one selected toolchain per module/);
+    await assert.rejects(validationPlan(root, { ...environment, verify: [{ ...command, args: ['test', '-Dtest=ExampleTest'] }] }), /skipTests=false/);
     assert.equal(plan.verify[0].file, 'mvn');
     assert.ok(!JSON.stringify(plan).includes('npm'));
     for (const variant of [
       { file: 'dotnet', args: ['build', '-c', 'Release'] },
       { file: 'cargo', args: ['test', '-p', 'crate'] },
       { file: 'python', args: ['-m', 'pytest', '-c', 'pytest.ini'] },
-      { file: 'mvn', args: ['-e', 'test'] },
+      { file: 'mvn', args: ['-e', 'test', '-DskipTests=false', '-Dmaven.test.skip=false'] },
     ]) {
       await validationPlan(root, { ...environment, verify: [{ ...command, ...variant }] });
     }

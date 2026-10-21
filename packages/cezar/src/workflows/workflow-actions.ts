@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
 export const WORKFLOW_ACTION_SCRIPT = fileURLToPath(new URL('../../scripts/workflow-action.mjs', import.meta.url));
-const actions = ['init', 'route', 'execution', 'baseline', 'verify', 'seal'] as const;
+const actions = ['init', 'route', 'execution', 'baseline', 'verify', 'seal', 'blocked'] as const;
 export type WorkflowAction = typeof actions[number];
 const quote = (value: string) => `'${value.replaceAll('\\', '/').replaceAll("'", "'\\''")}'`;
 /** Host installation paths, independent of the target project's tools or skill bundle. */

@@ -1,17 +1,18 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, realpath, appendFile, stat } from 'node:fs/promises';
-import { existsSync, openSync, closeSync } from 'node:fs';
+import { mkdir, readFile, writeFile, realpath, appendFile, stat, link, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { existsSync, openSync, closeSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve, relative, isAbsolute, delimiter } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { z } from 'zod';
-import { artifactDirectory, artifactPaths, newArtifactPaths } from './workflow/artifacts.mjs';
+import { artifactDirectory, artifactNames, artifactPaths, newArtifactPaths } from './workflow/artifacts.mjs';
 export { artifactDirectory } from './workflow/artifacts.mjs';
 
 const repoPath = z.string().min(1).refine(p => !p.includes('\\') && !p.startsWith('/') && !p.includes(':') && !p.split('/').includes('..'), 'expected a repository-relative path');
 const routingSchema = z.object({
-  candidateFiles: z.array(repoPath).nullable(),
+  likelyChangeFiles: z.array(repoPath).nullable(),
   highRisk: z.boolean(),
   crossModule: z.boolean().nullable(),
   requirementsClear: z.boolean(),
@@ -33,6 +34,7 @@ const baselineCommandSchema = commandSchema.extend({
     reason: z.string().trim().min(1),
   }).strict().optional(),
 }).refine(command => !command.expectedFailure || command.kind === 'test', 'only evidenced product test failures may be expected');
+const environmentBlockersSchema = z.object({ blocked: z.array(z.string().trim().min(1)).default([]) });
 const validationSchema = z.object({ schemaVersion: z.literal(1),
   toolchains: z.array(z.object({
     name: z.string().min(1), module: repoPath.default('.'),
@@ -62,8 +64,12 @@ async function inWorktree(root, path) {
 }
 
 export async function validationPlan(root, environment) {
+  const { blocked } = environmentBlockersSchema.parse(environment);
+  if (blocked.length) throw new Error(`Environment unresolved: ${blocked.join('; ')}`);
   const plan = validationSchema.parse(environment);
   if (new Set(plan.toolchains.map(tool => tool.name)).size !== plan.toolchains.length) throw new Error('toolchain names must be unique');
+  const javaBindings = plan.toolchains.filter(tool => tool.execution?.javaHome);
+  if (new Set(javaBindings.map(tool => tool.module)).size !== javaBindings.length) throw new Error('Keep one selected toolchain per module, not a list of installed alternatives');
   for (const toolchain of plan.toolchains) {
     for (const source of toolchain.sources) {
       await inWorktree(root, resolve(root, source));
@@ -85,6 +91,12 @@ export async function validationPlan(root, environment) {
     if (['java', 'javac', 'mvn', 'mvnw', 'gradle', 'gradlew'].includes(program)) {
       const selected = plan.toolchains.find(tool => tool.name === command.toolchain);
       if (!selected?.execution?.javaHome) throw new Error('Java build/test commands require a selected Java home; never fall back to the terminal default');
+    }
+    if (['mvn', 'mvnw'].includes(program) && command.kind === 'test') {
+      for (const flag of ['-DskipTests=false', '-Dmaven.test.skip=false']) {
+        if (!command.args.includes(flag)) throw new Error(`Maven test commands must explicitly include ${flag}`);
+      }
+      if (command.args.some(arg => /^-D(?:skipTests|maven\.test\.skip)(?:=|$)/.test(arg) && !['-DskipTests=false', '-Dmaven.test.skip=false'].includes(arg))) throw new Error('Maven test commands must not skip tests');
     }
     if (program === 'git' && JSON.stringify(command.args) !== JSON.stringify(['diff', '--check'])) throw new Error('Git validation is limited to diff --check');
     if (['node', 'python', 'python3', 'sh', 'bash', 'dash', 'zsh', 'ruby', 'perl', 'pwsh', 'powershell', 'cmd'].includes(program)) {
@@ -138,7 +150,7 @@ export async function checkDependencies(root, plan) {
   }
 }
 
-async function checkEnvironment(root, paths, plan, action) {
+async function checkEnvironment(root, paths, plan, action, report) {
   const checks = [];
   for (const spec of plan.environmentChecks) {
     const log = `environment-${action}-${checks.length + 1}.log`;
@@ -153,8 +165,10 @@ async function checkEnvironment(root, paths, plan, action) {
     }
     const output = stripVTControlCharacters(await readFile(paths.file(log), 'utf8')).replaceAll('\r\n', '\n');
     const matched = result.exitCode === 0 && spec.expectedOutput.every(value => output.includes(value));
-    checks.push({ ...result, spec, log, matched });
-    await save(paths.file(`environment-${action}.json`), { toolchains: plan.toolchains, checks });
+    checks.push({ ...result, spec, matched, output: output.slice(0, 4000), ...(matched ? {} : { log }) });
+    report.environment = { checks };
+    await save(paths.file(`${action}.json`), report);
+    if (matched) await unlink(paths.file(log));
     if (!matched) throw new Error(`environment check failed or expected output missing; read ${log}`);
   }
 }
@@ -168,7 +182,7 @@ function formatCommand(command) {
 
 export function routeDecision(raw, previous) {
   const data = routingSchema.parse(raw);
-  const files = data.candidateFiles === null ? null : [...new Set(data.candidateFiles)];
+  const files = data.likelyChangeFiles === null ? null : [...new Set(data.likelyChangeFiles)];
   const workspaces = new Set((files ?? []).filter(p => /^(packages|apps|services)\/[^/]+\//.test(p)).map(p => p.split('/').slice(0, 2).join('/')));
   const reasons = [];
   let tier = 'standard';
@@ -185,7 +199,7 @@ export function routeDecision(raw, previous) {
     tier = previous;
     reasons.push('retain_previous_tier');
   }
-  return { tier, reasons, candidateFileCount: files?.length ?? null };
+  return { tier, reasons, likelyChangeFileCount: files?.length ?? null };
 }
 
 export function executionDecision(raw) {
@@ -200,19 +214,30 @@ export function executionDecision(raw) {
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const save = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
 
-export async function initialize(root, runId, base) {
+export async function initialize(root, runId, base, title = 'task') {
   if (!runId || !base) throw new Error('run identity and base are required');
   try { return await readContext(root, runId); }
   catch (error) { if (error.message !== 'Run artifacts have not been initialized') throw error; }
-  const paths = newArtifactPaths(root, runId);
-  for (const directory of [paths.directory, dirname(paths.file('run.json')), dirname(paths.file('design.md')), dirname(paths.file('plan.md'))]) {
-    await mkdir(directory, { recursive: true });
-    await inWorktree(root, directory);
+  for (;;) {
+    const paths = newArtifactPaths(root, runId, new Date(), title);
+    for (const directory of [paths.directory, dirname(paths.file('run.json')), dirname(paths.file('design.md')), dirname(paths.file('plan.md')), dirname(paths.file('baseline.json'))]) {
+      await mkdir(directory, { recursive: true });
+      await inWorktree(root, directory);
+    }
+    const path = paths.file('run.json');
+    const data = { schemaVersion: 1, runId, base, root: await realpath(root), topic: paths.topic, artifactDate: paths.date, artifactPrefix: paths.prefix };
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      await save(temporary, data);
+      // Publish complete metadata exclusively so concurrent same-title tasks cannot overwrite it.
+      await link(temporary, path);
+      return data;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try { return await readContext(root, runId); }
+      catch (error) { if (error.message !== 'Run artifacts have not been initialized') throw error; }
+    } finally { await unlink(temporary).catch(() => {}); }
   }
-  const path = paths.file('run.json');
-  const data = { schemaVersion: 1, runId, base, root: await realpath(root), artifactPrefix: paths.prefix };
-  await save(path, data);
-  return data;
 }
 
 export async function readContext(root, runId) {
@@ -258,7 +283,12 @@ export async function commandResult(command, cwd, logPath, timeoutMs = 900_000, 
 
 export async function captureDiff(root, runId, base) {
   const paths = artifactPaths(root, runId);
-  const selection = ['.', ...(paths.legacy ? ['.superpowers/probe'] : ['', 'probe/', 'specs/', 'plans/'].map(category => `${artifactDirectory}/${category}${paths.prefix}-*`)).map(path => `:(exclude)${path}`)];
+  const logDirectory = join(paths.directory, 'logs');
+  const logs = existsSync(logDirectory) ? readdirSync(logDirectory)
+    .filter(name => name.startsWith(paths.prefix + '-') && /^(?:baseline|verify|environment-baseline|environment-verify)-\d+\.log$/.test(name.slice(paths.prefix.length + 1))) : [];
+  const excluded = [...artifactNames.map(name => paths.relative(name)),
+    ...logs.map(name => `${artifactDirectory}/logs/${name}`), `${artifactDirectory}/logs/${paths.prefix}-tasks`];
+  const selection = ['.', ...excluded.map(path => `:(exclude,literal)${path}`)];
   const tracked = spawnSync('git', ['diff', '--no-ext-diff', '--binary', base, '--', ...selection], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (tracked.status !== 0) throw new Error(tracked.stderr || 'cannot capture task diff');
   const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', ...selection], { cwd: root, encoding: 'utf8' });
@@ -274,8 +304,18 @@ export async function captureDiff(root, runId, base) {
   return createHash('sha256').update(output).digest('hex');
 }
 
-export async function main(action) {
-  if (!['init', 'route', 'execution', 'baseline', 'verify', 'seal'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
+export function testExecutionEvidence(spec, output) {
+  const program = basename(spec.file.replaceAll('\\', '/')).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+  if (spec.kind !== 'test' || !['mvn', 'mvnw'].includes(program)) return;
+  const summaries = [...output.matchAll(/Tests run:\s*(\d+),\s*Failures:\s*\d+,\s*Errors:\s*\d+,\s*Skipped:\s*(\d+)/g)];
+  if (summaries.some(match => Number(match[1]) > Number(match[2]))) return { status: 'executed' };
+  if (/Tests are skipped\b/i.test(output) || summaries.some(match => Number(match[2]) > 0)) return { status: 'skipped' };
+  if (summaries.length || /No tests (?:to run|were executed)/i.test(output)) return { status: 'not-executed' };
+  return { status: 'unverified' };
+}
+
+export async function main(action, title = 'task') {
+  if (!['init', 'route', 'execution', 'baseline', 'verify', 'seal', 'blocked'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
   const root = process.cwd();
   const runId = ['init', 'route'].includes(action)
     ? process.env.CEZ_TASK_ID || process.env.CEZ_RUN_ID
@@ -286,12 +326,35 @@ export async function main(action) {
     const gitDir = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: root, encoding: 'utf8' });
     const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' });
     if (gitDir.status !== 0 || common.status !== 0 || gitDir.stdout.trim() === common.stdout.trim()) throw new Error('select an isolated cezar worktree, not in-place execution');
-    await initialize(root, runId, head.stdout.trim());
+    await initialize(root, runId, head.stdout.trim(), title);
     console.log(artifactPaths(root, runId).file('run.json'));
     return;
   }
-  const context = await readContext(root, runId);
+  let context;
+  try { context = await readContext(root, runId); }
+  catch (error) {
+    const handoff = process.env.CEZ_HANDOFF_FILE;
+    if (action !== 'blocked' || !handoff || basename(handoff) !== `${runId}.handoff.md`) throw error;
+    await appendFile(handoff, `\n\n## Workflow blocked\n\nArtifact context unavailable: ${error.message}\nNo report was written into an unverified worktree. Resolve initialization or identity before continuing; this is not a successful run.\n`);
+    console.log('Blocker saved to the host handoff; artifact context unavailable.');
+    return;
+  }
   const paths = artifactPaths(root, runId);
+  if (action === 'blocked') {
+    const handoff = process.env.CEZ_HANDOFF_FILE;
+    if (handoff && basename(handoff) === `${runId}.handoff.md`) {
+      const runs = JSON.parse(await readFile(join(dirname(handoff), '..', 'runs.json'), 'utf8'));
+      const run = runs.find(run => run.id === runId);
+      if (!run?.worktreePath || await realpath(run.worktreePath) !== await realpath(root)) throw new Error('Blocker evidence belongs to another run or worktree');
+      const transition = [...(run.graphState?.taken ?? [])].reverse().find(edge => edge.endsWith('->blocked-report'));
+      const source = transition?.split('.')[0];
+      const relevant = source === 'design-retry' ? ['builder', source] : source ? [source] : [];
+      const summaries = relevant.map(id => ({ id, output: run.graphState?.outputs?.[id] }));
+      await appendFile(handoff, `\n\n## Workflow blocked\n\n${transition ?? 'See the run history for the failed stage.'}\n${JSON.stringify(summaries).slice(0, 2000)}\nContinue from the originating stage with existing evidence and loop budgets.\n`);
+    }
+    console.log('Blocker recorded in existing run history; no duplicate report generated.');
+    return;
+  }
   if (action === 'route') {
     const data = await json(paths.file('routing-input.json'));
     const previous = existsSync(paths.file('route.json')) ? (await json(paths.file('route.json'))).tier : undefined;
@@ -313,11 +376,12 @@ export async function main(action) {
     if (action === 'baseline') await save(paths.file('validation-plan.json'), plan);
     const commands = action === 'baseline' ? [...plan.setup, ...plan.baseline] : plan.verify;
     const results = [];
+    const report = { runId, results };
     let dependenciesChecked = false;
     for (const spec of commands) {
       if (spec.kind !== 'setup' && !dependenciesChecked) {
         await checkDependencies(root, plan);
-        await checkEnvironment(root, paths, plan, action);
+        await checkEnvironment(root, paths, plan, action, report);
         dependenciesChecked = true;
       }
       const cwd = await executionDirectory(root, spec);
@@ -327,12 +391,15 @@ export async function main(action) {
       const expected = action === 'baseline' ? spec.expectedFailure : undefined;
       const output = stripVTControlCharacters(await readFile(paths.file(log), 'utf8')).replaceAll('\r\n', '\n');
       const outputHash = createHash('sha256').update(output).digest('hex');
+      const testExecution = testExecutionEvidence(spec, output);
+      const testsMissing = testExecution && testExecution.status !== 'executed';
       const knownFailure = expected && !result.timedOut && !result.cancelled && !result.spawnError && result.exitCode === expected.exitCode && outputHash === expected.outputHash && expected.outputIncludes.every(fragment => output.includes(fragment));
-      const classification = result.exitCode === 0 ? 'passed' : knownFailure ? 'known-product-failure' : 'unexpected-failure';
-      results.push({ ...result, spec, log, classification, outputHash });
+      const classification = testsMissing && result.exitCode === 0 ? 'tests-not-executed' : result.exitCode === 0 ? 'passed' : knownFailure ? 'known-product-failure' : 'unexpected-failure';
+      results.push({ ...result, spec, log, classification, outputHash, ...(testExecution ? { testExecution } : {}) });
       console.log(`${command}: exit ${result.exitCode} (${result.durationMs}ms)`);
-      await save(paths.file(`${action}.json`), { runId, results });
+      await save(paths.file(`${action}.json`), report);
       if (result.exitCode !== 0 && !knownFailure) throw new Error(`${action} failed; read ${log}`);
+      if (testsMissing) throw new Error(`${action}: Maven tests ${testExecution.status}; build success is not test evidence. Read ${log} and the Surefire skip configuration.`);
     }
     if (action === 'verify') {
       const diffHash = await captureDiff(root, runId, context.base);
@@ -351,14 +418,8 @@ export async function main(action) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv[2]).catch(async error => {
+  main(process.argv[2], process.argv[3]).catch(async error => {
     console.error(error.message);
-    try {
-      const action = process.argv[2];
-      const identity = ['init', 'route'].includes(action) ? process.env.CEZ_TASK_ID || process.env.CEZ_RUN_ID : process.env.CEZ_RUN_ID || process.env.CEZ_TASK_ID;
-      await readContext(process.cwd(), identity);
-      await writeFile(artifactPaths(process.cwd(), identity).file('last-failure.txt'), error.message + '\n');
-    } catch { /* Another run's context must remain untouched, including failure reporting. */ }
     process.exitCode = 1;
   });
 }
