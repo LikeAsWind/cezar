@@ -439,7 +439,7 @@ export function autoLayout(
   opts: { rowWidth?: number } = {},
 ): NonNullable<WorkflowGraph['layout']> {
   const rowWidth = opts.rowWidth ?? ROW_WIDTH
-  const g = new dagre.graphlib.Graph({ multigraph: true })
+  const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: 'LR', ranksep: RANK_GAP, nodesep: NODE_GAP, edgesep: 14, marginx: 0, marginy: 0, ranker: 'network-simplex' })
   g.setDefaultEdgeLabel(() => ({}))
   const feet = new Map(graph.nodes.map((n) => [n.id, nodeFootprint(graph, n)]))
@@ -451,7 +451,11 @@ export function autoLayout(
     for (const port of portsOf(n)) {
       const to = targetOf(graph, n.id, port)
       if (!to || !feet.has(to)) continue
-      g.setEdge(n.id, to, { weight: FAILURE_PORTS.has(port) ? 1 : 3, minlen: 1 }, `${n.id}.${port}`)
+      // Layout needs one adjacency per pair; parallel ports are still rendered by React Flow.
+      // Feeding converging parallel edges into dagre can produce coincident edge points and throw.
+      const weight = FAILURE_PORTS.has(port) ? 1 : 3
+      const existing = g.edge(n.id, to) as { weight: number } | undefined
+      g.setEdge(n.id, to, { weight: (existing?.weight ?? 0) + weight, minlen: 1 })
     }
   }
   dagre.layout(g)

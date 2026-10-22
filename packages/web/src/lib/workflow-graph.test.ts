@@ -573,3 +573,14 @@ describe('fork scaffolding', () => {
     expect(r).toMatchObject({ kind: 'end', status: 'failed' })
   })
 })
+
+it('lays out unattended with converging notification ports without crashing', async () => {
+ const { UNATTENDED_TEMPLATE } = await import('../../../cezar/src/workflows/templates/unattended.ts');
+ const graph = { nodes: UNATTENDED_TEMPLATE.nodes, edges: UNATTENDED_TEMPLATE.edges };
+ const layout = autoLayout(graph);
+ expect(Object.keys(layout)).toHaveLength(graph.nodes.length);
+ for (const position of Object.values(layout)) {
+  expect(Number.isFinite(position.x)).toBe(true);
+  expect(Number.isFinite(position.y)).toBe(true);
+ }
+});
