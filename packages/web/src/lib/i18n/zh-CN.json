@@ -2796,7 +2796,7 @@
   "No role skill recorded": "未记录角色技能",
   "Node ID": "节点标识",
   "WeCom robot notifications": "企业微信机器人通知",
-  "Send task summaries and MR links to a WeCom group. Mentions require member user IDs or bound mobile numbers, not display names.": "将任务摘要和 MR 链接发送到企业微信群。@ 成员需填写企业微信账号或绑定手机号，不能使用显示名。",
+  "Workflow notification nodes can send task summaries, MR links, blockers and other updates to this project’s WeCom group. Add notification nodes at the stages that need them. To mention members, enter their WeCom user IDs or bound mobile numbers, not display names.": "工作流可通过通知节点，将任务摘要、MR 链接、阻塞原因等信息发送到当前项目的企业微信群；请在需要通知的环节接入该节点。支持 @ 指定成员，需填写企业微信账号（userid）或绑定手机号，不能使用显示名。",
   "Enable WeCom notifications": "启用企业微信通知",
   "Webhook URL": "Webhook 地址",
   "Webhook saved; leave blank to keep it": "Webhook 已保存，留空保持不变",
@@ -2808,5 +2808,15 @@
   "Enter a valid WeCom webhook and member user IDs or mobile numbers.": "请填写有效的企业微信 Webhook、成员账号或手机号。",
   "Test message submitted. Confirm receipt and mentions in the group.": "测试消息已提交，请在群里确认收到消息和 @ 提醒。",
   "Test message failed. Check the robot configuration.": "测试消息发送失败，请检查机器人配置。",
-  "Could not save WeCom settings.": "企业微信通知配置保存失败。"
+  "Could not save WeCom settings.": "企业微信通知配置保存失败。",
+  "Use the mobile number bound to the WeCom member account.": "填写该成员在企业微信中绑定的手机号。",
+  "Check the project connection and try again.": "请检查项目连接后重试。",
+  "Configure this project’s group robot and notification recipients.": "配置当前项目的群机器人与通知接收人。",
+  "WeCom notification": "企业微信通知",
+  "Uses saved robot and mentions": "使用已保存的机器人和 @ 成员",
+  "Uses this project’s Webhook and mentions from Project settings → WeCom robot notifications. No credentials are stored in this workflow.": "使用当前项目通知设置中保存的 Webhook 和 @ 成员，工作流不保存凭据。",
+  "Optional message; supports {{title}} and {{failure}}; empty uses task title and MR link": "自定义消息（支持 {{title}} 任务标题、{{failure}} 失败原因；留空使用任务标题和 MR 链接）",
+  "Loading WeCom settings…": "正在加载企业微信通知配置…",
+  "Could not load WeCom settings.": "无法加载企业微信通知配置。",
+  "Send through the saved WeCom robot, including configured member mentions. Enable in project notification settings.": "通过已保存的企业微信机器人发送消息并 @ 指定成员；在当前项目通知设置中启用。"
 }

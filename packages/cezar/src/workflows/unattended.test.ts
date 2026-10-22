@@ -175,9 +175,23 @@ it('publishes only after seal and requests the configured GitLab reviewer after 
   expect(graph.edges).toEqual(expect.arrayContaining([
     { from: 'seal.pass', to: 'publish-mr' },
     { from: 'publish-mr.created', to: 'request-review' },
-    { from: 'publish-mr.failed', to: 'publication-failed' },
-    { from: 'request-review.done', to: 'done' },
-    { from: 'request-review.failed', to: 'publication-failed' },
+    { from: 'publish-mr.failed', to: 'notify-publication-failed' },
+    { from: 'request-review.done', to: 'notify-wecom' },
+    { from: 'request-review.failed', to: 'notify-wecom' },
+    { from: 'notify-wecom.done', to: 'done' },
+    { from: 'notify-wecom.failed', to: 'notification-failed' },
   ]));
   expect(graph.edges).not.toContainEqual({ from: 'seal.pass', to: 'done' });
+});
+
+it('notifies blockers and publication errors without converting failures into success', async () => {
+ const { UNATTENDED_TEMPLATE: graph } = await import('./templates/unattended.ts');
+ expect(graphIssues(graph)).toEqual([]);
+ for (const [id, end] of [['notify-blocked', 'stopped'], ['notify-publication-failed', 'publication-failed']]) {
+  expect(graph.nodes.find(node => node.id === id)).toMatchObject({ type: 'notify.wecom', body: expect.stringContaining('{{failure}}') });
+  for (const port of ['done', 'skipped', 'failed']) expect(graph.edges).toContainEqual({ from: `${id}.${port}`, to: end });
+  expect(graph.nodes.find(node => node.id === end)).toMatchObject({ type: 'end', status: 'failed' });
+ }
+ expect(graph.edges).toContainEqual({ from: 'blocked-report.pass', to: 'notify-blocked' });
+ expect(graph.edges).toContainEqual({ from: 'blocked-report.fail', to: 'notify-blocked' });
 });

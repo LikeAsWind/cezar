@@ -1,3 +1,4 @@
+import { wecomNotificationRoutes } from './wecom-notifications.ts';
 import { runFilePath } from '../runs/files.ts';
 import {
   trackerWatchInputSchema, trackerWatchParamsSchema, trackerWatchQuerySchema,
@@ -6611,6 +6612,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', sseRoutes)
     .route('/', githubRoutes)
     .route('/', trackerRoutes)
+    .route('/', wecomNotificationRoutes())
     .route('/', secretsRoutes)
     .route('/', e2eRoutes)
     .route('/', repoRoutes)

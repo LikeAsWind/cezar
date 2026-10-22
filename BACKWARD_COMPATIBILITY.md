@@ -121,6 +121,8 @@ What is protected now: **the shape of each route under `/api/v1`**, explicit pro
 
 Breaking: removing/renaming a route; making a previously optional body field required; removing a response field; changing an SSE event name (`run`, `run-event`, `run-deleted`, `todos`, `usage`, `ping` — or, on the workspace stream, `project-added`, `project-removed`, `checkout-progress`, `provider-status`, `automation-change`) or the `seq` dedup contract; changing explicit project-ID validation or its 404/409 responses; changing `/api/v1/health` fields or CORS; changing `/new` query parameters (breaks saved bookmarklets); moving a settings section without keeping its documented destination. Required path: additive first; if removal is unavoidable, keep the old route/field answering for one minor release and note it in the CHANGELOG. `/new` deserves extra caution — it lives in users' browsers (saved bookmarklets), not in this repo.
 
+- WeCom project connection (project-relative paths): `GET/PUT /api/v1/notifications/wecom`; explicit unsaved test: `POST /api/v1/notifications/wecom/test`. Responses exclude the Webhook credential.
+
 ## 3. `.ai/cezar/` state files (`packages/cezar/src/runs/store.ts` and friends)
 
 Written by one version, read by the next, and hand-editable by design:
@@ -424,3 +426,5 @@ If a change might break any surface above, say so in the PR description, label t
 ## Owner-approved primary worktree base policy (2026-10-21)
 
 New task worktrees require freshly fetched remote `main`/`master`. The previous current/configured feature-branch fallback and offline stale-ref fallback are intentionally removed at the owner’s request. Existing task worktrees keep their original fork base during recovery. Dry runs stay network-free.
+
+Additive (2026-10-22): shared WeCom notification configuration under `GET/PUT /api/v1/p/:projectId/notifications/wecom`, explicit test via `POST /api/v1/p/:projectId/notifications/wecom/test`, and optional `notify.wecom` workflow nodes. Webhook credentials are write-only; existing generic `notify.webhook` and its opt-in remain unchanged.

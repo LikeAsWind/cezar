@@ -87,6 +87,7 @@ export const TYPE_CATEGORY: Record<GraphNodeType, Category> = {
   'github.pr-update': 'git',
   'github.issue-comment': 'git',
   'notify.webhook': 'scripts',
+  'notify.wecom': 'scripts',
 }
 
 export const ICONS: Record<GraphNodeType, LucideIcon> = {
@@ -111,6 +112,7 @@ export const ICONS: Record<GraphNodeType, LucideIcon> = {
   'github.pr-update': TagIcon,
   'github.issue-comment': MessageSquareIcon,
   'notify.webhook': WebhookIcon,
+  'notify.wecom': WebhookIcon,
 }
 
 export const TONE: Record<PortTone, string> = {
@@ -142,6 +144,7 @@ export const TYPE_LABEL: Record<GraphNodeType, string> = {
   get 'github.pr-update'() { return t('Update PR') },
   get 'github.issue-comment'() { return t('Issue comment') },
   get 'notify.webhook'() { return t('Webhook') },
+  get 'notify.wecom'() { return t('WeCom notification') },
 }
 
 export const categoryColor = (type: GraphNodeType) =>
@@ -194,6 +197,8 @@ export function nodeDetail(node: WorkflowGraphNode, loopCount?: number): string 
         .join(' · ') || t('no changes')
     case 'github.issue-comment':
       return node.issue ? `#${node.issue}` : t('task\'s issue')
+    case 'notify.wecom':
+      return t('Uses saved robot and mentions')
     case 'notify.webhook':
       return node.url.replace(/^https?:\/\//, '')
     case 'if': {

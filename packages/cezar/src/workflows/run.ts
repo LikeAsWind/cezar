@@ -1,3 +1,4 @@
+import { sendWecomNotification } from '../notifications/wecom.ts';
 import { runFilePath } from '../runs/files.ts';
 import type { TrackerAssociation } from '@open-mercato/cezar-contract';
 import { TrackerAgentBindingError } from '../server/tracker/agent-credentials.ts';
@@ -5378,6 +5379,8 @@ export class RunManager {
           handoffText: readHandoff(this.dataDir, runId),
         });
         if (!outcome.ok) {
+          outputs.set(node.id, { error: this.store.redactRunText(runId, outcome.error) });
+          onOutputs();
           note(`draft PR failed — ${outcome.error}`, 'danger');
           return 'failed';
         }
@@ -5512,6 +5515,36 @@ export class RunManager {
         outputs.set(node.id, { issue });
         note(`commented on issue #${issue}`);
         return 'done';
+      }
+      case 'notify.wecom': {
+        const run = record();
+        const title = (run?.titleSummary ?? run?.title ?? task).slice(0, 240);
+        // Use the transition that led here, not an earlier failure already recovered by a retry.
+        const failureEdge = [...(run?.graphState?.taken ?? [])].reverse()
+          .map(edge => /^(.+)\.(blocked|failed|fail|exhausted)->/.exec(edge))
+          .find(match => match && match[1] !== 'blocked-report');
+        const origin = failureEdge?.[1];
+        const evidence = origin ? outputs.get(origin) : undefined;
+        const failedStep = run?.steps.find(step => step.id === origin);
+        const reason = origin ? `${failedStep?.name ?? origin}：${evidence?.error || evidence?.output || failedStep?.error || evidence?.summary || (failureEdge?.[2] === 'exhausted' ? '重试或裁决次数已耗尽' : '未提供详细原因，请查看任务运行记录')}` : '未提供详细原因，请查看任务运行记录';
+        let content = node.body ? render(node.body)
+          .replaceAll('{{title}}', title).replaceAll('{{failure}}', reason) : [
+          'cezar 研发任务审核',
+          `任务：${(run?.titleSummary ?? run?.title ?? task).slice(0, 240)}`,
+          ...(run?.pullRequestUrl ? [`MR：${run.pullRequestUrl}`] : []),
+        ].join('\n');
+        content = this.store.redactRunText(runId, content);
+        if (Buffer.byteLength(content, 'utf8') > 2048) content = Buffer.from(content).subarray(0, 2045).toString('utf8').replace(/\uFFFD$/, '') + '…';
+        try {
+          const sent = this.projectId ? await sendWecomNotification(this.projectId, content) : false;
+          outputs.set(node.id, { status: sent ? 'sent' : 'skipped' });
+          onOutputs();
+          note(sent ? 'WeCom notification accepted; configured members mentioned' : 'WeCom notification skipped — disabled, unconfigured or dry run');
+          return sent ? 'done' : 'skipped';
+        } catch (error) {
+          note(error instanceof Error ? error.message : 'WeCom notification failed', 'danger');
+          return 'failed';
+        }
       }
       case 'notify.webhook': {
         // A network call to an arbitrary URL widens exposure, so it is opt-in (AGENTS.md § Zero

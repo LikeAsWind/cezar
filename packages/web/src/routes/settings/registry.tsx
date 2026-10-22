@@ -1,6 +1,7 @@
 import { t, useLocale } from '@/lib/i18n'
 import {
   BellIcon,
+  WebhookIcon,
   BookmarkIcon,
   BotIcon,
   FileCogIcon,
@@ -27,6 +28,7 @@ import { AgentsSection } from './agents-section'
 import { AppearanceSection } from './appearance'
 import { InstructionsSection } from './instructions-section'
 import { BookmarkletsSection } from './bookmarklets-section'
+import { WeComNotificationsSection } from './wecom-notifications-section'
 import { NotificationsSection } from './notifications-section'
 import { ProjectsSection } from './projects-section'
 import { ResourcesSection } from './resources-section'
@@ -64,6 +66,7 @@ export type SettingsSectionId =
   | 'resources'
   | 'worktrees'
   | 'projects'
+  | 'wecom'
   | 'notifications'
   | 'keyboard'
   | 'skills'
@@ -106,6 +109,7 @@ function comingSoon(title: string, Icon: ComponentType<SVGProps<SVGSVGElement>>)
 }
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
+  { id: 'wecom', get title() { return t('WeCom robot notifications') }, get description() { return t('Configure this project’s group robot and notification recipients.') }, icon: WebhookIcon, component: WeComNotificationsSection, scope: 'project' },
   // ---- project scope (`/p/<projectId>/settings/…`) — settings that describe THIS repo -------
   {
     id: 'tracker',

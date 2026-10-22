@@ -1,0 +1,35 @@
+import { Hono } from 'hono';
+import type { ProjectContext } from './project-context.ts';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { wecomNotificationRoutes } from './wecom-notifications.ts';
+import { wecomWebhookSettingsSchema, wecomNotificationResultSchema } from '@open-mercato/cezar-contract';
+let home: string;
+beforeEach(async () => { home = await mkdtemp(join(tmpdir(), 'cez-wecom-route-')); vi.stubEnv('CEZ_HOME', home); });
+afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await rm(home, { recursive: true, force: true }); });
+const url = '/notifications/wecom';
+const input = { enabled: true, webhookUrl: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=private-key', mentionedUserIds: [], mentionedMobiles: ['13800138000'] };
+const json = (body: unknown, method = 'PUT') => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+it('validates writes and returns only the public settings contract', async () => {
+  const app = new Hono<{ Variables: { project: ProjectContext } }>().use('*', async (c, next) => { c.set('project', { id: 'project-a' } as ProjectContext); await next(); }).route('/', wecomNotificationRoutes());
+  expect((await app.request(url, json({ ...input, webhookUrl: 'https://example.com' }))).status).toBe(400);
+  const saved = await app.request(url, json(input));
+  expect(saved.status).toBe(200);
+  expect(await saved.text()).not.toContain('private-key');
+  const data = await (await app.request(url)).json();
+  expect(wecomWebhookSettingsSchema.parse(data)).toMatchObject({ configured: true, enabled: true });
+});
+it('tests unsaved settings without persisting and reports provider rejection rather than HTTP success', async () => {
+  const app = new Hono<{ Variables: { project: ProjectContext } }>().use('*', async (c, next) => { c.set('project', { id: 'project-a' } as ProjectContext); await next(); }).route('/', wecomNotificationRoutes());
+  const fetcher = vi.fn(async () => new Response('{"errcode":0}'));
+  vi.stubGlobal('fetch', fetcher);
+  const response = await app.request(url + '/test', json(input, 'POST'));
+  expect(wecomNotificationResultSchema.parse(await response.json())).toEqual({ sent: true });
+  expect(await (await app.request(url)).json()).toMatchObject({ configured: false });
+  fetcher.mockImplementation(async () => new Response('{"errcode":93000,"errmsg":"private-key"}'));
+  const rejected = await app.request(url + '/test', json(input, 'POST'));
+  expect(rejected.status).toBe(400);
+  expect(await rejected.text()).not.toContain('private-key');
+});

@@ -1295,7 +1295,7 @@ const OUTPUTS: Record<GraphNodeType, string[]> = {
   'ask-user': ['answer'],
   dispatch: ['runId', 'status', 'summary'],
   'git.commit': ['sha'],
-  'github.draft-pr': ['url', 'number'],
+  'github.draft-pr': ['url', 'number', 'error'],
   'github.wait-ci': ['status'],
   'github.pr-comment': [],
   fork: ['runIds'],
@@ -1307,6 +1307,7 @@ const OUTPUTS: Record<GraphNodeType, string[]> = {
   'github.pr-update': [],
   'github.issue-comment': ['issue'],
   'notify.webhook': ['status'],
+  'notify.wecom': ['status'],
 }
 
 /** A node's template outputs — a fork's agent reports as a subtask (`runId`, `status`, `summary`). */
@@ -1638,6 +1639,15 @@ function Inspector({
           </Field>
           <Field label={t('comment')}>
             <Textarea value={node.body} rows={3} onChange={(e) => set({ body: e.target.value })} />
+          </Field>
+        </>
+      )}
+
+      {node.type === 'notify.wecom' && (
+        <>
+          <p className="text-[11px] text-muted-foreground">{t('Uses this project’s Webhook and mentions from Project settings → WeCom robot notifications. No credentials are stored in this workflow.')}</p>
+          <Field label={t('Optional message; supports {{title}} and {{failure}}; empty uses task title and MR link')}>
+            <Textarea value={node.body ?? ''} rows={3} onChange={e => set({ body: e.target.value || undefined })} />
           </Field>
         </>
       )}

@@ -147,6 +147,7 @@ export const graphNodeSchema = z.discriminatedUnion('type', [
   /** Comment on the task's issue (`CEZ:ISSUE`, or the issue the task is about), or on `issue`. */
   z.object({ ...nodeBase, type: z.literal('github.issue-comment'), issue: z.number().int().positive().optional(), body: z.string().min(1) }),
   /** POST to a URL — a network call, so it only runs with `CEZ_WORKFLOW_WEBHOOKS=1`. */
+  z.object({ ...nodeBase, type: z.literal('notify.wecom'), body: z.string().optional() }),
   z.object({ ...nodeBase, type: z.literal('notify.webhook'), url: z.string().url().regex(/^https?:\/\//, 'http(s) URLs only'), body: z.string().optional() }),
 ]);
 
@@ -196,6 +197,7 @@ export const NODE_PORTS: Record<GraphNodeType, readonly string[]> = {
   'github.pr-update': ['done', 'failed'],
   'github.issue-comment': ['done', 'failed'],
   'notify.webhook': ['done', 'failed'],
+  'notify.wecom': ['done', 'skipped', 'failed'],
 };
 
 export interface NodeCatalogEntry {
@@ -221,7 +223,7 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
   { type: 'ask-user', category: 'agents', label: 'Ask user', description: 'Ask a question and continue with the answer.', ports: ['answered'], outputs: ['answer'] },
   { type: 'dispatch', category: 'agents', label: 'Dispatch subtask', description: 'A child task in its own worktree, budget carved from this run.', ports: ['done', 'failed'], outputs: ['runId', 'status', 'summary'] },
   { type: 'git.commit', category: 'git', label: 'Commit', description: 'Commit everything in the worktree.', ports: ['done', 'nothing', 'failed'], outputs: ['sha'] },
-  { type: 'github.draft-pr', category: 'git', label: 'Draft PR', description: 'Push the branch and open a draft PR through gh.', ports: ['created', 'failed'], outputs: ['url', 'number'] },
+  { type: 'github.draft-pr', category: 'git', label: 'Draft PR', description: 'Push the branch and open a draft PR through gh.', ports: ['created', 'failed'], outputs: ['url', 'number', 'error'] },
   { type: 'github.wait-ci', category: 'git', label: 'Wait for CI', description: "Park until the PR's checks pass or fail (timeout required).", ports: ['green', 'red', 'timeout', 'failed'], outputs: ['status'] },
   { type: 'github.pr-comment', category: 'git', label: 'PR comment', description: 'Comment on the task PR.', ports: ['done', 'failed'], outputs: [] },
   { type: 'fork', category: 'flow', label: 'Fork', description: 'Split into 2–4 agents that run at once, each a fresh subtask. Wire every branch into one Join.', ports: ['1', '2', '3'], outputs: ['runIds'] },
@@ -231,6 +233,7 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
   { type: 'git.sync-base', category: 'git', label: 'Sync with base', description: 'Merge the latest base branch in; stops on conflict for an agent to resolve.', ports: ['done', 'conflict', 'failed'], outputs: ['conflicts'] },
   { type: 'github.pr-update', category: 'git', label: 'Update PR', description: 'Mark the task PR ready, add labels, request reviewers.', ports: ['done', 'failed'], outputs: [] },
   { type: 'github.issue-comment', category: 'git', label: 'Issue comment', description: "Comment on the task's issue.", ports: ['done', 'failed'], outputs: ['issue'] },
+  { type: 'notify.wecom', category: 'scripts', label: 'WeCom notification', description: 'Send through the saved WeCom robot, including configured member mentions. Enable in project notification settings.', ports: ['done', 'skipped', 'failed'], outputs: ['status'] },
   { type: 'notify.webhook', category: 'scripts', label: 'Webhook', description: 'POST a message to a URL (needs CEZ_WORKFLOW_WEBHOOKS=1).', ports: ['done', 'failed'], outputs: ['status'] },
   { type: 'workflow', category: 'flow', label: 'Sub-workflow', description: 'Run another saved workflow as a subtask and wait for it.', ports: ['done', 'failed'], outputs: ['runId', 'status', 'summary'] },
 ];
@@ -477,6 +480,7 @@ export function templatedText(n: GraphNode): string[] {
     case 'github.issue-comment':
       return [n.body];
     case 'notify.webhook':
+    case 'notify.wecom':
       return [n.body ?? ''];
     default:
       return [];
