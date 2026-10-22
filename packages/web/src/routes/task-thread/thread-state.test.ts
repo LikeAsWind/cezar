@@ -1027,3 +1027,11 @@ describe('reduceThread — lastEventAt (the Working… indicator\'s last activit
     expect(reduceThread([]).lastEventAt).toBeUndefined()
   })
 })
+
+
+it('retains every agent launch in mixed transcripts and ignores malformed snapshots', () => {
+  const snapshot = { capturedAt: '2026-10-21T00:00:00Z', cwd: '/repo', systemPrompt: 'System', userPrompt: 'User', allowedTools: ['Read'], backend: 'claude' };
+  const events = asRunEvents([{ type: 'agent-launch', input: snapshot }, { type: 'item.completed', item: { kind: 'message', id: 'm', role: 'assistant', text: 'Working' } }, { type: 'agent-launch', input: { ...snapshot, resume: true } }, { type: 'agent-launch', input: { cwd: 123 } }]);
+  const entries = reduceThread(events).turns.flatMap(turn => turn.items);
+  expect(entries.filter(entry => entry.kind === 'note' && entry.launch)).toHaveLength(2);
+});

@@ -1,3 +1,4 @@
+import { AgentLaunchCard } from './agent-launch-card'
 import { t, useLocale } from '@/lib/i18n'
 import { memo, useMemo, type ReactNode } from 'react'
 
@@ -449,7 +450,7 @@ function ThreadEntryRenderer({
     case 'tool':
       return <ToolCard item={entry} cacheKey={`${scope}:${entry.id}`} />
     case 'note':
-      return <NoteLine note={entry} />
+      return entry.launch ? <AgentLaunchCard input={entry.launch} /> : <NoteLine note={entry} />
     case 'image':
       return <ImageItem image={entry} />
     case 'ask':
@@ -563,6 +564,7 @@ const REASONING_COMPARE_FIELDS = {
 } satisfies Record<keyof UiReasoningItem, true>
 
 const NOTE_COMPARE_FIELDS = {
+  launch: true,
   kind: true,
   id: true,
   text: true,

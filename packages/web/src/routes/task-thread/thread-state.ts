@@ -1,4 +1,5 @@
 import { t } from '@/lib/i18n'
+import { agentLaunchEventSchema, type StepInput } from '@open-mercato/cezar-api-client'
 import type { RunEvent, RunStatus } from '@open-mercato/cezar-api-client'
 import { runItemKey } from '@/api/run-events'
 import {
@@ -42,6 +43,7 @@ export interface ThreadNote {
   id: string
   text: string
   tone: 'dim' | 'danger'
+  launch?: StepInput
 }
 
 /** An image the run persisted (v1 `image` line: served from `/api/runs/:id/images/…`). */
@@ -565,6 +567,12 @@ export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = 
       }
 
       // ---- lines that always render -------------------------------------------------------
+      case 'agent-launch': {
+        const parsed = agentLaunchEventSchema.safeParse(event)
+        if (!parsed.success) break
+        currentTurn().entries.push({ origin: 'meta', entry: { kind: 'note', id: `launch:${event.seq}`, text: 'Agent launch', tone: 'dim', launch: parsed.data.input } })
+        break
+      }
       case 'note':
       case 'lifecycle': {
         const text = str(event.message) ?? ''

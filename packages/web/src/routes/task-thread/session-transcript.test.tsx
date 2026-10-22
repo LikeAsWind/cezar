@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { setApiScope } from '@open-mercato/cezar-api-client'
 import type { ApiRun, RunEvent, UiToolItem } from '@open-mercato/cezar-api-client'
 import { createQueryClient } from '@/api/query-client'
 import { sameData } from '@/lib/same-data'
@@ -22,6 +23,7 @@ import { collectSubagents, subagentChildren } from './subagent-dock'
 import { reduceThread, type ThreadEntry, type ThreadState } from './thread-state'
 
 beforeEach(() => {
+  setApiScope('transcript-fixture')
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -33,6 +35,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setApiScope(null)
   cleanup()
   vi.unstubAllGlobals()
   clearThreadScrollCaches()
@@ -623,3 +626,11 @@ describe('SessionTranscript', () => {
     expect(document.querySelector('[data-slot="codex-empty"]')?.textContent).toBe('No attributed output')
   })
 })
+
+
+it('renders separate collapsed launch cards through the shared transcript', () => {
+  const entries: ThreadEntry[] = [1, 2].map(i => ({ kind: 'note', id: `launch:${i}`, text: 'Agent launch', tone: 'dim', launch: { capturedAt: '2026-10-21T00:00:00Z', cwd: '/repo', userPrompt: `Input ${i}`, systemPrompt: `System ${i}`, backend: 'claude' } }));
+  render(<SessionTranscript runId="r1" viewId="launches" sections={agentTranscriptSections('launches', entries)} mode="panel" />)
+  expect(document.querySelectorAll('[data-slot="agent-launch"]')).toHaveLength(2)
+  expect(document.querySelector('[data-slot="agent-launch"]')?.hasAttribute('open')).toBe(false)
+});

@@ -77,6 +77,18 @@ const usageCounterSchema = z.number().finite().nonnegative();
 /** Latest launch input supplied by cezar; excludes process environment and credentials. */
 export const stepInputSchema = z.object({
   capturedAt: z.string(),
+  stepId: z.string().optional(),
+  nodeName: z.string().optional(),
+  skill: z.string().optional(),
+  backend: runnerSchema.optional(),
+  sessionId: z.string().optional(),
+  timeoutMs: z.number().nonnegative().optional(),
+  allowedTools: z.array(z.string()).optional(),
+  bashAllowlist: z.array(z.string()).optional(),
+  additionalDirectories: z.array(z.string()).optional(),
+  mcpServerNames: z.array(z.string()).optional(),
+  probeRestricted: z.boolean().optional(),
+  imageCount: z.number().int().nonnegative().optional(),
   cwd: z.string(),
   systemPrompt: z.string().optional(),
   userPrompt: z.string().optional(),

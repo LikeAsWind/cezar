@@ -623,7 +623,7 @@ function HistoryBoundary({
       data-slot="history-boundary"
       data-retained-pages={retainedPages}
       aria-busy={loading}
-      className="flex min-h-8 items-center justify-center text-xs text-muted-foreground"
+      className="flex min-h-8 flex-col items-center justify-center text-xs text-muted-foreground"
     >
       <button
         type="button"
@@ -637,6 +637,7 @@ function HistoryBoundary({
           t('Couldn’t load earlier items · Retry')
         : t('Load 100 earlier items')}
       </button>
+      <p className="pb-2 text-center text-soft-foreground">{t('Earlier node inputs and outputs are in earlier history. Load earlier records to view them.')}</p>
       <span className="sr-only" aria-live="polite">
         {loading ? t('Loading earlier session history') : error ? error : ''}
       </span>

@@ -527,3 +527,13 @@ describe('streamRunEvents', () => {
     expect(seqs).toEqual([]);
   });
 });
+
+
+it('keeps launch snapshots as separate visible items on history replay', async () => {
+  const input = { capturedAt: '2026-10-21T00:00:00Z', cwd: '/repo', userPrompt: 'Launch' };
+  const events = [{ seq: 1, ts: 'x', type: 'agent-launch', input }, { seq: 2, ts: 'x', type: 'item.completed', item: { kind: 'message', id: 'm', role: 'assistant', text: 'Working' } }, { seq: 3, ts: 'x', type: 'agent-launch', input: { ...input, resume: true } }];
+  const file = fixture(events);
+  expect(canonicalSessionItems(events).filter(item => item.key.startsWith('standalone:'))).toHaveLength(2);
+  expect((await readRunHistoryPage(file)).events.filter(event => event.type === 'agent-launch')).toHaveLength(2);
+
+});

@@ -99,6 +99,7 @@ interface CanonicalItem {
 }
 
 const STANDALONE_TYPES = new Set([
+  'agent-launch',
   'user-message',
   'note',
   'lifecycle',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stepInputSchema } from './runs.ts';
 
 /**
  * SSE frame payloads — the only shapes in this contract that are NOT derived from a route.
@@ -26,6 +27,9 @@ export const runEventSchema = z.looseObject({
   type: z.string(),
 });
 export type RunEvent = z.infer<typeof runEventSchema>;
+
+/** Host launch snapshot, emitted once per startSession attempt into existing run history. */
+export const agentLaunchEventSchema = runEventSchema.extend({ type: z.literal('agent-launch'), input: stepInputSchema });
 
 /** Fixed protocol-level item count for one progressive transcript page. */
 export const RUN_HISTORY_PAGE_ITEMS = 100;

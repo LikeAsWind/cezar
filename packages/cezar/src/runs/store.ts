@@ -1179,7 +1179,7 @@ export class RunStore extends EventEmitter {
     };
   }
 
-  recordStepInput(runId: string, stepId: string, input: Omit<StepInput, 'capturedAt' | 'truncatedFields'>): void {
+  recordStepInput(runId: string, stepId: string, input: Omit<StepInput, 'capturedAt' | 'truncatedFields'>): StepInput {
     const parsed = stepInputSchema.parse({ ...input, capturedAt: new Date().toISOString() });
     const safe = this.redactStepPatch({ input: parsed }, runId).input!;
     let remaining = 64_000;
@@ -1193,6 +1193,7 @@ export class RunStore extends EventEmitter {
     }
     if (truncated.length) safe.truncatedFields = truncated;
     this.updateStep(runId, stepId, { input: safe });
+    return safe;
   }
 
   /** Append a step to an existing run (used by "Continue" — spec 003). */

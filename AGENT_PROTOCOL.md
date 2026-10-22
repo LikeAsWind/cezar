@@ -544,3 +544,8 @@ breaking change requiring the documented deprecation path.
 - `BACKWARD_COMPATIBILITY.md` — §7 (this protocol) and §2/§3 (SSE names, NDJSON).
 - `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` — the deep design record (§7, §7.1).
 - `.ai/specs/2026-07-14-cockpit-ui-redesign.md` — the spec (protocol v2, parity requirement).
+
+
+### Host launch snapshots
+
+Before each workflow `startSession` attempt (including Continue), cezar appends an `agent-launch` event with the redacted, bounded `StepInput` snapshot. It records the launch-time node ID, node name and selected role skill alongside supplied prompts, model/backend/session identity, tool configuration, timeout, directories and image count. It excludes process environment, private MCP definitions/credentials and image bytes. This is host launch input, not the backend's undisclosed default system prompt or a complete runtime tool inventory. The main transcript renders one collapsed card per attempt; progressive history counts these events as standalone items. Old recordings remain unchanged. Agent-native subagents remain represented by their existing tool calls and provided inputs.
