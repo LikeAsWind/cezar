@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import type { TrackerAssociation } from '@open-mercato/cezar-contract';
 import { TrackerAgentBindingError } from '../server/tracker/agent-credentials.ts';
 import { createHash, randomUUID } from 'node:crypto';
@@ -845,7 +846,7 @@ export function agentDirectories(
  * transcript already used, plus the absolute path that lets the agent
  * operate on the file itself — save it, `cp` it, attach it to a GitHub
  * issue/PR (#357). `path` is only ever an absolute path under
- * `.ai/cezar/runs/<runId>-images/` (see `RunManager.persistAttachment`).
+ * `.ai/cezar/runs/<runId>/images/` (see `RunManager.persistAttachment`).
  */
 /** Inverse of `attachmentExtension` (#472) — a persisted attachment is re-encoded from disk at
  *  dequeue and needs its media type back. Only ever asked about IMAGE names (a file reaches the
@@ -3290,7 +3291,7 @@ export class RunManager {
     for (const url of urls) {
       const name = url.split('/').pop();
       if (!name || name.includes('..') || name.includes('/') || name.includes('\\')) continue;
-      const path = join(this.dataDir, 'runs', `${runId}-images`, name);
+      const path = join(runFilePath(this.dataDir, runId, '-images'), name);
       try {
         if (isImageAttachmentName(name)) {
           const data = readFileSync(path);
@@ -3416,7 +3417,7 @@ export class RunManager {
       // Defend the join against a crafted URL: only a bare file name may be deleted.
       if (!name || name.includes('..') || name.includes('/') || name.includes('\\')) continue;
       try {
-        rmSync(join(this.dataDir, 'runs', `${runId}-images`, name), { force: true });
+        rmSync(join(runFilePath(this.dataDir, runId, '-images'), name), { force: true });
       } catch {
         /* best effort */
       }
@@ -4641,7 +4642,7 @@ export class RunManager {
       .map((url): PersistedAttachment | null => {
         const name = url.split('/').pop();
         if (!name || name.includes('..') || name.includes('/') || name.includes('\\')) return null;
-        const path = join(this.dataDir, 'runs', `${runId}-images`, name);
+        const path = join(runFilePath(this.dataDir, runId, '-images'), name);
         return existsSync(path) ? { name, url, path } : null;
       })
       .filter((saved): saved is PersistedAttachment => saved !== null);
@@ -6820,7 +6821,7 @@ export class RunManager {
    * Agent screenshot (an image block inside a tool result) or a user attachment —
    * a pasted screenshot, or since #950 a PDF/TXT/MD file: the base64 data never
    * enters the NDJSON event log — it lands as a file under
-   * `.ai/cezar/runs/<id>-images/` and the transcript event carries only the name +
+   * `.ai/cezar/runs/<id>/images/` and the transcript event carries only the name +
    * serving URL. `namePrefix` distinguishes the two origins on disk
    * (`screenshot-<n>.<ext>` for agent tool screenshots, `pasted-<n>.<ext>` for user
    * attachments, #357) and the absolute `path` lets the agent operate on the file
@@ -6840,7 +6841,7 @@ export class RunManager {
       // always had, a file gets `pdf`/`txt`/`md`, and both share the `pasted-<n>` numbering space
       // below so a `pasted-3.md` can never collide with a `pasted-3.png`.
       const ext = attachmentExtension(mediaType);
-      const dir = join(this.dataDir, 'runs', `${runId}-images`);
+      const dir = runFilePath(this.dataDir, runId, '-images');
       mkdirSync(dir, { recursive: true });
       // Seed from the highest numeric suffix already on disk, NOT the file count:
       // `screenshot-*` and `pasted-*` share one numbering space, so counting would

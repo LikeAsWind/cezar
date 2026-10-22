@@ -2368,7 +2368,7 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
   ) => { name: string; url: string; path: string } | null;
   const persist = (id: string, prefix?: string) =>
     (manager as unknown as { persistAttachment: PersistFn }).persistAttachment(id, 'image/png', PNG, prefix);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => runFilePath(join(repoRoot, '.ai/cezar'), id, '-images');
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-persist-'));
@@ -2467,7 +2467,7 @@ describe('RunManager queued-stack mutators (#472)', () => {
   };
   const dequeue = (id: string) =>
     (manager as unknown as { pendingJobs: Map<string, unknown> }).pendingJobs.delete(id);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => runFilePath(join(repoRoot, '.ai/cezar'), id, '-images');
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-stack-'));
@@ -2829,7 +2829,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes stacked attachments from disk into stackedImages', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = runFilePath(join(repoRoot, '.ai/cezar'), r.id, '-images');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-bytes');
     stack(r.id, { text: 'see the mock', images: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -2844,7 +2844,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes initial task images from disk after a queued-run restart (#612)', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = runFilePath(join(repoRoot, '.ai/cezar'), r.id, '-images');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     store.updateRun(r.id, { taskImages: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -2869,7 +2869,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
    */
   it('never re-encodes a non-image attachment into an image block on restart', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'read the brief', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = runFilePath(join(repoRoot, '.ai/cezar'), r.id, '-images');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     writeFileSync(join(dir, 'pasted-2.pdf'), '%PDF-1.4 the-document-bytes');

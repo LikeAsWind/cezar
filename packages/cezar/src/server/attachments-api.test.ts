@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { runFilePath } from '../runs/files.ts';
 import { RunStore } from '../runs/store.ts';
 import { attachmentLibraryDir, type PastedContent, type RunManager, type StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
@@ -198,7 +199,7 @@ describe('attachment routes (#950)', () => {
 
   describe('GET /api/v1/p/boot/runs/:id/images/:file', () => {
     const seed = (id: string, name: string, body: string) => {
-      const dir = join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+      const dir = runFilePath(join(repoRoot, '.ai/cezar'), id, '-images');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, name), body);
     };

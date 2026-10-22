@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { runFilePath } from '../runs/files.js';
 import { RunStore } from '../runs/store.js';
 import { parseAskMarkerResult } from './ask.js';
 import type { AgentEvent, AgentSession } from './agent-runner.js';
@@ -69,7 +70,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
       expect(live).toEqual([
         { delta: 'pi-private-', v1Count: 0 }, { delta: 'credential-abcdefgh', v1Count: 0 },
       ]);
-      const disk = readFileSync(join(cwd, 'data', 'runs', `${run.id}.ndjson`), 'utf8');
+      const disk = readFileSync(runFilePath(join(cwd, 'data'), run.id, '.ndjson'), 'utf8');
       expect(disk).not.toContain('pi-private-');
       expect(disk).not.toContain('credential-abcdefgh');
     } finally {
