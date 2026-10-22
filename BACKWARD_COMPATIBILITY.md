@@ -418,3 +418,7 @@ config exception names it.
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.
+
+## Owner-approved primary worktree base policy (2026-10-21)
+
+New task worktrees require freshly fetched remote `main`/`master`. The previous current/configured feature-branch fallback and offline stale-ref fallback are intentionally removed at the owner’s request. Existing task worktrees keep their original fork base during recovery. Dry runs stay network-free.

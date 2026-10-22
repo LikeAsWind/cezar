@@ -844,7 +844,7 @@ never blocks startup):
   "defaultRunner": "claude", // agent backend: "claude" (default) · "codex" · "junie" · "opencode" · "pi"
   "modelsLocked": true,      // optional: native per-runner model is fixed/read-only; runner stays selectable
   "plannerModel": "sonnet",  // model the "Plan first" button uses to draft chains
-  "baseBranch": "develop",   // branch worktrees fork from + PRs target (also settable in the Git tab)
+  "baseBranch": "main",      // PR target; new worktrees always use freshly fetched remote main/master
   "branchNaming": "your branch naming preferences"
                              // optional: task branches are named from the first prompt under these
                              // instructions (Settings → Instructions); absent = cez/<id8>
@@ -1105,4 +1105,8 @@ Every module is meant to be read in one sitting.
 
 ### Unattended workflow evidence
 
-The unattended template preserves the original Superpowers design, plan, native ledger and task reports. Host implementation/delivery summaries and blocker diagnostics use existing node responses, run events and the handoff rather than duplicate Markdown reports. User continuations use the existing message queue and history rather than a separate resume file. Environment check evidence is embedded in `baseline.json` / `verify.json`; successful version-query logs are removed after recording their results, while failures retain diagnostic logs. Full build/test logs and verification receipts remain available. Shared context includes a bounded map index (12,000 characters) and recent ledger tail (4,000 characters); omitted evidence is read only when needed.
+The unattended template preserves the original Superpowers design, plan, native ledger and task reports. docs/superpowers/probe contains only the four discovery reports; specs and plans keep the official locations. Host metadata, routing/execution decisions, frozen validation, result summaries, receipts and review diff inputs live in the task's private runs/<runId> directory. Raw compiler/test output is temporary and removed after parsing; success retains commands, versions, exits, durations and test counts, while failure adds bounded diagnostic excerpts.
+
+Questions and complete adjudicator answers are final node responses, visible in the task conversation and graph node output. The host binds each Q-number to its calling node and persists the clarification history. It no longer requires question.md, clarification.md or a duplicate ledger.md. Official progress.md remains the execution recovery ledger; the host persists full managed-node outputs for other stage checkpoints and review handoffs, without the previous 4000-character summary truncation. Downstream roles receive the source-map path and only relevant frozen constraints, decisions and checkpoint evidence. User continuations remain in the existing message queue/history.
+
+New task worktrees start from the base remote’s freshly fetched `main` or `master`, never the checked-out feature/test branch or unpushed local commits. An explicit `main`/`master` preference wins; otherwise the remote default is used when it is one of those names, then `main`, then `master`. Remote discovery/fetch failure or absence of both branches stops task creation. Existing task worktrees retain their recorded base on recovery. `CEZ_DRY_RUN=1` remains network-free and uses available primary refs only.

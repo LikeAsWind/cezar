@@ -1467,9 +1467,9 @@ export class RunManager {
     // ad-hoc "(planned)" chains exist nowhere else to re-resolve from.
     this.store.updateRun(run.id, { workflowDef: workflow });
     // A pull-request head run (spec 2026-10-06-agentic-e2e-checks Phase 3): the fetched sha is
-    // recorded as the fork point BEFORE the run is queued, so `execute` — and a restart that
-    // revives the queued run — forks from it through the "recorded fork point wins" rule rather
-    // than re-resolving the configured base. The PR becomes the run's referenced pull request.
+    // recorded before queueing. The primary-base policy rejects new non-primary forks rather
+    // than silently testing a different commit; existing worktree recovery preserves its base.
+    // The PR becomes the run's referenced pull request.
     if (input.forkRef) {
       this.store.updateRun(run.id, {
         baseBranch: input.forkRef.sha,
@@ -2446,9 +2446,8 @@ export class RunManager {
         ...(budget.budgetUsd !== undefined ? { budgetUsd: budget.budgetUsd } : {}),
       },
     });
-    // The task list shows the order's own title rather than the first line of the envelope, and
-    // the child forks its worktree off the PARENT's branch: `execute()` prefers a recorded
-    // `baseBranch` over the configured one, so seeding it is the whole of the change.
+    // Preserve the requested parent fork as task intent. New non-primary forks are rejected
+    // by execute's primary-base policy; never silently run the child without its parent's work.
     this.store.updateRun(record.id, { title, ...(parent.branch ? { baseBranch: parent.branch } : {}) });
     const paths = taskPaths(this.dataDir, rootRunId, record.id);
     const task = (this.store.getRun(record.id)?.task ?? '').replace('{{TREE_PATHS}}', treeEnvelopeLines(paths).join('\n'));
@@ -4494,26 +4493,16 @@ export class RunManager {
         type: 'note',
         message: `worktree on — using an isolated task worktree (${input.worktree === true ? 'explicit request' : 'default'})`,
       });
-      // Fork from the configured base branch (config.json `baseBranch`, e.g.
-      // `develop`) — also the target of the eventual draft PR. Unresolvable
-      // (typo, not fetched) → note + the currently checked-out branch. Either
-      // way the base goes through `resolveBaseRef` (`chooseForkBase`), which
-      // fetches origin first so a new task forks from the newest tip, never a
-      // stale local ref — while a checked-out branch that diverged from origin
-      // keeps the user's local work.
-      //
-      // A task that already recorded a fork point keeps it: its worktree is
-      // reused as-is, and re-resolving against a since-changed config would
-      // silently re-anchor the `merge-base` every diff/shortstat is measured
-      // from, shifting "what did this task change" under an existing task.
+      // Existing task worktrees keep their original base; new tasks must refresh remote main/master.
       const recordedRun = this.store.getRun(runId);
       const recorded = recordedRun?.baseBranch;
-      const base =
-        recorded ??
-        (repo ? await chooseForkBase(this.repoRoot, repo.branch, config.baseBranch, (message) =>
-          emit({ type: 'note', message }),
-        ) : undefined);
       try {
+        const recovering = Boolean(recordedRun?.worktreePath);
+        if (!recovering && recorded && !/^(?:[^/]+\/)?(?:main|master)$/.test(recorded)) {
+          throw new Error(`Requested fork base "${recorded}" conflicts with the main/master-only worktree policy; refusing to silently run against a different base`);
+        }
+        const base = recovering ? recorded : repo ? await chooseForkBase(this.repoRoot, repo.branch, config.baseBranch,
+          (message) => emit({ type: 'note', message })) : undefined;
         // Failed Git discovery does not make an existing isolated task an in-place run.
         // Revalidate/reuse its recorded worktree through createWorktree, or fail closed.
         if (!base) throw new Error('Git repository metadata is unavailable and the existing task has no recorded fork base; cannot safely recover its worktree');

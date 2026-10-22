@@ -63,18 +63,19 @@ export function taskRemotes(dir: string): Promise<TaskRemotes> {
  * when the remote has a narrowed fetch config. Skipped under `CEZ_DRY_RUN=1`,
  * which must stay network-free.
  */
-async function fetchBase(repoRoot: string, remote: string, base: string): Promise<void> {
-  if (process.env.CEZ_DRY_RUN === '1') return;
+async function fetchBase(repoRoot: string, remote: string, base: string): Promise<boolean> {
+  if (process.env.CEZ_DRY_RUN === '1') return true;
   // The name is spliced into a refspec — only a well-formed branch name may be.
   const wellFormed = await git(repoRoot, ['check-ref-format', `refs/heads/${base}`]);
-  if (!wellFormed.ok) return;
+  if (!wellFormed.ok) return false;
   const refspec = `+refs/heads/${base}:refs/remotes/${remote}/${base}`;
   // GIT_TERMINAL_PROMPT only silences git's own (HTTPS) prompts; an SSH remote
   // can still ask on the controlling TTY — the timeout is what bounds that.
-  await git(repoRoot, ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', remote, refspec], {
+  const fetched = await git(repoRoot, ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', remote, refspec], {
     timeout: FETCH_TIMEOUT_MS,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   });
+  return fetched.ok;
 }
 
 export function branchFor(runId: string): string {
@@ -177,44 +178,39 @@ export async function resolveBaseRef(
   return null;
 }
 
-/** `<base remote>/HEAD` names `branch`; `main`/`master` when the remote recorded no HEAD. */
-async function isDefaultBranch(repoRoot: string, branch: string, baseRemote: string | null): Promise<boolean> {
-  if (baseRemote) {
-    const head = await git(repoRoot, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${baseRemote}/HEAD`]);
-    const name = head.ok ? head.stdout.trim() : '';
-    if (name.startsWith(`${baseRemote}/`)) return name.slice(baseRemote.length + 1) === branch;
-  }
-  return branch === 'main' || branch === 'master';
-}
-
-/**
- * The ref a NEW task forks from: the configured base branch when it resolves,
- * else the checked-out branch — itself refreshed against the base remote, but
- * keeping local work that diverged from it (`keepDiverged`) — except on the
- * default branch, where local-only commits are strays, not a base (#1383). A
- * detached HEAD stays `HEAD`; `createWorktree` pins it to the commit. Never throws.
- */
+/** New tasks start only from a freshly fetched remote main/master; never the current branch. */
 export async function chooseForkBase(
   repoRoot: string,
-  currentBranch: string,
+  _currentBranch: string,
   configured: string | undefined,
   note: (message: string) => void,
 ): Promise<string> {
-  const remotes = await taskRemotes(repoRoot);
-  if (configured) {
-    const resolved = await resolveBaseRef(repoRoot, configured, { remotes });
-    if (resolved) return resolved;
-    note(`configured base branch "${configured}" not found (locally or on the base remote) — using "${currentBranch}"`);
+  const { base: remote } = await taskRemotes(repoRoot);
+  const preferred = configured === 'main' || configured === 'master' ? configured : undefined;
+  if (configured && !preferred) note(`ignoring base branch "${configured}" — new worktrees require remote main or master`);
+  const candidates = [...new Set([...(preferred ? [preferred] : []), 'main', 'master'])];
+  // Dry runs use mock agents and stay network-free; they never claim a live upstream refresh.
+  if (process.env.CEZ_DRY_RUN === '1') {
+    for (const branch of candidates) {
+      for (const ref of remote ? [`${remote}/${branch}`, branch] : [branch]) {
+        if ((await git(repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).ok) return ref;
+      }
+    }
+    throw new Error('Worktree requires main or master, including in dry-run mode');
   }
-  if (currentBranch === 'HEAD') return currentBranch;
-  const keepDiverged = !(await isDefaultBranch(repoRoot, currentBranch, remotes.base));
-  const resolved = (await resolveBaseRef(repoRoot, currentBranch, { keepDiverged, remotes })) ?? currentBranch;
-  // Say so when a diverged default branch's local-only commits are left out of the task.
-  if (!keepDiverged && resolved !== currentBranch) {
-    const contained = await git(repoRoot, ['merge-base', '--is-ancestor', currentBranch, resolved]);
-    if (!contained.ok) note(`local "${currentBranch}" diverged from "${resolved}" — forking from "${resolved}"; local-only commits are not in this task`);
-  }
-  return resolved;
+  if (!remote) throw new Error('Cannot refresh main or master: repository has no base remote');
+  const advertised = await git(repoRoot, ['ls-remote', '--symref', remote, 'HEAD', 'refs/heads/main', 'refs/heads/master'], {
+    timeout: FETCH_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+  if (!advertised.ok) throw new Error('Cannot refresh remote main or master; task stopped before worktree creation');
+  const defaultBranch = /^ref: refs\/heads\/(main|master)\s+HEAD$/m.exec(advertised.stdout)?.[1];
+  const order = [...new Set([...(preferred ? [preferred] : []), ...(defaultBranch ? [defaultBranch] : []), ...candidates])];
+  const branch = order.find(name => advertised.stdout.split('\n').some(line => line.trim().endsWith(`\trefs/heads/${name}`)));
+  if (!branch) throw new Error('Base remote has no main or master branch; task stopped before worktree creation');
+  if (!await fetchBase(repoRoot, remote, branch)) throw new Error(`Cannot refresh ${remote}/${branch}; refusing a stale worktree base`);
+  const ref = `${remote}/${branch}`;
+  if (!(await git(repoRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).ok) throw new Error(`Fetched base ${ref} is unavailable`);
+  return ref;
 }
 
 export function worktreePathFor(repoRoot: string, runId: string): string {
