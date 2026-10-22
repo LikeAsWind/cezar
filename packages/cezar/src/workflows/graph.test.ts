@@ -305,7 +305,7 @@ describe('loopBodyIds', () => {
 });
 
 describe('session.continue (D6)', () => {
-  it('must name another agent node', () => {
+  it('allows its own prior session but still requires an agent target', () => {
     const g: WorkflowGraph = {
       nodes: [
         { id: 'start', type: 'start' },
@@ -316,7 +316,7 @@ describe('session.continue (D6)', () => {
       edges: [{ from: 'start', to: 'a' }, { from: 'a', to: 'c' }, { from: 'c', to: 'b' }],
     };
     const issues = graphIssues(g).join('\n');
-    expect(issues).toMatch(/"a": session.continue cannot name itself/);
+    expect(issues).not.toContain('"a": session.continue');
     expect(issues).toMatch(/"b": session.continue must name an agent node/);
   });
 });

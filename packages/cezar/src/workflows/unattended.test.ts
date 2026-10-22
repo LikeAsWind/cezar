@@ -195,3 +195,9 @@ it('notifies blockers and publication errors without converting failures into su
  expect(graph.edges).toContainEqual({ from: 'blocked-report.pass', to: 'notify-blocked' });
  expect(graph.edges).toContainEqual({ from: 'blocked-report.fail', to: 'notify-blocked' });
 });
+
+it('continues the adjudicator’s own session between questions', async () => {
+ const { UNATTENDED_TEMPLATE } = await import('./templates/unattended.ts');
+ expect(UNATTENDED_TEMPLATE.nodes.find(node => node.id === 'adjudicator')).toMatchObject({ session: { continue: 'adjudicator' } });
+ expect(graphIssues(UNATTENDED_TEMPLATE)).toEqual([]);
+});

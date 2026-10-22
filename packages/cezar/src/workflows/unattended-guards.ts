@@ -89,7 +89,8 @@ export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd
   if (verdict === 'question' || stage === 'adjudicator') {
     const path = runFilePath(dataDir, runId, '.unattended-question.json');
     const text = response.replace(/\s*CEZ:VERDICT[ \t:=]+[\w-]+\s*$/, '').trim();
-    const q = /\bQ-\d+\b/.exec(text)?.[0], origin = /^origin:\s*([\w-]+)\s*$/m.exec(text)?.[1];
+    const digits = /\bQ-?(\d+)\b/.exec(text)?.[1];
+    const q = digits ? `Q-${digits.padStart(3, '0')}` : undefined, origin = /^origin:\s*([\w-]+)\s*$/m.exec(text)?.[1];
     if (!q || !origin || !validCallers.includes(origin)) throw new Error('Question response requires a Q-number and valid origin');
     let pending: z.infer<typeof questionSchema> | undefined;
     try { pending = questionSchema.parse(JSON.parse(await readFile(path, 'utf8'))); }

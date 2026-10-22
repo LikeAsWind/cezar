@@ -4998,6 +4998,7 @@ export class RunManager {
         const stepRec = this.store.getRun(runId)?.steps.find((s) => s.id === node.id);
         outputs.set(node.id, {
           summary: managedUnattended ? stripVerdictMarker(lastTurn.text.trim()) : stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
+          ...(failure || handoffFailure ? { error: this.store.redactRunText(runId, failure ?? handoffFailure!) } : {}),
           verdict: verdict ?? '',
           costUsd: stepRec?.costUsd ?? 0,
         });
@@ -5941,6 +5942,7 @@ export class RunManager {
     const startTokens = stepRecord?.tokensUsed ?? 0;
     let stepCost = stepRecord?.costUsd ?? 0;
     let turnText = '';
+    let finalAssistantMessage = '';
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
@@ -6050,7 +6052,8 @@ export class RunManager {
           state.askPark = undefined;
           if (this.store.getRun(runId)?.askParked) this.store.updateRun(runId, { askParked: undefined });
         }
-        if (graphHooks?.lastTurn) graphHooks.lastTurn.text = turnText;
+        if (graphHooks?.lastTurn) graphHooks.lastTurn.text = this.store.redactRunText(runId, finalAssistantMessage || turnText);
+        finalAssistantMessage = '';
         turnText = '';
         for (const note of askNotes) emit({ type: 'note', stepId: step.id, ...note });
         if (done) {
@@ -6263,7 +6266,7 @@ export class RunManager {
       try {
         launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
         userPrompt += `\n\n${artifactInstructions(state.cwd, runId, step.id, this.dataDir)}`;
-        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir)}`;
+        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir, Boolean(graphHooks?.resumeSessionId))}`;
       }
       catch (error) { return error instanceof Error ? error.message : String(error); }
     }
@@ -6325,7 +6328,12 @@ export class RunManager {
           // the turn-end handler hold an intermediate `CEZ:ASK` session open for
           // the user's answer rather than have the runner close it first (#917).
           autoEndAfterFirstTurn: false,
-          onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
+          onUiEvent: (event) => {
+            if (event.type === 'item.completed' && event.item.kind === 'message' && event.item.role === 'assistant') {
+              finalAssistantMessage = event.item.text;
+            }
+            this.handleRunnerUiEvent(runId, state, sink, event);
+          },
         },
       );
     } catch (err) {

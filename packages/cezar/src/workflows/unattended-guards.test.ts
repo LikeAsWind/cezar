@@ -113,3 +113,12 @@ it('rejects a caller that labels a question as coming from another stage', async
   const f = await fixture();
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, '# Q-002\norigin: plan\nWhat target?')).rejects.toThrow('origin');
 });
+
+it('accepts Q1 and Q-001 as the same clarification identity', async () => {
+ const f = await fixture();
+ await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, '需要裁决 Q1\norigin: design\n归还异常是否应该传播？')).resolves.toBeUndefined();
+ await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'answered', false, undefined, 'Q-001\norigin: design\n依据已有需求，记录错误并保留请求结果。')).resolves.toBeUndefined();
+ const saved = JSON.parse(await readFile(runFilePath(f.data, f.runId, '.unattended-question.json'), 'utf8'));
+ expect(saved.q).toBe('Q-001');
+ expect(saved.answered).toBe(true);
+});

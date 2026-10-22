@@ -1,7 +1,7 @@
 import type { WorkflowGraphFile } from '../graph.ts';
 
 // Only host handoff conventions belong here; execution procedures stay in upstream skills.
-const QUESTION = (origin: string) => `需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: ${origin} 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。`;
+const QUESTION = (origin: string) => `需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: ${origin} 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。`;
 const IMPLEMENTATION_EXECUTION = `每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
 完成所有 Task 后返回 complete。`;
 
@@ -77,6 +77,7 @@ ${QUESTION('design')}`,
       id: 'adjudicator',
       type: 'agent',
       name: '按需需求与技术裁决',
+      session: { continue: 'adjudicator' },
       prompt: `执行已加载的 adjudicator，仅回答宿主注入的当前问题，最终回复完整给出 Q 编号、独立一行 origin、回答、依据及不确定性，由宿主持久化并显示在会话和图节点输出中。
 按 origin 返回调用者：design 返回 answered；fast-plan、plan、execute-fast、execute-standard、execute-deep、execute-deep-native、fix 返回对应 origin。origin 无效或证据、授权不足则 blocked。`,
       verdicts: ['answered', 'fast-plan', 'plan', 'execute-fast', 'execute-standard', 'execute-deep', 'execute-deep-native', 'fix', 'blocked'],

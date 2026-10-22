@@ -336,7 +336,6 @@ export function graphIssues(graph: WorkflowGraph): string[] {
     if (target !== undefined) {
       const t = graph.nodes.find((x) => x.id === target);
       if (!t || t.type !== 'agent') issues.push(`agent node "${n.id}": session.continue must name an agent node (got "${target}")`);
-      else if (target === n.id) issues.push(`agent node "${n.id}": session.continue cannot name itself`);
     }
   }
 

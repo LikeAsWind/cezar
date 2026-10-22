@@ -11,11 +11,18 @@ it('reuses only the returning caller session and falls back across backends or a
   const root = await mkdtemp(join(tmpdir(), 'cez-unattended-session-')), store = RunStore.open(join(root, '.ai/cezar'));
   const manager = new RunManager(store, root);
   try {
-    const run = store.createRun({ title: 'Clarification', workflow: 'unattended', task: 'Implement', steps: [{ id: 'design', name: 'Design', kind: 'agent' }, { id: 'review', name: 'Review', kind: 'agent' }] });
+    const run = store.createRun({ title: 'Clarification', workflow: 'unattended', task: 'Implement', steps: [{ id: 'design', name: 'Design', kind: 'agent' }, { id: 'review', name: 'Review', kind: 'agent' }, { id: 'judge', name: 'Judge', kind: 'agent' }] });
     store.updateStep(run.id, 'design', { sessionId: 'design-context', backend: 'claude' });
     store.updateStep(run.id, 'review', { sessionId: 'independent-review', backend: 'claude' });
     type AgentNode = Extract<GraphNode, { type: 'agent' }>;
     const resume = (manager as unknown as { graphResumeSession: (runId: string, node: AgentNode, backend: RunnerId, emit: (event: unknown) => void, returningCaller?: boolean) => string | undefined }).graphResumeSession.bind(manager);
+    const judge: AgentNode = { id: 'judge', type: 'agent', skill: 'cezar:adjudicator', session: { continue: 'judge' } };
+    expect(resume(run.id, judge, 'claude', () => {})).toBeUndefined();
+    store.updateStep(run.id, 'judge', { status: 'done', sessionId: 'judge-context', backend: 'claude' });
+    expect(resume(run.id, judge, 'claude', () => {})).toBe('judge-context');
+    expect(resume(run.id, judge, 'codex', () => {})).toBeUndefined();
+    const unrelated = store.createRun({ title: 'Other task', workflow: 'unattended', task: 'Other', steps: [{ id: 'judge', name: 'Judge', kind: 'agent' }] });
+    expect(resume(unrelated.id, judge, 'claude', () => {})).toBeUndefined();
     const design: AgentNode = { id: 'design', type: 'agent', prompt: 'Clarify' };
     expect(resume(run.id, design, 'claude', () => {}, true)).toBe('design-context');
     expect(resume(run.id, design, 'claude', () => {}, false)).toBeUndefined();

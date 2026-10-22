@@ -86,7 +86,7 @@ ${inputs.map(describe).join('\n')}${outputs.length ? `\n本节点输出：\n${ou
 }
 
 /** Feed existing discovery and progress to the next role, rather than only naming files. */
-export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string): Promise<string> {
+export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string, resumingSession = false): Promise<string> {
   const paths = artifactPaths(cwd, runId, dataDir ? join(dataDir, 'runs', runId) : undefined);
   const identity = JSON.parse(await readFile(paths.file('run.json'), 'utf8'));
   if (identity.runId !== runId || identity.root !== await realpath(cwd)) throw new Error('Shared context belongs to another run or worktree');
@@ -116,14 +116,16 @@ export async function unattendedContext(cwd: string, runId: string, run?: Pick<R
     ...(!stage ? { map, omittedMapEntries: rows.length - map.length } : {}),
     ...(!stage ? { toolchains: environment.toolchains ?? [], environmentBlockers: environment.blocked ?? [], baseline: validation(baselineText) } : {}),
     ...(!stage ? { verification: validation(verifyText) } : {}),
-    ...(stage && run?.graphState?.outputs?.[stage] ? { checkpoint: run.graphState.outputs[stage] } : {}) };
+    ...(stage && !(stage === 'adjudicator' && resumingSession) && run?.graphState?.outputs?.[stage] ? { checkpoint: run.graphState.outputs[stage] } : {}) };
   let questions;
   if (dataDir) {
     try { questions = JSON.parse(await readFile(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
   const decisions = questions?.history?.filter((entry: { origin: string; status: string }) => (entry.status === 'answered' && (stage === 'review' || stage === 'deliver') || entry.origin === stage)) ?? [];
-  const clarification = stage === 'adjudicator' ? questions : decisions;
+  const clarification = stage === 'adjudicator'
+    ? resumingSession && questions ? { ...questions, history: [] } : questions
+    : decisions;
   const userUpdates = run?.queuedMessages?.map(message => message.text).filter(Boolean) ?? [];
   const shared = { ...data, ...(clarification && (!Array.isArray(clarification) || clarification.length) ? { clarification } : {}) };
   return [

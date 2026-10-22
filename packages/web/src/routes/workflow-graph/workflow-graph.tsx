@@ -1433,7 +1433,7 @@ function Inspector({
                 >
                   <option value="">{t('fresh session')}</option>
                   {graph.nodes
-                    .filter((n) => n.type === 'agent' && n.id !== node.id)
+                    .filter((n) => n.type === 'agent')
                     .map((n) => (
                       <option key={n.id} value={n.id}>{t('continue')}{' '}{n.name ?? n.id}
                       </option>

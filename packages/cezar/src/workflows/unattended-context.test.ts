@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -63,6 +64,13 @@ it('hands existing map contents, selected tools and progress to the next node', 
       { path: 'src/Unrelated.java', summary: 'x'.repeat(50_000) },
       { path: 'src/Counter.java', summary: 'Relevant counter', symbols: ['recordFailure'] },
     ].map(row => JSON.stringify(row)).join('\n'));
+    const dataDir = dirname(dirname(dirname(paths.file('run.json'))));
+    await writeFile(runFilePath(dataDir, 'context-run', '.unattended-question.json'), JSON.stringify({ q: 'Q-002', origin: 'design', text: 'current-question', answered: false, history: [{ q: 'Q-001', origin: 'design', text: 'previous-question', answer: 'previous-answer', status: 'answered' }] }));
+    const freshJudge = await unattendedContext(root, 'context-run', undefined, 'adjudicator', dataDir);
+    const resumedJudge = await unattendedContext(root, 'context-run', undefined, 'adjudicator', dataDir, true);
+    expect(freshJudge).toContain('previous-answer');
+    expect(resumedJudge).toContain('current-question');
+    expect(resumedJudge).not.toContain('previous-answer');
     const bounded = await unattendedContext(root, 'context-run');
     expect(bounded).toContain('Relevant counter');
     expect(bounded).toContain('"omittedMapEntries": 1');
