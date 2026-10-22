@@ -1,6 +1,7 @@
+import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
@@ -29,7 +30,7 @@ vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
   backend: 'claude', startSession: (spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void) => {
     const prompt = spec.userPrompt ?? ''; captures.prompts.push(prompt); captures.specs.push(spec);
     captures.onLaunch?.(spec);
-    const text = `CEZ:VERDICT ${prompt.includes('REVIEW') ? 'approve' : 'ready'}`;
+    const text = `${prompt.includes('REVIEW') ? 'Full independent review evidence. '.repeat(180) + '\n' : ''}CEZ:VERDICT ${prompt.includes('REVIEW') ? 'approve' : 'ready'}`;
     return { open: false, interrupt() {}, end() {}, sendMessage: () => false,
       result: new Promise<AgentRunResult>(resolve => setTimeout(() => {
         onEvent?.({ type: 'session', sessionId: `session-${captures.prompts.length}` }); onEvent?.({ type: 'text', text });
@@ -66,12 +67,12 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
       gitState.creationFails = fail;
     }
     store.updateRun(run.id, { status: 'failed', worktree: isolated ? undefined : false, workflowDef: workflow, graphState: { cursor: 'design', loops: { 'clarification-round': 3, 'final-retry': 1 }, taken: [] } });
-    await mkdir(join(data, 'runs'), { recursive: true });
-    await writeFile(join(data, 'runs', `${run.id}.superpowers.json`), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
-    const paths = newArtifactPaths(cwd, run.id); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
+    await mkdir(join(data, 'runs', run.id), { recursive: true });
+    await writeFile(runFilePath(data, run.id, '.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
+    const paths = newArtifactPaths(cwd, run.id, new Date(), 'task', join(data, 'runs', run.id)); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
     await mkdir(join(paths.directory, 'probe'), { recursive: true });
     await mkdir(join(paths.directory, 'logs'), { recursive: true });
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(cwd), artifactPrefix: paths.prefix }));
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(cwd), artifactPrefix: paths.prefix }));
     await writeFile(paths.file('context-map.jsonl'), JSON.stringify({ schemaVersion: 1, stage: 'probe', path: 'src/ExistingCounter.java', summary: 'Existing fixture counter', relevance: 'Continue existing work', symbols: ['recordFailure'], dependsOn: [], confidence: 'high' }) + '\n');
     for (const name of ['design.md', 'ledger.md']) await writeFile(paths.file(name), '# Existing evidence');
     await writeFile(paths.file('validation-plan.json'), '{}');
@@ -87,7 +88,7 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
       if (step.id === 'verify') await writeFile(paths.file('verified.json'), JSON.stringify({ runId: run.id, diffHash: 'example' }));
       return { ok: true, output: 'passed', exitCode: 0 };
     });
-    const pinPath = join(data, 'runs', `${run.id}.superpowers.json`);
+    const pinPath = runFilePath(data, run.id, '.superpowers.json');
     await rename(pinPath, `${pinPath}.test-backup`);
     expect(guards.isUnattendedGraph(data, run.id, graph)).toBe(true); // Host actions do not require a vendor pin.
     await rename(`${pinPath}.test-backup`, pinPath);
@@ -109,10 +110,13 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
     }
     expect(store.getRun(run.id)?.status, store.getRun(run.id)?.error).not.toBe('failed');
     expect(store.getRun(run.id)?.graphState?.taken).toContain('seal.pass->done');
+    expect(String(store.getRun(run.id)?.graphState?.outputs?.review?.summary).length).toBeGreaterThan(4_000);
     expect(captures.specs[0]?.resume).toBe(false);
     expect(captures.specs[0]?.timeoutMs).toBe(90 * 60_000);
-    expect(captures.specs[0]?.userPrompt).toContain('src/ExistingCounter.java');
-    expect(captures.specs[0]?.userPrompt).toContain('recordFailure');
+    expect(captures.specs[0]?.userPrompt).toContain('context-map.jsonl');
+    expect(captures.specs[0]?.userPrompt).not.toContain('chain of');
+    expect(captures.specs[0]?.userPrompt).not.toContain('execution-input.json');
+    expect(captures.specs[0]?.userPrompt).not.toContain('recordFailure');
     expect(store.getRun(run.id)?.steps.find(step => step.id === 'design')?.input?.userPrompt).toBe(captures.specs[0]?.userPrompt);
     expect(await realpath(captures.specs[0]!.cwd)).toBe(await realpath(cwd));
     expect(captures.specs[0]?.sessionId).not.toBe('old-design-account-session');

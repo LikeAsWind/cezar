@@ -77,9 +77,25 @@ const roles = [
   ['superpowers:verification-before-completion', 'vendor/superpowers/skills/verification-before-completion/SKILL.md'],
 ] as const;
 
+/** Only exceptions relevant to this role accompany the unchanged upstream body. */
+function roleHandoff(name: string): string {
+  const common = `使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。`;
+  const specific: Record<string, string> = {
+    'cezar:project-probe': '宿主限制探测工具与时限。按节点输入维护四份探测产物；仅发现环境和验证入口，编译测试由后续宿主执行。',
+    'cezar:adjudicator': '读取宿主注入的当前问题及引用证据，在最终回复中完整返回同 Q 编号和 origin 的答复。证据或需求授权不足则 blocked。',
+    'superpowers:brainstorming': 'Independent builder review replaces interactive design approval：这是机器审核。需要需求授权的问题逐个交给独立裁决者，返回后核对答复；证据不足保持 blocked。',
+    'superpowers:writing-plans': '设计或清晰的小任务原始需求是计划依据。计划使用注入的 plan.md 路径；执行方式已由工作流选择，无需询问人工。冻结验证约束纳入计划。',
+    'superpowers:executing-plans': '使用当前工作树和冻结工具链；恢复时复用官方 progress.md 及宿主检查点。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。',
+    'superpowers:subagent-driven-development': '使用官方逐任务派发与审查流程、原生报告和 ledger。Task 审查包括未提交变更。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。',
+    'superpowers:code-reviewer': '当前节点就是最终独立审查席位，只读并在回复中交付报告。完整 diff 包括未提交和新增文件；已有完整审查后的复查遵守官方 re-review 范围。',
+    'superpowers:systematic-debugging': '只修复本任务引入的问题，依据实际失败和基线诊断；环境缺失或既有失败记录 blocked。保持冻结验证和目标版本约束。',
+    'superpowers:verification-before-completion': '本节点核对宿主最新验证和独立审查，不代替失败检查宣布成功；交付后保留工作树进入人工 review。',
+  };
+  return `${common}\n${specific[name] ?? ''}`;
+}
+
 export function unattendedSkills(bundle = resolveSuperpowersBundle()): Skill[] {
   try {
-    const context = readFileSync(join(bundle, 'context.md'), 'utf8');
     return roles.map(([name, file]) => {
       const path = join(bundle, file);
       const raw = readFileSync(path, 'utf8');
@@ -93,7 +109,7 @@ export function unattendedSkills(bundle = resolveSuperpowersBundle()): Skill[] {
 
 These workflow handoff exceptions override only the conflicting orchestration requirements above; all original role reasoning and review rules remain in force.
 
-${context}
+${roleHandoff(name)}
 
 Pinned skill files: ${join(bundle, 'vendor/superpowers/skills')}
 Bundle directory: ${bundle}`, path, source: 'builtin' };

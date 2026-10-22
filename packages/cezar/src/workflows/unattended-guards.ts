@@ -1,7 +1,8 @@
+import { runFilePath } from '../runs/files.ts';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
 import { superpowersBundleRefSchema } from '@open-mercato/cezar-contract';
 import { snapshotPath } from '../superpowers-update.ts';
@@ -17,7 +18,7 @@ function managedAction(dataDir: string, runId: string, command: string): string 
   if (hostAction && ['baseline', 'execution', 'verify', 'seal'].includes(hostAction)) return hostAction;
   if (hostAction) return;
   let pin;
-  try { pin = pinSchema.parse(JSON.parse(readFileSync(join(dataDir, 'runs', `${runId}.superpowers.json`), 'utf8'))); }
+  try { pin = pinSchema.parse(JSON.parse(readFileSync(runFilePath(dataDir, runId, '.superpowers.json'), 'utf8'))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
   const runtime = join(snapshotPath(pin.ref.digest), 'runtime.mjs').replaceAll('\\', '/');
   const normalized = command.replaceAll('\\', '/');
@@ -32,6 +33,7 @@ export function isUnattendedGraph(dataDir: string, runId: string, graph: Workflo
 }
 
 async function saveRecord(path: string, value: unknown): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${randomUUID()}.tmp`;
   await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
   await rename(temporary, path);
@@ -41,20 +43,20 @@ async function saveRecord(path: string, value: unknown): Promise<void> {
 export async function guardUnattendedCheck(dataDir: string, runId: string, cwd: string, command: string, phase: 'before' | 'after'): Promise<void> {
   const action = await managedAction(dataDir, runId, command);
   if (!action || action === 'baseline' && phase === 'before' || action === 'seal' && phase === 'after') return;
-  const path = join(dataDir, 'runs', `${runId}.unattended.json`), root = await realpath(cwd);
+  const path = runFilePath(dataDir, runId, '.unattended.json'), root = await realpath(cwd);
   let state: z.infer<typeof trustedSchema> | undefined;
   try { state = trustedSchema.parse(JSON.parse(await readFile(path, 'utf8'))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   if (state && (state.runId !== runId || state.root !== root)) throw new Error('Trusted unattended state belongs to another run or worktree');
-  const plan = await readFile(artifactPath(cwd, runId, 'validation-plan.json'), 'utf8');
+  const plan = await readFile(artifactPath(cwd, runId, 'validation-plan.json', join(dataDir, 'runs', runId)), 'utf8');
   if (!state && !(action === 'baseline' && phase === 'after')) throw new Error('Trusted baseline missing; rerun the baseline before verification');
   if (state && state.plan !== plan) throw new Error('Frozen validation plan changed after baseline');
   state ??= { schemaVersion: 1, runId, root, plan };
   if (action === 'seal') {
-    if (!state.verified || state.verified !== await readFile(artifactPath(cwd, runId, 'verified.json'), 'utf8')) throw new Error('Host verification receipt missing or changed');
+    if (!state.verified || state.verified !== await readFile(artifactPath(cwd, runId, 'verified.json', join(dataDir, 'runs', runId)), 'utf8')) throw new Error('Host verification receipt missing or changed');
   } else if (phase === 'after') {
-    if (action === 'verify') state.verified = await readFile(artifactPath(cwd, runId, 'verified.json'), 'utf8');
-    await mkdir(join(dataDir, 'runs'), { recursive: true });
+    if (action === 'verify') state.verified = await readFile(artifactPath(cwd, runId, 'verified.json', join(dataDir, 'runs', runId)), 'utf8');
+    await mkdir(dirname(path), { recursive: true });
     await saveRecord(path, state);
   }
 }
@@ -62,10 +64,11 @@ export async function guardUnattendedCheck(dataDir: string, runId: string, cwd: 
 const relativePath = z.string().min(1).refine(path => !path.startsWith('/') && !path.includes('\\') && !path.includes(':') && !path.split('/').includes('..'));
 const mapEntry = z.object({ schemaVersion: z.literal(1), stage: z.literal('probe'), path: relativePath, summary: z.string().trim().min(1), relevance: z.string().trim().min(1), symbols: z.array(z.string()), dependsOn: z.array(relativePath), confidence: z.enum(['high', 'medium', 'low']) });
 const callers = ['design', 'fast-plan', 'plan', 'execute-fast', 'execute-standard', 'execute-deep', 'execute-deep-native', 'fix'];
-const questionSchema = z.object({ q: z.string(), origin: z.string(), text: z.string(), previous: z.string(), answered: z.boolean() });
+const decisionSchema = z.object({ q: z.string(), origin: z.string(), text: z.string(), answer: z.string(), status: z.enum(['answered', 'blocked']) });
+const questionSchema = z.object({ q: z.string(), origin: z.string(), text: z.string(), answered: z.boolean(), answer: z.string().optional(), history: z.array(decisionSchema).default([]) });
 
 /** Called only for graphs referencing the managed runtime, before accepting an agent verdict. */
-export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd: string, nodeId: string, verdict: string, executionStrategy = false, graph?: WorkflowGraph): Promise<void> {
+export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd: string, nodeId: string, verdict: string, executionStrategy = false, graph?: WorkflowGraph, response = ''): Promise<void> {
   if (!/^[a-zA-Z0-9_-]+$/.test(runId)) throw new Error('Invalid run id');
   const node = graph?.nodes.find(candidate => candidate.id === nodeId);
   const roleStages: Record<string, string> = {
@@ -79,49 +82,50 @@ export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd
     : nodeId;
   const validCallers = graph ? graph.nodes.filter(candidate => candidate.type === 'agent' && candidate.verdicts?.includes('question')).map(candidate => candidate.id) : callers;
   const artifact = async (name: string) => {
-    const text = await readFile(artifactPath(cwd, runId, name), 'utf8');
+    const text = await readFile(artifactPath(cwd, runId, name, join(dataDir, 'runs', runId)), 'utf8');
     if (!text.trim()) throw new Error(`Empty stage artifact: ${name}`);
     return text;
   };
-  if (verdict === 'question' || stage === 'adjudicator' && verdict !== 'blocked') {
-    const path = join(dataDir, 'runs', `${runId}.unattended-question.json`);
-    const text = await artifact('question.md'), q = /\bQ-\d+\b/.exec(text)?.[0], origin = /^origin:\s*([\w-]+)\s*$/m.exec(text)?.[1];
-    if (!q || !origin || !validCallers.includes(origin)) throw new Error('Question requires a Q-number and valid origin');
+  if (verdict === 'question' || stage === 'adjudicator') {
+    const path = runFilePath(dataDir, runId, '.unattended-question.json');
+    const text = response.replace(/\s*CEZ:VERDICT[ \t:=]+[\w-]+\s*$/, '').trim();
+    const q = /\bQ-\d+\b/.exec(text)?.[0], origin = /^origin:\s*([\w-]+)\s*$/m.exec(text)?.[1];
+    if (!q || !origin || !validCallers.includes(origin)) throw new Error('Question response requires a Q-number and valid origin');
     let pending: z.infer<typeof questionSchema> | undefined;
     try { pending = questionSchema.parse(JSON.parse(await readFile(path, 'utf8'))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     if (verdict === 'question') {
       if (origin !== nodeId) throw new Error('Question origin differs from its caller');
-      if (pending?.answered && pending.q === q && pending.text === text) throw new Error('Question already answered; read clarification.md or write a specific new question');
-      let previous = '';
-      try { previous = await readFile(artifactPath(cwd, runId, 'clarification.md'), 'utf8'); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      await saveRecord(path, { q, origin, text, previous, answered: false });
+      if (pending?.answered && pending.q === q && pending.text === text) throw new Error('Question already answered; use the supplied decision or ask a specific new question');
+      await saveRecord(path, { q, origin, text, answered: false, history: pending?.history ?? [] });
     } else {
-      if (!pending || pending.answered || pending.q !== q || pending.text !== text) throw new Error('No matching pending question');
+      if (!pending || pending.answered || pending.q !== q || pending.origin !== origin) throw new Error('No matching pending question');
       const returnPort = graph?.edges.find(edge => edge.to === pending.origin && edge.from.startsWith(`${nodeId}.`))?.from.slice(nodeId.length + 1);
-      if (verdict !== (returnPort ?? (pending.origin === 'design' ? 'answered' : pending.origin))) throw new Error('Adjudicator verdict differs from pending question origin');
-      const clarification = await artifact('clarification.md'), ledger = await artifact('ledger.md');
-      const appended = clarification.slice(pending.previous.length);
-      if (!clarification.startsWith(pending.previous) || !appended.includes(q) || !appended.includes(origin) || !appended.includes('answered') || !ledger.includes(q)) throw new Error('Adjudicator must append an answered record and update the ledger for this question');
-      await saveRecord(path, { ...pending, answered: true });
+      if (verdict !== 'blocked' && verdict !== (returnPort ?? (pending.origin === 'design' ? 'answered' : pending.origin))) throw new Error('Adjudicator verdict differs from pending question origin');
+      if (text.replace(q, '').replace(/^origin:.*$/m, '').trim().length < 10) throw new Error('Adjudicator must return the full answer and evidence');
+      const status = verdict === 'blocked' ? 'blocked' : 'answered';
+      await saveRecord(path, { ...pending, answered: status === 'answered', answer: text,
+        history: [...pending.history, { q, origin, text: pending.text, answer: text, status }] });
     }
     return;
   }
   if (verdict === 'blocked') return;
   if (stage === 'probe' && verdict === 'ready') {
-    const handoff = await readFile(join(dataDir, 'runs', `${runId}.handoff.md`), 'utf8');
+    const handoff = await readFile(runFilePath(dataDir, runId, '.handoff.md'), 'utf8');
     const goal = handoff.split(/^## Goal\s*$/m)[1]?.split(/^## Progress log\s*$/m)[0]?.trim();
     if (!goal) throw new Error('Original task is missing from handoff Goal');
   }
   const required: Record<string, string[]> = {
     'probe.ready': ['probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json'],
-    'design.ready': ['design.md', 'ledger.md'],
-    'deliver.ready': ['ledger.md'],
+    'design.ready': ['design.md'],
   };
-  if (['fast-plan', 'plan'].includes(stage) && ['fast', 'standard', 'deep'].includes(verdict)) required[`${stage}.${verdict}`] = ['plan.md', 'ledger.md'];
-  if (executionStrategy && stage === 'plan' && verdict === 'deep') required['plan.deep']!.push('execution-input.json');
-  if (stage.startsWith('execute-') && verdict === 'complete' || stage === 'fix' && verdict === 'fixed') required[`${stage}.${verdict}`] = ['ledger.md'];
+  if (['fast-plan', 'plan'].includes(stage) && ['fast', 'standard', 'deep'].includes(verdict)) required[`${stage}.${verdict}`] = ['plan.md'];
+  if (executionStrategy && stage === 'plan' && verdict === 'deep') {
+    const line = /^CEZ:EXECUTION (.+)$/m.exec(response)?.[1];
+    if (!line) throw new Error('Deep plan requires observed execution capability in CEZ:EXECUTION JSON');
+    const input = z.object({ schemaVersion: z.literal(1), tasksIndependent: z.boolean().nullable(), subagents: z.object({ available: z.boolean().nullable(), tool: z.string().nullable(), evidence: z.string().trim().min(1) }) }).parse(JSON.parse(line));
+    await saveRecord(artifactPath(cwd, runId, 'execution.json', join(dataDir, 'runs', runId)), { input });
+  }
   for (const name of required[`${stage}.${verdict}`] ?? []) {
     const text = await artifact(name);
     if (name === 'context-map.jsonl') for (const line of text.trim().split(/\r?\n/)) {

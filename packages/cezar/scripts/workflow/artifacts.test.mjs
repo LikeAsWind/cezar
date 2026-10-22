@@ -38,7 +38,6 @@ test('readable Unicode titles stay safe and recovery locates run identity inside
     data.artifactDate = '2000-01-01';
     const old = paths.file('run.json');
     await writeFile(old, JSON.stringify(data));
-    await rename(old, join(paths.directory, 'probe', `${data.artifactPrefix}-run.json`));
     assert.equal((await initialize(root, 'internal-id', 'HEAD', 'Other title')).artifactPrefix, data.artifactPrefix);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -52,9 +51,9 @@ test('probe, specs, plans and logs remain sibling directories with run-prefixed 
     assert.equal(paths.file('probe.md'), join(paths.directory, 'probe', `${paths.prefix}-probe.md`));
     assert.equal(paths.file('design.md'), join(paths.directory, 'specs', `${paths.prefix}-design.md`));
     assert.equal(paths.file('plan.md'), join(paths.directory, 'plans', `${paths.prefix}-plan.md`));
-    assert.equal(paths.file('blocked.md'), join(paths.directory, 'logs', `${paths.prefix}-blocked.md`));
-    assert.equal(paths.file('last-failure.txt'), join(paths.directory, 'logs', `${paths.prefix}-last-failure.txt`));
-    assert.equal(paths.file('baseline-build.log'), join(paths.directory, 'logs', `${paths.prefix}-baseline-build.log`));
+    assert.equal(paths.file('blocked.md'), join(paths.stateDirectory, 'blocked.md'));
+    assert.equal(paths.file('last-failure.txt'), join(paths.stateDirectory, 'last-failure.txt'));
+    assert.equal(paths.file('baseline-build.log'), join(paths.stateDirectory, 'baseline-build.log'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -67,7 +66,7 @@ test('all stages use dated run-scoped docs paths, preserve existing docs, and re
     const first = artifactPaths(root, 'first-run');
     assert.match(first.relative('probe.md'), /^docs\/superpowers\/probe\/\d{4}-\d{2}-\d{2}-first-run-probe\.md$/);
     assert.ok(!artifactNames.includes('request.md'));
-    assert.match(first.relative('run.json'), /\/probe\/.*-run\.json$/);
+    assert.match(first.relative('run.json'), /\.ai\/cezar\/runs\/first-run\/run\.json$/);
     assert.match(first.relative('design.md'), /\/specs\/.*-design\.md$/);
     assert.match(first.relative('plan.md'), /\/plans\/.*-plan\.md$/);
     await initialize(root, 'second-run', 'HEAD');

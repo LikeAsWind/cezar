@@ -6,9 +6,8 @@ it('lets design settle answered and minor questions before requesting adjudicati
   const design = UNATTENDED_TEMPLATE.nodes.find(node => node.id === 'design');
   expect(design).toMatchObject({ type: 'agent' });
   if (design?.type !== 'agent') throw new Error('missing design');
-  expect(design.prompt).toContain('Answered already');
-  expect(design.prompt).toContain('Minor');
-  expect(design.prompt).toContain('Theirs');
+  expect(design.prompt).toContain('恢复时复用已完成的 builder check');
+  expect(design.prompt).toContain('必要问题解决并完成 builder check');
   expect(design.prompt).not.toContain('two consecutive reviews');
 });
 
@@ -16,8 +15,8 @@ it('uses the original brainstorming builder check without an outer review loop',
   expect(UNATTENDED_TEMPLATE.nodes.some(node => ['builder', 'design-retry'].includes(node.id))).toBe(false);
   const design = UNATTENDED_TEMPLATE.nodes.find(node => node.id === 'design');
   if (design?.type !== 'agent') throw new Error('missing design');
-  expect(design.prompt).toContain('builder-check-prompt.md');
-  expect(design.prompt).toContain('Without a subagent tool');
+  expect(design.prompt).toContain('完成 builder check');
+  expect(design.prompt).toContain('builder check');
   const graph = UNATTENDED_TEMPLATE as WorkflowGraph;
   expect(graphIssues(graph)).toEqual([]);
   const loops = new Map<string, number>();

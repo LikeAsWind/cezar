@@ -256,7 +256,8 @@ test('host baseline runs the discovered setup then checks; verification reuses t
     await writeFile(artifact(root, 'environment.json'), JSON.stringify({ schemaVersion: 1, baseline: [], verify: [] }));
     const verification = cli('verify');
     assert.equal(verification.status, 0, verification.stderr);
-    assert.match(await readFile(artifact(root, 'verify-1.log'), 'utf8'), /actual project check ran/);
+    await assert.rejects(readFile(artifact(root, 'verify-1.log'), 'utf8'), { code: 'ENOENT' });
+    assert.equal(JSON.parse(await readFile(artifact(root, 'verify.json'), 'utf8')).results[0].classification, 'passed');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -382,9 +383,10 @@ test('persistent validation/review failure, failed baseline and explicit blockin
 
 test('design revision and complexity escalation are bounded and preserve a final review', async () => {
   const g = await graph();
-  const rejected = walk(g, { route: 'standard', plan: 'standard', builder: 'changes' });
+  const rejected = walk(g, { route: 'standard', plan: 'standard', design: 'blocked' });
   assert.equal(rejected.result.status, 'failed');
-  assert.equal(rejected.visited.filter(x => x === 'builder').length, 2);
+  assert.equal(rejected.visited.includes('builder'), false);
+  assert.match(g.nodes.find(n => n.id === 'design').prompt, /builder-check-prompt/);
   const upgraded = walk(g, { route: 'fast', 'fast-plan': 'fast', 'execute-fast': 'deep', plan: 'deep' });
   assert.equal(upgraded.result.status, 'success');
   assert.ok(upgraded.visited.includes('execute-deep'));
@@ -400,7 +402,7 @@ test('brainstorming asks one question at a time and reuses adjudication before d
   assert.equal(result.status, 'success');
   assert.equal(visited.filter(id => id === 'adjudicator').length, 3);
   assert.equal(visited.filter(id => id === 'design').length, 4);
-  assert.ok(visited.lastIndexOf('adjudicator') < visited.indexOf('builder'));
+  assert.ok(visited.lastIndexOf('adjudicator') < visited.indexOf('plan'));
   assert.equal(g.nodes.find(n => n.id === 'design').skill, 'superpowers:brainstorming');
 });
 
@@ -417,13 +419,11 @@ test('unanswerable clarification and exhausted question rounds terminate before 
 test('builder gaps can return through the same clarification role; fast tasks skip it', async () => {
   const g = await graph();
   let designs = 0;
-  let reviews = 0;
   const normal = walk(g, { route: 'standard', plan: 'standard',
-    design: () => ++designs === 2 ? 'question' : 'ready',
-    builder: () => ++reviews === 1 ? 'changes' : 'approve', adjudicator: 'answered' });
+    design: () => ++designs === 1 ? 'question' : 'ready', adjudicator: 'answered' });
   assert.equal(normal.result.status, 'success');
   assert.equal(normal.visited.filter(id => id === 'adjudicator').length, 1);
-  assert.ok(normal.visited.indexOf('builder') < normal.visited.indexOf('adjudicator'));
+  assert.ok(normal.visited.indexOf('design') < normal.visited.indexOf('adjudicator'));
   const fast = walk(g, { route: 'fast', 'fast-plan': 'fast' });
   assert.equal(fast.visited.includes('adjudicator'), false);
 });
@@ -484,7 +484,7 @@ test('toolchain constraints survive plan freezing; version checks precede compil
     const frozen = JSON.parse(await readFile(artifact(root, 'validation-plan.json'), 'utf8'));
     assert.deepEqual(frozen.toolchains, [toolchain]);
     assert.deepEqual(frozen.environmentChecks[0].expectedOutput, ['Java version: 1.8.0_402']);
-    const evidence = JSON.parse(await readFile(artifact(root, 'environment-baseline.json'), 'utf8'));
+    const evidence = JSON.parse(await readFile(artifact(root, 'baseline.json'), 'utf8')).environment;
     assert.equal(evidence.checks[0].matched, true);
     await rm(join(root, 'compiled.txt'));
     assert.equal(cli('verify').status, 0);
@@ -496,16 +496,16 @@ test('toolchain constraints survive plan freezing; version checks precede compil
     assert.equal(drift.status, 1);
     assert.match(drift.stderr, /environment check.*expected output/i);
     await assert.rejects(readFile(join(root, 'compiled.txt')), /ENOENT/);
-    const failed = JSON.parse(await readFile(artifact(root, 'environment-verify.json'), 'utf8'));
+    const failed = JSON.parse(await readFile(artifact(root, 'verify.json'), 'utf8')).environment;
     assert.equal(failed.checks[0].matched, false);
     await writeFile(join(root, 'tool-version.txt'), '1.8.0_402');
     assert.equal(cli('verify').status, 0);
     await rm(join(root, 'compiled.txt'));
     await rm(join(root, 'version-env'), { recursive: true });
     assert.equal(cli('verify').status, 1);
-    const missing = JSON.parse(await readFile(artifact(root, 'environment-verify.json'), 'utf8'));
+    const missing = JSON.parse(await readFile(artifact(root, 'verify.json'), 'utf8')).environment;
     assert.equal(missing.checks[1].matched, false);
-    assert.match(await readFile(artifact(root, missing.checks[1].log), 'utf8'), /ENOENT/);
+    assert.match(missing.checks[1].diagnostics, /ENOENT/);
     await assert.rejects(readFile(join(root, 'compiled.txt')), /ENOENT/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

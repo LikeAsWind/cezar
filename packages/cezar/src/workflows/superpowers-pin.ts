@@ -1,5 +1,6 @@
+import { runFilePath } from '../runs/files.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { superpowersBundleRefSchema } from '@open-mercato/cezar-contract';
 import type { Skill } from '../skills.ts';
@@ -13,7 +14,7 @@ const pinSchema = z.object({ schemaVersion: z.literal(1), ref: superpowersBundle
 /** The private run lock is authoritative, including after a restart or bundle activation. */
 export async function pinSuperpowersRun(dataDir: string, runId: string, workflow: WorkflowDef, skills: Skill[]): Promise<{ workflow: WorkflowDef; skills: Skill[] }> {
   if (!/^[a-zA-Z0-9_-]+$/.test(runId)) throw new Error('Invalid run id');
-  const path = join(dataDir, 'runs', `${runId}.superpowers.json`);
+  const path = runFilePath(dataDir, runId, '.superpowers.json');
   let pin: z.infer<typeof pinSchema> | undefined;
   try { pin = pinSchema.parse(JSON.parse(await readFile(path, 'utf8'))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -40,7 +41,7 @@ export async function pinSuperpowersRun(dataDir: string, runId: string, workflow
     const snapshot = await ensureBundleSnapshot(referencedRoot, { hostWorkflow: Boolean(builtin) });
     root = snapshot.root;
     pin = { schemaVersion: 1, ref: snapshot.ref };
-    await mkdir(join(dataDir, 'runs'), { recursive: true });
+    await mkdir(dirname(path), { recursive: true });
     try { await writeFile(path, JSON.stringify(pin), { flag: 'wx', mode: 0o600 }); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;

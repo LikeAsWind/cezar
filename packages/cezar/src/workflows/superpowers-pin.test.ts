@@ -1,3 +1,4 @@
+import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,7 +33,7 @@ it('keeps Continue on the full original snapshot after active changes', async ()
  expect(service.verify).toHaveBeenCalledWith('snapshot-old', 'a'.repeat(64));
  service.verify.mockRejectedValueOnce(new Error('snapshot missing'));
  await expect(pinSuperpowersRun(data, 'task-1', first.workflow, [role])).rejects.toThrow('snapshot missing');
- await writeFile(join(data, 'runs', 'task-1.superpowers.json'), '{broken');
+ await writeFile(runFilePath(data, 'task-1', '.superpowers.json'), '{broken');
  await expect(pinSuperpowersRun(data, 'task-1', first.workflow, [role])).rejects.toThrow();
  expect(service.ensure).toHaveBeenCalledTimes(1);
 });

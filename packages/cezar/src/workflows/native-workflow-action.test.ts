@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { RunManager } from './run.ts';
 import { RunStore } from '../runs/store.ts';
@@ -16,7 +16,7 @@ it.each(['cezar workflow-action execution', workflowActionCommand('execution')])
     const paths = newArtifactPaths(root, run.id);
     await mkdir(join(paths.directory, 'probe'), { recursive: true });
     await mkdir(join(paths.directory, 'logs'), { recursive: true });
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(root), artifactPrefix: paths.prefix }));
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(root), artifactPrefix: paths.prefix }));
     await writeFile(paths.file('execution-input.json'), JSON.stringify({ schemaVersion: 1, tasksIndependent: false, subagents: { available: null, tool: null, evidence: 'Not observed' } }));
     const harness = manager as unknown as {
       checkStepEnv(): Promise<NodeJS.ProcessEnv>;

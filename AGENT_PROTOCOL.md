@@ -430,7 +430,7 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 
 ## 8. Persistence & transport
 
-- **NDJSON** — one append-only `runs/<id>.ndjson` per run, one JSON object per
+- **NDJSON** — one append-only `runs/<id>/events.ndjson` per run, one JSON object per
   line (`seq`, `ts`, `type`, free extra keys). Never rewrite, reorder or
   re-number; readers skip bad lines. Both v1 and v2 events live here; a mixed
   file is valid. Cezar-owned task events are additive too: for example,

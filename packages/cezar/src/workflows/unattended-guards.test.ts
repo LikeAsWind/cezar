@@ -1,6 +1,7 @@
+import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { snapshotPath } from '../superpowers-update.ts';
 import { guardUnattendedCheck, guardUnattendedVerdict } from './unattended-guards.ts';
@@ -11,13 +12,13 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'cez-unattended-guard-')); roots.push(root);
   const data = join(root, 'host'), cwd = join(root, 'worktree'), runId = 'test-run';
-  const paths = newArtifactPaths(cwd, runId);
-  await mkdir(join(data, 'runs'), { recursive: true }); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
-  await writeFile(join(data, 'runs', `${runId}.handoff.md`), '# Handoff\n\n## Goal\nOriginal task\n\n## Progress log\n');
+  const paths = newArtifactPaths(cwd, runId, new Date(), 'task', join(data, 'runs', runId));
+  await mkdir(join(data, 'runs', runId), { recursive: true }); await mkdir(join(paths.directory, 'specs'), { recursive: true }); await mkdir(join(paths.directory, 'plans'), { recursive: true });
+  await writeFile(runFilePath(data, runId, '.handoff.md'), '# Handoff\n\n## Goal\nOriginal task\n\n## Progress log\n');
   await mkdir(join(paths.directory, 'probe'), { recursive: true });
     await mkdir(join(paths.directory, 'logs'), { recursive: true });
-  await writeFile(paths.file('run.json'), JSON.stringify({ runId, root: await realpath(cwd), artifactPrefix: paths.prefix }));
-  await writeFile(join(data, 'runs', `${runId}.superpowers.json`), JSON.stringify({ schemaVersion: 1, ref: { version: '7.0.0', commit: 'b'.repeat(40), digest: 'a'.repeat(64) } }));
+  await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId, root: await realpath(cwd), artifactPrefix: paths.prefix }));
+  await writeFile(runFilePath(data, runId, '.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: { version: '7.0.0', commit: 'b'.repeat(40), digest: 'a'.repeat(64) } }));
   const command = (action: string) => `'${process.execPath.replaceAll('\\', '/')}' '${snapshotPath('a'.repeat(64)).replaceAll('\\', '/')}/runtime.mjs' ${action}`;
   const path = paths.file;
   return { root, data, cwd, runId, command, path, guard: (action: string, phase: 'before' | 'after') => guardUnattendedCheck(data, runId, cwd, command(action), phase) };
@@ -45,7 +46,7 @@ it('does not silently rebaseline an altered plan or affect unrelated commands', 
   await writeFile(f.path('validation-plan.json'), '{"changed":true}');
   await expect(f.guard('baseline', 'after')).rejects.toThrow('validation plan');
   await expect(guardUnattendedCheck(f.data, f.runId, f.cwd, 'npm test', 'before')).resolves.toBeUndefined();
-  expect(await readFile(join(f.data, 'runs', `${f.runId}.unattended.json`), 'utf8')).not.toContain('changed');
+  expect(await readFile(runFilePath(f.data, f.runId, '.unattended.json'), 'utf8')).not.toContain('changed');
 });
 
 it('requires real stage artifacts before accepting success', async () => {
@@ -63,12 +64,11 @@ it('preserves artifact and question contracts when agent nodes are renamed', asy
     { id: 'judge', type: 'agent' as const, skill: 'cezar:adjudicator', verdicts: ['answered'] },
   ], edges: [{ from: 'judge.answered', to: 'clarify' }] };
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'discover', 'ready', false, graph)).rejects.toThrow();
-  await writeFile(f.path('question.md'), '# Q-004\norigin: clarify\nWhich matching rule?');
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'clarify', 'question', false, graph)).resolves.toBeUndefined();
+  const question = '# Q-004\norigin: clarify\nWhich matching rule?';
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'clarify', 'question', false, graph, question)).resolves.toBeUndefined();
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'judge', 'answered', false, graph)).rejects.toThrow();
-  await writeFile(f.path('clarification.md'), '# Q-004\norigin: clarify\nanswered: exact matching');
-  await writeFile(f.path('ledger.md'), '# Q-004 answered');
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'judge', 'answered', false, graph)).resolves.toBeUndefined();
+  const answer = '# Q-004\norigin: clarify\nanswered: exact matching, verified against the request';
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'judge', 'answered', false, graph, answer)).resolves.toBeUndefined();
 });
 it('rejects an incomplete context map rather than trusting probe ready', async () => {
   const f = await fixture();
@@ -90,21 +90,26 @@ it('requires context-map paths to locate existing files inside the task worktree
 });
 it('requires the original handoff Goal instead of a duplicated request report', async () => {
   const f = await fixture();
-  await writeFile(join(f.data, 'runs', `${f.runId}.handoff.md`), '# Handoff\n\n## Goal\n\n## Progress log\n');
+  await writeFile(runFilePath(f.data, f.runId, '.handoff.md'), '# Handoff\n\n## Goal\n\n## Progress log\n');
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'probe', 'ready')).rejects.toThrow('handoff Goal');
 });
-it('binds adjudication to the pending question and its origin, requiring an appended answer', async () => {
+it('persists full clarification responses without worktree question or ledger files', async () => {
   const f = await fixture();
-  await writeFile(f.path('question.md'), '# Q-001\norigin: design\nWhich matching rule?');
-  await guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question');
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'plan')).rejects.toThrow('origin');
+  const question = '# Q-001\norigin: design\nWhich matching rule?';
+  const answer = '# Q-001\norigin: design\n回答：使用精确匹配。\n依据：' + '原始需求明确要求精确匹配。'.repeat(500);
+  await guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, question);
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'plan', false, undefined, answer)).rejects.toThrow('origin');
   await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'answered')).rejects.toThrow();
-  await writeFile(f.path('clarification.md'), 'Q-001 / origin: design\n状态：answered\n证据：existing rule');
-  await writeFile(f.path('ledger.md'), '# Work ledger\nQ-001 answered');
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'answered')).resolves.toBeUndefined();
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question')).rejects.toThrow('already answered');
+  await guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'answered', false, undefined, answer);
+  const saved = JSON.parse(await readFile(runFilePath(f.data, f.runId, '.unattended-question.json'), 'utf8'));
+  expect(saved.answer).toBe(answer);
+  expect(saved.history[0]).toMatchObject({ q: 'Q-001', origin: 'design', status: 'answered', answer });
+  await expect(readFile(f.path('question.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(readFile(f.path('clarification.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(readFile(f.path('ledger.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, question)).rejects.toThrow('already answered');
 });
 it('rejects a caller that labels a question as coming from another stage', async () => {
-  const f = await fixture(); await writeFile(f.path('question.md'), '# Q-002\norigin: plan\nWhat target?');
-  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question')).rejects.toThrow('origin');
+  const f = await fixture();
+  await expect(guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, '# Q-002\norigin: plan\nWhat target?')).rejects.toThrow('origin');
 });

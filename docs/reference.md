@@ -332,7 +332,7 @@ trusted baseline fail closed rather than trusting mutable worktree copies.
 For a reproduced, isolated product test failure, baseline may specify `expectedFailure` with its
 nonzero `exitCode`, `outputIncludes`, complete normalized output SHA256 in `outputHash`, and `reason`.
 Unexpected or unstable output stays blocked. Final verify forbids this field and requires zero exits.
-Deep plans separately record task independence and observed subagent capability in `execution-input.json`;
+Deep plans return task independence and observed subagent capability in a `CEZ:EXECUTION` JSON line; the host persists it in `execution.json`;
 the host chooses SDD or deep native without lowering risk constraints. No policy agent is added.
 
 Continue on a failed managed workflow resumes its saved graph and frozen bundle, preserving loop

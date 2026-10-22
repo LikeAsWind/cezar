@@ -4277,7 +4277,7 @@ export class RunManager {
     if (record?.workflowDef?.graph && isUnattendedGraph(this.dataDir, runId, record.workflowDef.graph)) {
       try {
         continuationEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, continuationEnv);
-        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId))}`;
+        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId, record.graphState?.cursor, this.dataDir)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), record.graphState?.cursor, this.dataDir)}`;
       } catch (error) {
         this.failOwnedContinuation(runId, effectiveOwnerToken, error instanceof Error ? error.message : String(error));
         return;
@@ -4991,12 +4991,12 @@ export class RunManager {
         }
         let handoffFailure: string | undefined;
         if (managedUnattended && !failure && verdict) {
-          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph); }
+          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph, this.store.redactRunText(runId, lastTurn.text)); }
           catch (error) { handoffFailure = error instanceof Error ? error.message : String(error); }
         }
         const stepRec = this.store.getRun(runId)?.steps.find((s) => s.id === node.id);
         outputs.set(node.id, {
-          summary: stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
+          summary: managedUnattended ? stripVerdictMarker(lastTurn.text.trim()) : stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
           verdict: verdict ?? '',
           costUsd: stepRec?.costUsd ?? 0,
         });
@@ -5867,7 +5867,9 @@ export class RunManager {
     // `execute`. Expand before the chain/check/attachment prefixes so the leading slash still
     // matches; a leading `/name` that is not a known skill passes through byte-for-byte.
     userPrompt = expandRegistrySlashSkillText(userPrompt, state.skills ?? []);
-    if (chainNote) userPrompt = `${chainNote}\n\n---\n\n${userPrompt}`;
+    const stageGraph = this.store.getRun(runId)?.workflowDef?.graph;
+    const managedStage = stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph);
+    if (chainNote && !managedStage) userPrompt = `${chainNote}\n\n---\n\n${userPrompt}`;
     // A commander recovered after a restart opens its first session holding whatever its children
     // reported while it was gone (spec Q7). Prepended and cleared here, after the slash expansion
     // so a leading `/skill` still matched, and before the failure/attachment suffixes.
@@ -5876,7 +5878,9 @@ export class RunManager {
     const treeBlocks = [treeReports, treeInbox].filter((block): block is string => Boolean(block));
     if (treeBlocks.length) userPrompt = `${treeBlocks.join('\n\n')}\n\n---\n\n${userPrompt}`;
     if (checkFailure) {
-      userPrompt += `\n\nA verification command failed after the previous attempt. Fix the cause. Failing output:\n\n${checkFailure}`;
+      userPrompt += managedStage
+        ? `\n\n本节点上次检查失败证据（按当前节点职责处理）：\n${checkFailure}`
+        : `\n\nA verification command failed after the previous attempt. Fix the cause. Failing output:\n\n${checkFailure}`;
     }
     if (images?.length) {
       emit({
@@ -6152,13 +6156,20 @@ export class RunManager {
 
     const stepBackend = step.runner ?? taskBackend;
     let probe: Awaited<ReturnType<typeof prepareUnattendedProbe>> | undefined;
-    const stageGraph = this.store.getRun(runId)?.workflowDef?.graph;
     if (step.skill === 'cezar:project-probe' && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
       try {
         probe = await prepareUnattendedProbe(this.dataDir, runId, state.cwd, stepBackend,
           stageGraph.nodes.some(node => node.type === 'check' && workflowActionOf(node.command) === 'verify'),
           this.store.getRun(runId)?.titleSummary?.trim() || this.store.getRun(runId)?.task || this.store.getRun(runId)?.title || 'task');
-        userPrompt += `\n\n${probe.instructions}`;
+        // This stage receives one compact host input, not the generic chain/DONE preamble
+        // or the template's duplicate boundary instructions. Keep actual attachments/updates.
+        userPrompt = [
+          probe.instructions,
+          ...treeBlocks,
+          ...(checkFailure ? [`上次检查失败证据（仅用于探测，不在本阶段修复）：\n${checkFailure}`] : []),
+          ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
+          ...((this.store.getRun(runId)?.queuedMessages ?? []).map(message => message.text)),
+        ].join('\n\n');
       } catch (error) { return error instanceof Error ? error.message : String(error); }
     }
     // Normalise the selected model to canonical `provider/model` and back to the
@@ -6218,8 +6229,8 @@ export class RunManager {
     if (!probe && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
       try {
         launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
-        userPrompt += `\n\n${artifactInstructions(state.cwd, runId)}`;
-        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId))}`;
+        userPrompt += `\n\n${artifactInstructions(state.cwd, runId, step.id, this.dataDir)}`;
+        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir)}`;
       }
       catch (error) { return error instanceof Error ? error.message : String(error); }
     }

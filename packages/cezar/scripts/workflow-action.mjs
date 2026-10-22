@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, realpath, appendFile, stat, link, unlink } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, realpath, appendFile, stat, link, unlink, mkdtemp, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { existsSync, openSync, closeSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve, relative, isAbsolute, delimiter } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
+import { tmpdir } from 'node:os';
 import { z } from 'zod';
 import { artifactDirectory, artifactNames, artifactPaths, newArtifactPaths } from './workflow/artifacts.mjs';
 export { artifactDirectory } from './workflow/artifacts.mjs';
@@ -153,23 +154,24 @@ export async function checkDependencies(root, plan) {
 async function checkEnvironment(root, paths, plan, action, report) {
   const checks = [];
   for (const spec of plan.environmentChecks) {
-    const log = `environment-${action}-${checks.length + 1}.log`;
+    const temporary = await mkdtemp(join(tmpdir(), 'cez-environment-'));
+    const log = join(temporary, 'output.tmp');
     const started = Date.now();
     let result;
     try {
       const cwd = await executionDirectory(root, spec);
-      result = await commandResult(formatCommand(spec), cwd, paths.file(log), 60_000, executionEnvironment(plan, spec));
+      result = await commandResult(formatCommand(spec), cwd, log, 60_000, executionEnvironment(plan, spec));
     } catch (error) {
-      await writeFile(paths.file(log), `${error instanceof Error ? error.message : String(error)}\n`);
+      await writeFile(log, `${error instanceof Error ? error.message : String(error)}\n`);
       result = { command: formatCommand(spec), exitCode: 1, durationMs: Date.now() - started, timedOut: false, cancelled: false };
     }
-    const output = stripVTControlCharacters(await readFile(paths.file(log), 'utf8')).replaceAll('\r\n', '\n');
+    const output = stripVTControlCharacters(await readFile(log, 'utf8')).replaceAll('\r\n', '\n');
     const matched = result.exitCode === 0 && spec.expectedOutput.every(value => output.includes(value));
-    checks.push({ ...result, spec, matched, output: output.slice(0, 4000), ...(matched ? {} : { log }) });
+    checks.push({ ...result, spec, matched, output: output.slice(0, 4000), ...(matched ? {} : { diagnostics: diagnostics(output) }) });
     report.environment = { checks };
     await save(paths.file(`${action}.json`), report);
-    if (matched) await unlink(paths.file(log));
-    if (!matched) throw new Error(`environment check failed or expected output missing; read ${log}`);
+    await rm(temporary, { recursive: true, force: true });
+    if (!matched) throw new Error(`environment check failed or expected output missing; read ${action}.json diagnostics`);
   }
 }
 
@@ -220,15 +222,19 @@ export async function initialize(root, runId, base, title = 'task') {
   catch (error) { if (error.message !== 'Run artifacts have not been initialized') throw error; }
   for (;;) {
     const paths = newArtifactPaths(root, runId, new Date(), title);
-    for (const directory of [paths.directory, dirname(paths.file('run.json')), dirname(paths.file('design.md')), dirname(paths.file('plan.md')), dirname(paths.file('baseline.json'))]) {
+    for (const directory of [paths.stateDirectory, paths.directory, dirname(paths.file('probe.md')), dirname(paths.file('run.json')), dirname(paths.file('design.md')), dirname(paths.file('plan.md')), dirname(paths.file('baseline.json'))]) {
       await mkdir(directory, { recursive: true });
-      await inWorktree(root, directory);
+      if (directory !== paths.stateDirectory && directory !== dirname(paths.file('run.json'))) await inWorktree(root, directory);
     }
     const path = paths.file('run.json');
     const data = { schemaVersion: 1, runId, base, root: await realpath(root), topic: paths.topic, artifactDate: paths.date, artifactPrefix: paths.prefix };
     const temporary = `${path}.${randomUUID()}.tmp`;
     try {
       await save(temporary, data);
+      const reservations = join(root, '.ai/cezar/artifact-topics');
+      await mkdir(reservations, { recursive: true });
+      try { await writeFile(join(reservations, '.gitignore'), '*\n', { flag: 'wx' }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+      await writeFile(join(reservations, paths.prefix), runId, { flag: 'wx' });
       // Publish complete metadata exclusively so concurrent same-title tasks cannot overwrite it.
       await link(temporary, path);
       return data;
@@ -283,11 +289,8 @@ export async function commandResult(command, cwd, logPath, timeoutMs = 900_000, 
 
 export async function captureDiff(root, runId, base) {
   const paths = artifactPaths(root, runId);
-  const logDirectory = join(paths.directory, 'logs');
-  const logs = existsSync(logDirectory) ? readdirSync(logDirectory)
-    .filter(name => name.startsWith(paths.prefix + '-') && /^(?:baseline|verify|environment-baseline|environment-verify)-\d+\.log$/.test(name.slice(paths.prefix.length + 1))) : [];
-  const excluded = [...artifactNames.map(name => paths.relative(name)),
-    ...logs.map(name => `${artifactDirectory}/logs/${name}`), `${artifactDirectory}/logs/${paths.prefix}-tasks`];
+  const ownState = relative(root, paths.stateDirectory).replaceAll('\\', '/');
+  const excluded = [...artifactNames.map(name => paths.relative(name)), `.ai/cezar/artifact-topics/${paths.prefix}`, ...(!ownState.startsWith('../') && !isAbsolute(ownState) ? [ownState] : [])].filter(path => !path.startsWith('../'));
   const selection = ['.', ...excluded.map(path => `:(exclude,literal)${path}`)];
   const tracked = spawnSync('git', ['diff', '--no-ext-diff', '--binary', base, '--', ...selection], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (tracked.status !== 0) throw new Error(tracked.stderr || 'cannot capture task diff');
@@ -308,10 +311,32 @@ export function testExecutionEvidence(spec, output) {
   const program = basename(spec.file.replaceAll('\\', '/')).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
   if (spec.kind !== 'test' || !['mvn', 'mvnw'].includes(program)) return;
   const summaries = [...output.matchAll(/Tests run:\s*(\d+),\s*Failures:\s*\d+,\s*Errors:\s*\d+,\s*Skipped:\s*(\d+)/g)];
-  if (summaries.some(match => Number(match[1]) > Number(match[2]))) return { status: 'executed' };
+  const modules = new Map();
+  let module = 'project';
+  for (const line of output.split(/\r?\n/)) {
+    const name = /--- .*surefire[^@]*@ ([^ ]+) ---/.exec(line)?.[1];
+    if (name) module = name;
+    const counts = /Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/.exec(line);
+    if (counts) modules.set(module, { tests: +counts[1], failures: +counts[2], errors: +counts[3], skipped: +counts[4] });
+  }
+  const counts = [...modules.values()].reduce((total, row) => ({ tests: total.tests + row.tests, failures: total.failures + row.failures, errors: total.errors + row.errors, skipped: total.skipped + row.skipped }), { tests: 0, failures: 0, errors: 0, skipped: 0 });
+  if (summaries.some(match => Number(match[1]) > Number(match[2]))) return { status: 'executed', counts };
   if (/Tests are skipped\b/i.test(output) || summaries.some(match => Number(match[2]) > 0)) return { status: 'skipped' };
   if (summaries.length || /No tests (?:to run|were executed)/i.test(output)) return { status: 'not-executed' };
   return { status: 'unverified' };
+}
+
+function diagnostics(output) {
+  const lines = output.split(/\r?\n/);
+  const indices = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    if (/\[ERROR\]|Caused by:|Exception|FAILURE|FAILED|\berror[: ]/i.test(lines[i])) {
+      for (let j = Math.max(0, i - 1); j < Math.min(lines.length, i + 8); j++) indices.add(j);
+    }
+  }
+  const errors = [...indices].sort((a, b) => a - b).map(i => lines[i].slice(0, 1000)).join('\n').slice(0, 8000);
+  const tail = lines.slice(-20).map(line => line.slice(0, 1000)).join('\n').slice(-4000);
+  return [errors, tail].filter(Boolean).join('\n').slice(0, 12_000);
 }
 
 export async function main(action, title = 'task') {
@@ -334,7 +359,7 @@ export async function main(action, title = 'task') {
   try { context = await readContext(root, runId); }
   catch (error) {
     const handoff = process.env.CEZ_HANDOFF_FILE;
-    if (action !== 'blocked' || !handoff || basename(handoff) !== `${runId}.handoff.md`) throw error;
+    if (action !== 'blocked' || !handoff || (basename(handoff) !== 'handoff.md' || basename(dirname(handoff)) !== runId)) throw error;
     await appendFile(handoff, `\n\n## Workflow blocked\n\nArtifact context unavailable: ${error.message}\nNo report was written into an unverified worktree. Resolve initialization or identity before continuing; this is not a successful run.\n`);
     console.log('Blocker saved to the host handoff; artifact context unavailable.');
     return;
@@ -342,8 +367,8 @@ export async function main(action, title = 'task') {
   const paths = artifactPaths(root, runId);
   if (action === 'blocked') {
     const handoff = process.env.CEZ_HANDOFF_FILE;
-    if (handoff && basename(handoff) === `${runId}.handoff.md`) {
-      const runs = JSON.parse(await readFile(join(dirname(handoff), '..', 'runs.json'), 'utf8'));
+    if (handoff && basename(handoff) === 'handoff.md' && basename(dirname(handoff)) === runId) {
+      const runs = JSON.parse(await readFile(join(dirname(handoff), '..', '..', 'runs.json'), 'utf8'));
       const run = runs.find(run => run.id === runId);
       if (!run?.worktreePath || await realpath(run.worktreePath) !== await realpath(root)) throw new Error('Blocker evidence belongs to another run or worktree');
       const transition = [...(run.graphState?.taken ?? [])].reverse().find(edge => edge.endsWith('->blocked-report'));
@@ -364,15 +389,15 @@ export async function main(action, title = 'task') {
     return;
   }
   if (action === 'execution') {
-    const decision = executionDecision(await json(paths.file('execution-input.json')));
-    await save(paths.file('execution.json'), decision);
+    const { input } = await json(paths.file('execution.json'));
+    const decision = executionDecision(input);
+    await save(paths.file('execution.json'), { ...decision, input });
     console.log(decision.mode);
     return;
   }
   if (action === 'baseline' || action === 'verify') {
     if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Node 20+ is required');
-    const environment = await json(paths.file('environment.json'));
-    const plan = await validationPlan(root, action === 'baseline' ? environment : await json(paths.file('validation-plan.json')));
+    const plan = await validationPlan(root, await json(paths.file(action === 'baseline' ? 'environment.json' : 'validation-plan.json')));
     if (action === 'baseline') await save(paths.file('validation-plan.json'), plan);
     const commands = action === 'baseline' ? [...plan.setup, ...plan.baseline] : plan.verify;
     const results = [];
@@ -386,20 +411,22 @@ export async function main(action, title = 'task') {
       }
       const cwd = await executionDirectory(root, spec);
       const command = formatCommand(spec);
-      const log = `${action}-${results.length + 1}.log`;
-      const result = await commandResult(command, cwd, paths.file(log), 900_000, executionEnvironment(plan, spec));
+      const temporary = await mkdtemp(join(tmpdir(), 'cez-validation-'));
+      const log = join(temporary, 'output.tmp');
+      const result = await commandResult(command, cwd, log, 900_000, executionEnvironment(plan, spec));
       const expected = action === 'baseline' ? spec.expectedFailure : undefined;
-      const output = stripVTControlCharacters(await readFile(paths.file(log), 'utf8')).replaceAll('\r\n', '\n');
+      const output = stripVTControlCharacters(await readFile(log, 'utf8')).replaceAll('\r\n', '\n');
       const outputHash = createHash('sha256').update(output).digest('hex');
       const testExecution = testExecutionEvidence(spec, output);
       const testsMissing = testExecution && testExecution.status !== 'executed';
       const knownFailure = expected && !result.timedOut && !result.cancelled && !result.spawnError && result.exitCode === expected.exitCode && outputHash === expected.outputHash && expected.outputIncludes.every(fragment => output.includes(fragment));
       const classification = testsMissing && result.exitCode === 0 ? 'tests-not-executed' : result.exitCode === 0 ? 'passed' : knownFailure ? 'known-product-failure' : 'unexpected-failure';
-      results.push({ ...result, spec, log, classification, outputHash, ...(testExecution ? { testExecution } : {}) });
+      results.push({ ...result, spec, classification, outputHash, ...(testExecution ? { testExecution } : {}), ...(classification === 'passed' ? {} : { diagnostics: diagnostics(output) }) });
+      await rm(temporary, { recursive: true, force: true });
       console.log(`${command}: exit ${result.exitCode} (${result.durationMs}ms)`);
       await save(paths.file(`${action}.json`), report);
-      if (result.exitCode !== 0 && !knownFailure) throw new Error(`${action} failed; read ${log}`);
-      if (testsMissing) throw new Error(`${action}: Maven tests ${testExecution.status}; build success is not test evidence. Read ${log} and the Surefire skip configuration.`);
+      if (result.exitCode !== 0 && !knownFailure) throw new Error(`${action} failed; read ${action}.json diagnostics`);
+      if (testsMissing) throw new Error(`${action}: Maven tests ${testExecution.status}; build success is not test evidence. Read ${action}.json diagnostics and the Surefire skip configuration.`);
     }
     if (action === 'verify') {
       const diffHash = await captureDiff(root, runId, context.base);

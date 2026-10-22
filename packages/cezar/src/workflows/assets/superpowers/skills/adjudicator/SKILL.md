@@ -15,7 +15,7 @@ description: Resolve one blocked question using project evidence, independent re
 
 ## 执行
 
-1. **定位问题**：从宿主提供的 `CEZ_HANDOFF_FILE` 的 `## Goal` 读取原始需求，再根据宿主产物映射读取日期前缀的 `question.md`、相关 `probe.md`、`context-map.jsonl` 和已有 `clarification.md`，确认 Q 编号、origin、原问题、已有 AC 或用户原始表述及阻塞原因。产物位于 `docs/superpowers/` 下平级的 `probe/`、`specs/`、`plans/`、`logs/`；不得猜测路径或混用其他任务产物。
+1. **定位问题**：从宿主提供的 `CEZ_HANDOFF_FILE` 的 `## Goal` 读取原始需求，从本节点输入读取当前问题和历史裁决，再按宿主映射读取相关 `probe.md`、`context-map.jsonl`，确认 Q 编号、origin、原问题、已有 AC 或用户原始表述及阻塞原因。探测、设计和计划文档位于 `docs/superpowers/`，机器验证报告由宿主提供路径；不得猜测路径或混用其他任务产物。
 
 2. **核实项目事实**：利用地图定位相关源码、测试、契约与决策，按需定向核实；低置信度或过期记录仅作线索。区分用户要求、已接受决策、仓库约束与当前行为；现有实现可能是缺陷，不能自动视为需求。
 
@@ -28,16 +28,18 @@ description: Resolve one blocked question using project evidence, independent re
 
    存在不影响结论的未知事项时，可以回答并说明限制，不必阻塞。
 
-5. **环境兼容**：仅当当前问题涉及编译、测试或工具链版本时，读取宿主 baseline 冻结的 `validation-plan.json`，以及相关 `baseline.json`、`verify.json` 中的 `environment.checks` 及失败检查日志；只读取已生成且与问题相关的报告。区分 `targetVersion`、`buildVersion`、`runtimeVersion`、`constraints`；null 为未知。文件缺失不阻塞无关的产品澄清；只有回答当前问题必须依赖缺失的环境证据时，才记录具体缺口并返回 `blocked`，不猜测或重做环境探测。不得推断部署环境，不得修改冻结检查、预期输出或目标约束以绕过失败。
+5. **环境兼容**：仅当当前问题涉及编译、测试或工具链版本时，读取宿主 baseline 冻结的 `validation-plan.json`，以及相关 `baseline.json`、`verify.json` 中的 `environment.checks` 及必要失败诊断；只读取已生成且与问题相关的报告。区分 `targetVersion`、`buildVersion`、`runtimeVersion`、`constraints`；null 为未知。文件缺失不阻塞无关的产品澄清；只有回答当前问题必须依赖缺失的环境证据时，才记录具体缺口并返回 `blocked`，不猜测或重做环境探测。不得推断部署环境，不得修改冻结检查、预期输出或目标约束以绕过失败。
 
 6. **记录复用**：同一 Q 优先检查历史结论；仅在问题、约束和关键证据仍有效时复用。新证据改变结论时追加修订并注明替代关系，不覆盖历史，不将机器裁决提升为用户要求。
 
 ## 输出与边界
 
-向宿主映射指定的 `clarification.md` 追加：
+在最终回复中完整输出以下记录；宿主会持久保存并显示在会话及图节点输出中：
 
 ```text
-Q / origin / 已有 AC 或用户原始表述
+Q-<编号>
+origin: <调用节点ID>
+已有 AC 或用户原始表述：
 问题：
 结论类型：事实 | 机器裁决 | 信息不足
 回答：
@@ -47,13 +49,13 @@ Q / origin / 已有 AC 或用户原始表述
 状态：answered | blocked
 ```
 
-按现有契约同步追加 `ledger.md`。
+问题、历史裁决和回答由宿主管理；不要创建 question.md、clarification.md 或额外 ledger.md。重新进入时复用宿主注入的历史记录。
 
-仅当证据充分、裁决合法且必要记录写入成功时，将记录状态写为 `answered`。最终回复末尾只输出一个裁决标记：
+仅当证据充分、裁决合法且已在最终回复中完整给出结论与依据时，将记录状态写为 `answered`。最终回复末尾只输出一个裁决标记：
 
 - `origin: design`：`CEZ:VERDICT answered`。
 - origin 为 `fast-plan`、`plan`、`execute-fast`、`execute-standard`、`execute-deep`、`execute-deep-native` 或 `fix`：`CEZ:VERDICT <origin>`，将 `<origin>` 替换为问题中的实际值。
-- 问题未解决、裁决越权或必要记录写入失败：`CEZ:VERDICT blocked`，在标记前注明原因及恢复条件。
+- 问题未解决、裁决越权或回答缺少必要证据：`CEZ:VERDICT blocked`，在标记前注明原因及恢复条件。
 
 记录中的 `answered` 是问题状态，不是额外的路由标记；不得输出多个 `CEZ:VERDICT`。
 

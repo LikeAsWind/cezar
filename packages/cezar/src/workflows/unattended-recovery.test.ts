@@ -28,8 +28,8 @@ it('bounds both deep executors to ninety minutes without changing other stages',
     expect(workflowGraphNodeSchema.parse(node)).toHaveProperty('timeoutMs', 90 * 60_000);
     expect(workflowStepDefSchema.parse(graphToSteps(graph).find(step => step.id === id))).toHaveProperty('timeoutMs', 90 * 60_000);
     if (node?.type !== 'agent') throw Error('missing executor');
-    expect(node.prompt).toContain('Preserve the full build/test output');
-    expect(node.prompt).toContain('Before rerunning');
+    expect(node.prompt).toContain('progress.md');
+    expect(node.prompt).toContain('完成所有 Task 后返回 complete');
   }
   expect(graph.nodes.find(node => node.id === 'design')).not.toHaveProperty('timeoutMs');
 });

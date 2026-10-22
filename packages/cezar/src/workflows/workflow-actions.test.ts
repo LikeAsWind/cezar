@@ -1,8 +1,11 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
-import { workflowActionCommand, workflowActionOf } from './workflow-actions.ts';
+import { WORKFLOW_ACTION_SCRIPT, workflowActionCommand, workflowActionOf } from './workflow-actions.ts';
 import { unattendedWorkflows } from './superpowers-bundle.ts';
 import { BUILTIN_SUPERPOWERS_BUNDLE } from '../superpowers-update.ts';
 import { guardUnattendedCheck, isUnattendedGraph } from './unattended-guards.ts';
@@ -29,10 +32,10 @@ it('protects a copied graph with renamed nodes and no Superpowers pin', async ()
   try {
     const data = join(root, 'host'), cwd = join(root, 'task');
     await mkdir(join(data, 'runs'), { recursive: true });
-    const paths = newArtifactPaths(cwd, 'generic');
+    const paths = newArtifactPaths(cwd, 'generic', new Date(), 'task', join(data, 'runs/generic'));
     await mkdir(join(paths.directory, 'probe'), { recursive: true });
     await mkdir(join(paths.directory, 'logs'), { recursive: true });
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'generic', root: await realpath(cwd), artifactPrefix: paths.prefix }));
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'generic', root: await realpath(cwd), artifactPrefix: paths.prefix }));
     const graph = { nodes: [{ id: 'custom-validation', type: 'check' as const, command: workflowActionCommand('verify') }], edges: [] };
     expect(isUnattendedGraph(data, 'generic', graph)).toBe(true);
     await writeFile(paths.file('validation-plan.json'), '{}');
@@ -40,7 +43,7 @@ it('protects a copied graph with renamed nodes and no Superpowers pin', async ()
     await guardUnattendedCheck(data, 'generic', cwd, workflowActionCommand('verify'), 'before');
     await writeFile(paths.file('validation-plan.json'), '{"changed":true}');
     await expect(guardUnattendedCheck(data, 'generic', cwd, workflowActionCommand('verify'), 'before')).rejects.toThrow('validation plan');
-    expect(await readFile(join(data, 'runs/generic.unattended.json'), 'utf8')).not.toContain('changed');
+    expect(await readFile(runFilePath(data, 'generic', '.unattended.json'), 'utf8')).not.toContain('changed');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -81,3 +84,23 @@ it('loads a copied YAML template through the ordinary project workflow loader', 
     expect(copied.steps.filter(step => step.command).every(step => step.command!.includes('scripts/workflow-action.mjs'))).toBe(true);
   } finally { await rm(root, { recursive: true, force: true }); }
 }, 15_000);
+
+
+it('records blocked evidence using the run index above the task directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-blocked-directory-'));
+  try {
+    const data = join(root, 'host'), cwd = join(root, 'task'), runId = 'blocked-task';
+    await mkdir(join(data, 'runs', runId), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    const paths = newArtifactPaths(cwd, runId, new Date(), 'task', join(data, 'runs', runId));
+    await mkdir(join(paths.directory, 'probe'), { recursive: true });
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId, root: await realpath(cwd), artifactPrefix: paths.prefix }));
+    const handoff = runFilePath(data, runId, '.handoff.md');
+    await writeFile(handoff, '# Handoff\n');
+    await writeFile(join(data, 'runs.json'), JSON.stringify([{ id: runId, worktreePath: cwd, graphState: { taken: ['design.blocked->blocked-report'], outputs: { design: { summary: 'Missing requirement evidence' } } } }]));
+    await promisify(execFile)(process.execPath, [WORKFLOW_ACTION_SCRIPT, 'blocked'], {
+      cwd, env: { ...process.env, CEZ_RUN_ID: runId, CEZ_TASK_ID: runId, CEZ_HANDOFF_FILE: handoff }, windowsHide: true,
+    });
+    expect(await readFile(handoff, 'utf8')).toContain('Missing requirement evidence');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

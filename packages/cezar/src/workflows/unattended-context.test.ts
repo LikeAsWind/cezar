@@ -1,8 +1,8 @@
 import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
-import { unattendedContext } from './unattended-probe.ts';
+import { artifactInstructions, unattendedContext } from './unattended-probe.ts';
 import { newArtifactPaths } from '../../scripts/workflow/artifacts.mjs';
 
 it('hands existing map contents, selected tools and progress to the next node', async () => {
@@ -11,18 +11,49 @@ it('hands existing map contents, selected tools and progress to the next node', 
     const paths = newArtifactPaths(root, 'context-run');
     await mkdir(join(paths.directory, 'probe'), { recursive: true });
     await mkdir(join(paths.directory, 'logs'), { recursive: true });
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'context-run', root: await realpath(root), artifactPrefix: paths.prefix }));
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'context-run', root: await realpath(root), artifactPrefix: paths.prefix }));
     await writeFile(paths.file('context-map.jsonl'), JSON.stringify({ path: 'src/Counter.java', summary: 'Known failure counter', symbols: ['recordFailure'], dependsOn: [] }) + '\n');
-    await writeFile(paths.file('environment.json'), JSON.stringify({ toolchains: [{ name: 'jdk8', buildVersion: '1.8.0_202', execution: { javaHome: '/selected/jdk8' } }] }));
-    await writeFile(paths.file('ledger.md'), 'Task 1 code saved; test execution unresolved.');
+    await writeFile(paths.file('validation-plan.json'), JSON.stringify({ toolchains: [{ name: 'jdk8', buildVersion: '1.8.0_202', execution: { javaHome: '/selected/jdk8' } }] }));
     await writeFile(paths.file('baseline.json'), JSON.stringify({ results: [{ spec: { kind: 'test' }, exitCode: 0 }] }));
     const text = await unattendedContext(root, 'context-run');
     expect(text).toContain('src/Counter.java');
     expect(text).toContain('recordFailure');
     expect(text).toContain('/selected/jdk8');
-    expect(text).toContain('Task 1 code saved');
     expect(text).toContain('unverified');
     expect(text).toContain('reference data');
+    const design = await unattendedContext(root, 'context-run', undefined, 'design');
+    expect(design).not.toContain(paths.relative('context-map.jsonl'));
+    expect(design).not.toContain('"runId"');
+    expect(design).not.toContain('"head"');
+    expect(design).not.toContain('"clarification": []');
+    expect(design).toBe('');
+    expect(design).not.toContain('src/Counter.java');
+    expect(design).not.toContain('/selected/jdk8');
+    expect(design).not.toContain('"verification"');
+    const delivery = await unattendedContext(root, 'context-run', undefined, 'deliver');
+    expect(delivery).not.toContain('src/Counter.java');
+    expect(delivery).not.toContain('/selected/jdk8');
+    expect(delivery).toBe('');
+    const execution = await unattendedContext(root, 'context-run', undefined, 'execute-fast');
+    expect(execution).toBe('');
+    const recovery = await unattendedContext(root, 'context-run', { graphState: { outputs: { 'execute-fast': { summary: 'Task 1 reviewed' } } } } as never, 'execute-fast');
+    expect(recovery).toContain('Task 1 reviewed');
+    expect(recovery).not.toContain('/selected/jdk8');
+    const planningPaths = artifactInstructions(root, 'context-run', 'fast-plan');
+    expect(planningPaths).toContain(`实现计划（本节点生成，恢复时复用）：${paths.relative('plan.md')}`);
+    expect(planningPaths).toContain(`源码定位地图：${paths.relative('context-map.jsonl')}`);
+    expect(planningPaths).not.toContain('"purpose"');
+    expect(planningPaths).not.toContain('"mode"');
+    expect(planningPaths).not.toContain('"exists"');
+    expect(artifactInstructions(root, 'context-run', 'execute-fast')).toContain('实现计划（执行前读取）：');
+    expect(artifactInstructions(root, 'context-run', 'adjudicator')).toContain('编译测试命令与版本约束（环境问题时读取）：');
+    expect(artifactInstructions(root, 'context-run', 'review')).toContain('修复前代码差异（复查时读取）：');
+    expect(artifactInstructions(root, 'context-run', 'fix')).toContain('修复前代码差异（修改前保存）：');
+    const designPaths = artifactInstructions(root, 'context-run', 'design');
+    expect(designPaths).toContain('validation-plan.json');
+    expect(designPaths).not.toContain('execution-input.json');
+    expect(designPaths).not.toContain('fix-before.diff');
+    expect(artifactInstructions(root, 'context-run', 'deliver')).not.toContain('question.md');
     await mkdir(join(paths.directory, 'plans'), { recursive: true });
     await writeFile(paths.file('plan.md'), 'Modify src/Counter.java');
     await writeFile(paths.file('context-map.jsonl'), [
@@ -32,7 +63,7 @@ it('hands existing map contents, selected tools and progress to the next node', 
     const bounded = await unattendedContext(root, 'context-run');
     expect(bounded).toContain('Relevant counter');
     expect(bounded).toContain('"omittedMapEntries": 1');
-    await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'another-run', root: await realpath(root), artifactPrefix: paths.prefix }));
+    await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: 'another-run', root: await realpath(root), artifactPrefix: paths.prefix }));
     await expect(unattendedContext(root, 'context-run')).rejects.toThrow();
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 });

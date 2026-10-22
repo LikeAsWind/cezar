@@ -17,7 +17,7 @@ it('routes probe evidence through host commands and conditions without an agent 
   expect(route.command).toContain('workflow-action.mjs');
   expect(route.command).toMatch(/ route$/);
   expect(route.command).not.toContain('__');
-  expect(workflow.graph!.nodes.find(node => node.id === 'design')).toMatchObject({ prompt: expect.stringContaining("rerun '") });
+  expect(workflow.graph!.nodes.find(node => node.id === 'design')).toMatchObject({ prompt: expect.stringContaining(' route') });
   const branch = workflow.graph!.nodes.find(node => node.id === 'route-fast');
   expect(branch).toMatchObject({ type: 'if', condition: { kind: 'output', ref: 'route.output', op: 'equals', value: 'fast' } });
   expect(workflow.graph!.edges).toEqual(expect.arrayContaining([
@@ -58,7 +58,7 @@ it('injects original role content directly, without an entry skill or adapter re
     const roleBody = original.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
     expect(skill.body.startsWith(roleBody)).toBe(true);
     expect(skill.body).toContain('orchestration exceptions');
-    expect(skill.body).toContain('Independent builder review replaces interactive design approval');
+    if (step.id === 'design') expect(skill.body).toContain('Independent builder review replaces interactive design approval');
     expect(step.prompt).not.toContain('adapters/');
     expect(step.prompt).not.toMatch(/__[A-Z_]+__/);
     expect(step.prompt).not.toContain('Read adapters');
@@ -121,7 +121,7 @@ it('defines probe as impact discovery and a reusable file-context map, without g
   expect(probe.body).toContain('dependsOn');
   expect(probe.body).toContain('不生成澄清问卷或设计方案');
   expect(probe.body).toContain('不执行准备、编译或测试');
-  expect(unattendedSkills().find(s => s.name === 'superpowers:writing-plans')?.body).toContain('Do not repeat a full tree traversal');
+  expect(unattendedSkills().find(s => s.name === 'superpowers:writing-plans')?.body).toContain('冻结验证约束纳入计划');
 });
 
 
@@ -141,4 +141,43 @@ it('packages adjudicator as a standard skill aligned with probe context and froz
   expect(raw).not.toContain('environment-verify.json');
   expect(raw).toContain('已有 AC 或用户原始表述');
   expect(raw).toContain('## 输出与边界');
+});
+
+
+it('keeps host handoff instructions local to each original role', () => {
+  const skills = unattendedSkills();
+  const planning = skills.find(skill => skill.name === 'superpowers:writing-plans')!;
+  const review = skills.find(skill => skill.name === 'superpowers:code-reviewer')!;
+  const exceptions = (body: string) => body.split('# cezar unattended orchestration exceptions')[1]!;
+  expect(exceptions(planning.body)).not.toContain('expectedFailure');
+  expect(exceptions(review.body)).not.toContain('execution-input.json');
+  expect(exceptions(review.body)).not.toContain('三十分钟');
+});
+
+it('keeps stage prompts focused and marks reviewed tasks in the plan', async () => {
+  const { UNATTENDED_TEMPLATE } = await import('./templates/unattended.ts');
+  const design = UNATTENDED_TEMPLATE.nodes.find(node => node.id === 'design');
+  expect(design?.type === 'agent' && design.prompt).not.toContain('依官方三类问题原则');
+  for (const node of UNATTENDED_TEMPLATE.nodes) {
+    if (node.type === 'agent' && node.id.startsWith('execute-')) {
+      expect(node.prompt).toContain('Task 审核通过后');
+      expect(node.prompt).toContain('plan.md');
+      expect(node.prompt).toContain('[x]');
+    }
+  }
+});
+
+it('publishes only after seal and requests the configured GitLab reviewer after an MR exists', async () => {
+  const { UNATTENDED_TEMPLATE: graph } = await import('./templates/unattended.ts');
+  expect(graphIssues(graph)).toEqual([]);
+  expect(graph.nodes.find(node => node.id === 'publish-mr')).toMatchObject({ type: 'github.draft-pr' });
+  expect(graph.nodes.find(node => node.id === 'request-review')).toMatchObject({ type: 'github.pr-update', reviewers: ['guohongwei'] });
+  expect(graph.edges).toEqual(expect.arrayContaining([
+    { from: 'seal.pass', to: 'publish-mr' },
+    { from: 'publish-mr.created', to: 'request-review' },
+    { from: 'publish-mr.failed', to: 'publication-failed' },
+    { from: 'request-review.done', to: 'done' },
+    { from: 'request-review.failed', to: 'publication-failed' },
+  ]));
+  expect(graph.edges).not.toContainEqual({ from: 'seal.pass', to: 'done' });
 });
