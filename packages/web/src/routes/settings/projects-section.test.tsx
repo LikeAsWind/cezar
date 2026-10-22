@@ -229,7 +229,7 @@ describe('Global settings → Projects', () => {
     renderProjects()
     await waitFor(() => expect(rows()).toHaveLength(3))
     expect(row('shop-backend')?.textContent).toContain('/home/piotr/cezar/projects/shop-backend')
-    expect(row('shop-backend')?.textContent).toContain('checkout')
+    expect(row('shop-backend')?.textContent).toContain('Cloned')
     // The `missing` row (step 3.3 greys it out in the sidebar) is actionable HERE.
     expect(row('old-spike')?.textContent).toContain('folder not found')
     expect(removeButton('old-spike')?.disabled).toBe(false)
