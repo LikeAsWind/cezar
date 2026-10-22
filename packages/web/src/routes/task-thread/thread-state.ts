@@ -1,5 +1,5 @@
 import { t } from '@/lib/i18n'
-import { agentLaunchEventSchema, type StepInput } from '@open-mercato/cezar-api-client'
+import { workflowClarificationEventSchema, type WorkflowClarification, agentLaunchEventSchema, type StepInput } from '@open-mercato/cezar-api-client'
 import type { RunEvent, RunStatus } from '@open-mercato/cezar-api-client'
 import { runItemKey } from '@/api/run-events'
 import {
@@ -44,6 +44,7 @@ export interface ThreadNote {
   text: string
   tone: 'dim' | 'danger'
   launch?: StepInput
+  clarification?: WorkflowClarification
 }
 
 /** An image the run persisted (v1 `image` line: served from `/api/runs/:id/images/…`). */
@@ -360,6 +361,7 @@ function planFromTodos(input: unknown): PlanEntry[] | undefined {
 
 export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = {}): ThreadState {
   const turns: DraftTurn[] = []
+  const clarifications = new Map<string, ThreadNote>()
   /** stepId:itemId → live item. Runner sessions restart ids at `item_1`, while every current
    *  persisted event is stamped with its workflow step. Old recordings without a step id keep
    *  the historical bare-id lookup semantics. */
@@ -567,6 +569,20 @@ export function reduceThread(events: RunEvent[], options: ThreadReduceOptions = 
       }
 
       // ---- lines that always render -------------------------------------------------------
+      case 'workflow-clarification': {
+        const parsed = workflowClarificationEventSchema.safeParse(event)
+        if (!parsed.success) break
+        const clarification = parsed.data.clarification
+        const key = `${clarification.origin}:${clarification.q}:${clarification.round}`
+        const previous = clarifications.get(key)
+        if (previous) previous.clarification = clarification
+        else {
+          const entry: ThreadNote = { kind: 'note', id: `clarification:${key}`, text: 'Clarification', tone: 'dim', clarification }
+          clarifications.set(key, entry)
+          currentTurn().entries.push({ origin: 'meta', entry })
+        }
+        break
+      }
       case 'agent-launch': {
         const parsed = agentLaunchEventSchema.safeParse(event)
         if (!parsed.success) break

@@ -1,3 +1,4 @@
+import { workflowClarificationSchema, type WorkflowClarification } from '@open-mercato/cezar-contract';
 import { runFilePath } from '../runs/files.ts';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -136,4 +137,19 @@ export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd
     }
     else if (name.endsWith('.json')) z.record(z.string(), z.unknown()).parse(JSON.parse(text));
   }
+}
+
+/** Read the authoritative saved exchange for the append-only conversation event stream. */
+export async function clarificationForEvent(dataDir: string, runId: string, graph: WorkflowGraph, answering = false): Promise<WorkflowClarification | undefined> {
+ let saved: z.infer<typeof questionSchema>;
+ try { saved = questionSchema.parse(JSON.parse(await readFile(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8'))); }
+ catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+ const last = saved.history.at(-1);
+ const settled = last?.q === saved.q && last.origin === saved.origin && last.text === saved.text;
+ return workflowClarificationSchema.parse({
+  q: saved.q, origin: saved.origin, originName: graph.nodes.find(node => node.id === saved.origin)?.name ?? saved.origin,
+  round: saved.history.length + (settled ? 0 : 1), question: saved.text,
+  ...(settled && saved.answer ? { answer: saved.answer } : {}),
+  status: answering ? 'answering' : settled ? last.status : 'pending',
+ });
 }

@@ -428,3 +428,5 @@ If a change might break any surface above, say so in the PR description, label t
 New task worktrees require freshly fetched remote `main`/`master`. The previous current/configured feature-branch fallback and offline stale-ref fallback are intentionally removed at the owner’s request. Existing task worktrees keep their original fork base during recovery. Dry runs stay network-free.
 
 Additive (2026-10-22): shared WeCom notification configuration under `GET/PUT /api/v1/p/:projectId/notifications/wecom`, explicit test via `POST /api/v1/p/:projectId/notifications/wecom/test`, and optional `notify.wecom` workflow nodes. Webhook credentials are write-only; existing generic `notify.webhook` and its opt-in remain unchanged.
+
+Additive (2026-10-22): `workflow-clarification` run events carry host-validated Q number, origin, round, question, optional answer and lifecycle status. They replay from existing NDJSON; older clients ignore them. No model-generated display summaries or additional report files are created.

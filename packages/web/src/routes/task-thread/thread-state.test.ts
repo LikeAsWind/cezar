@@ -1035,3 +1035,15 @@ it('retains every agent launch in mixed transcripts and ignores malformed snapsh
   const entries = reduceThread(events).turns.flatMap(turn => turn.items);
   expect(entries.filter(entry => entry.kind === 'note' && entry.launch)).toHaveLength(2);
 });
+
+it('updates a clarification card in place across turns and preserves separate rounds on replay', () => {
+ const base = { q: 'Q-001', origin: 'design', originName: 'Design', round: 1, question: 'Which behavior?' };
+ const event = (seq: number, clarification: object): RunEvent => ({ seq, ts: '2026-10-22T00:00:00Z', type: 'workflow-clarification', clarification });
+ const events = [event(1, { ...base, status: 'pending' }), event(2, { ...base, status: 'answering' }), event(3, { ...base, status: 'answered', answer: 'Use the approved behavior' }), event(4, { ...base, q: 'Q-002', round: 2, status: 'pending' })];
+ const state = reduceThread(events);
+ const cards = state.turns.flatMap(turn => turn.items).filter(entry => entry.kind === 'note' && entry.clarification);
+ expect(cards).toHaveLength(2);
+ expect(cards[0]).toMatchObject({ clarification: { status: 'answered', answer: 'Use the approved behavior' } });
+ expect(cards[1]).toMatchObject({ clarification: { q: 'Q-002', status: 'pending' } });
+ expect(reduceThread(events)).toEqual(state);
+});

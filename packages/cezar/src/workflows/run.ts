@@ -58,7 +58,7 @@ import {
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { pinSuperpowersRun } from './superpowers-pin.ts';
-import { guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
+import { clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
 import { unattendedRecoveryPoint } from './unattended-recovery.ts';
 import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext } from './unattended-probe.ts';
 import { WORKFLOW_ACTION_SCRIPT, workflowActionOf } from './workflow-actions.ts';
@@ -4922,6 +4922,10 @@ export class RunManager {
         const failed = isFailurePort(port);
         this.finishStep(runId, node.id, failed ? 'failed' : 'done', failed ? `ended on "${port}"` : undefined, emit);
       } else if (node.type === 'agent') {
+        if (managedUnattended && node.skill === 'cezar:adjudicator') {
+          const clarification = await clarificationForEvent(this.dataDir, runId, graph, true);
+          if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification });
+        }
         const stepIdx = workflow.steps.findIndex((s) => s.id === node.id);
         const rendered = nodeToStep(node);
         if (rendered.prompt) rendered.prompt = renderNodeRefs(rendered.prompt, outputs);
@@ -4992,7 +4996,12 @@ export class RunManager {
         }
         let handoffFailure: string | undefined;
         if (managedUnattended && !failure && verdict) {
-          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph, this.store.redactRunText(runId, lastTurn.text)); }
+          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph, this.store.redactRunText(runId, lastTurn.text));
+            if (verdict === 'question' || node.skill === 'cezar:adjudicator') {
+              const clarification = await clarificationForEvent(this.dataDir, runId, graph);
+              if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification });
+            }
+          }
           catch (error) { handoffFailure = error instanceof Error ? error.message : String(error); }
         }
         const stepRec = this.store.getRun(runId)?.steps.find((s) => s.id === node.id);
@@ -5003,12 +5012,20 @@ export class RunManager {
           costUsd: stepRec?.costUsd ?? 0,
         });
         if (failure || handoffFailure) {
+          if (managedUnattended && node.skill === 'cezar:adjudicator') {
+            const clarification = await clarificationForEvent(this.dataDir, runId, graph);
+            if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: { ...clarification, status: 'failed', answer: this.store.redactRunText(runId, failure ?? handoffFailure!) } });
+          }
           if (handoffFailure) checkFailure = handoffFailure;
           this.finishStep(runId, node.id, 'failed', failure ?? handoffFailure, emit);
           agentFailure = failure ?? handoffFailure;
           port = 'failed';
         } else if (verdicts.length && !verdict) {
           const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}`;
+          if (managedUnattended && node.skill === 'cezar:adjudicator') {
+            const clarification = await clarificationForEvent(this.dataDir, runId, graph);
+            if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: { ...clarification, status: 'failed', answer: error } });
+          }
           this.finishStep(runId, node.id, 'failed', error, emit);
           agentFailure = error;
           port = 'failed';

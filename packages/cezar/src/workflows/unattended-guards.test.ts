@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { snapshotPath } from '../superpowers-update.ts';
-import { guardUnattendedCheck, guardUnattendedVerdict } from './unattended-guards.ts';
+import { clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict } from './unattended-guards.ts';
 import { newArtifactPaths } from '../../scripts/workflow/artifacts.mjs';
 
 const roots: string[] = [];
@@ -121,4 +121,15 @@ it('accepts Q1 and Q-001 as the same clarification identity', async () => {
  const saved = JSON.parse(await readFile(runFilePath(f.data, f.runId, '.unattended-question.json'), 'utf8'));
  expect(saved.q).toBe('Q-001');
  expect(saved.answered).toBe(true);
+});
+
+it('projects persisted questions and answers into replayable clarification lifecycle events', async () => {
+ const f = await fixture();
+ const graph = { nodes: [{ id: 'design', type: 'agent' as const, name: 'Design', verdicts: ['question'] }], edges: [] };
+ expect(await clarificationForEvent(f.data, f.runId, graph)).toBeUndefined();
+ await guardUnattendedVerdict(f.data, f.runId, f.cwd, 'design', 'question', false, undefined, 'Q1\norigin: design\nWhich behavior?');
+ expect(await clarificationForEvent(f.data, f.runId, graph)).toMatchObject({ q: 'Q-001', originName: 'Design', status: 'pending', round: 1 });
+ expect(await clarificationForEvent(f.data, f.runId, graph, true)).toMatchObject({ status: 'answering', round: 1 });
+ await guardUnattendedVerdict(f.data, f.runId, f.cwd, 'adjudicator', 'answered', false, undefined, 'Q-001\norigin: design\n回答：根据需求保留当前请求结果。');
+ expect(await clarificationForEvent(f.data, f.runId, graph)).toMatchObject({ status: 'answered', round: 1, answer: expect.stringContaining('保留当前请求结果') });
 });

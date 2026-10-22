@@ -31,6 +31,17 @@ export type RunEvent = z.infer<typeof runEventSchema>;
 /** Host launch snapshot, emitted once per startSession attempt into existing run history. */
 export const agentLaunchEventSchema = runEventSchema.extend({ type: z.literal('agent-launch'), input: stepInputSchema });
 
+/** Persisted, host-validated clarification lifecycle; no display-summary model call. */
+export const workflowClarificationSchema = z.object({
+  q: z.string().min(1), origin: z.string().min(1), originName: z.string(),
+  round: z.number().int().positive(), question: z.string(), answer: z.string().optional(),
+  status: z.enum(['pending', 'answering', 'answered', 'blocked', 'failed']),
+});
+export type WorkflowClarification = z.infer<typeof workflowClarificationSchema>;
+export const workflowClarificationEventSchema = runEventSchema.extend({
+  type: z.literal('workflow-clarification'), clarification: workflowClarificationSchema,
+});
+
 /** Fixed protocol-level item count for one progressive transcript page. */
 export const RUN_HISTORY_PAGE_ITEMS = 100;
 

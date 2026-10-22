@@ -2818,5 +2818,19 @@
   "Optional message; supports {{title}} and {{failure}}; empty uses task title and MR link": "自定义消息（支持 {{title}} 任务标题、{{failure}} 失败原因；留空使用任务标题和 MR 链接）",
   "Loading WeCom settings…": "正在加载企业微信通知配置…",
   "Could not load WeCom settings.": "无法加载企业微信通知配置。",
-  "Send through the saved WeCom robot, including configured member mentions. Enable in project notification settings.": "通过已保存的企业微信机器人发送消息并 @ 指定成员；在当前项目通知设置中启用。"
+  "Send through the saved WeCom robot, including configured member mentions. Enable in project notification settings.": "通过已保存的企业微信机器人发送消息并 @ 指定成员；在当前项目通知设置中启用。",
+  "Adjudication failed": "裁决执行失败",
+  "Full question and context": "查看完整问题与上下文",
+  "Adjudicator": "裁决者",
+  "Awaiting adjudication": "等待裁决",
+  "Adjudicator is answering": "裁决者正在回答",
+  "Adjudication answered": "已回答",
+  "Human confirmation required": "需要人工确认",
+  "Round {0}": "第 {0} 轮",
+  "Clarification question": "澄清问题",
+  "Full answer and evidence": "查看完整回答与证据",
+  "The answer will appear here when adjudication finishes.": "裁决完成后，回答会更新在这里。",
+  "Waiting for the workflow to invoke the adjudicator.": "等待工作流调用裁决者。",
+  "Decision recorded; the originating node will continue.": "裁决已记录，工作流将返回发起节点继续处理。",
+  "View originating node": "查看发起节点"
 }

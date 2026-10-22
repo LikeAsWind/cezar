@@ -1,3 +1,6 @@
+import { useRunEvents } from '@/api/run-events'
+import { reduceThread } from '../task-thread/thread-state'
+import { ClarificationCard } from '../task-thread/clarification-card'
 import { t, useLocale } from '@/lib/i18n'
 import '@xyflow/react/dist/style.css'
 
@@ -13,8 +16,8 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import { ExternalLinkIcon, WorkflowIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { useParams } from 'react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router'
 
 import { Link } from '@/lib/project-router'
 
@@ -110,8 +113,12 @@ function TaskGraphView({ run }: { run: ApiRun }) {
   const def = run.workflowDef
   const graph = useMemo(() => (def ? graphForWorkflow(def) : null), [def])
   const overlay = useMemo(() => (graph ? runOverlay(graph, run) : null), [graph, run])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [search] = useSearchParams()
+  const [selectedId, setSelectedId] = useState<string | null>(() => search.get('node'))
+  useEffect(() => { if (search.get('node')) setSelectedId(search.get('node')) }, [search])
   const selected = graph?.nodes.find((n) => n.id === selectedId)
+  const questionEvents = useRunEvents(selected?.type === 'agent' && selected.skill === 'cezar:adjudicator' ? run.id : undefined)
+  const questions = useMemo(() => reduceThread(questionEvents).turns.flatMap(turn => turn.items).flatMap(entry => entry.kind === 'note' && entry.clarification ? [entry.clarification] : []), [questionEvents])
 
   const nodes: Node<LiveNodeData>[] = useMemo(
     () =>
@@ -200,6 +207,7 @@ function TaskGraphView({ run }: { run: ApiRun }) {
           </ReactFlow>
           {selected && overlay ? (
             <FloatingPanel side="right" label={t('Node details')} title={selected.name ?? selected.id} onClose={() => setSelectedId(null)}>
+              {questions.length ? <div className="px-4">{questions.map(question => <ClarificationCard key={`${question.origin}:${question.q}:${question.round}`} value={question} />)}</div> : null}
               <NodeDetails
                 node={selected}
                 input={run.steps.find(step => step.id === selected.id)?.input}
