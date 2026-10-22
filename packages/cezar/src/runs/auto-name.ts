@@ -221,7 +221,8 @@ export async function generateRunName(repoRoot: string, ctx: NamerContext): Prom
         // Shadow the argv-capture hook: dry-run tests capture the AGENT's argv
         // through CEZ_MOCK_ARGS_FILE; the namer's bookkeeping call must not
         // interleave lines into that file.
-        env: { ...profileEnv, CEZ_MOCK_ARGS_FILE: '' },
+        // Naming needs only short JSON; disable thinking to avoid provider budget incompatibilities.
+        env: { ...profileEnv, MAX_THINKING_TOKENS: '0', CEZ_MOCK_ARGS_FILE: '' },
       });
       const composed = composeNameResult(result.text, ctx);
       if (composed) return composed;
