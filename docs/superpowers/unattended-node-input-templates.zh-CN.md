@@ -4,7 +4,7 @@
 
 ## 统计
 
-12 个代理节点、6 个命令检查节点、2 个宿主 Git 操作节点、9 个条件/循环/起止节点，共 29 个节点。
+12 个代理节点、6 个命令检查节点、2 个宿主 Git 操作节点、3 个企业微信通知节点、10 个条件/循环/起止节点，共 33 个节点。
 
 下表按 JavaScript 字符串 length 统计静态节点任务字符数；探测采用宿主专用输入的占位符版本。字符数不包含角色正文、动态路径、宿主上下文或额外系统规则，不等于 token 数。
 
@@ -60,7 +60,7 @@
 根据项目证据选择对应工具链；只核对选定版本，不逐一尝试所有已安装版本。版本查询仅使用宿主允许的命令：
 {{versionQueryPrefix}} '<installed executable name or absolute path>' '<--version or -version or -v>' '<absolute Java home or empty string>'
 
-遵守宿主工具边界，不执行编译、测试、安装或源码修改。独立读取每批最多三项，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
+遵守宿主工具边界，不执行编译、测试、安装或源码修改。相互独立的读取与搜索可并行，控制单次返回量，避免上下文过载；存在依赖的操作顺序执行，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
 
 本阶段总时限为 30 分钟。必要证据齐备后立即保存并交接；关键环境或证据缺失则明确记录阻塞。
 
@@ -102,8 +102,8 @@ CEZ:VERDICT question
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 复杂度判断依据：{{artifactPaths.routing-input.json}}
 当前复杂度档位：{{artifactPaths.route.json}}
-实现计划（本节点生成，恢复时复用）：{{artifactPaths.plan.md}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+实现计划（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.plan.md}}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -144,8 +144,8 @@ CEZ:VERDICT blocked
 源码定位地图：{{artifactPaths.context-map.jsonl}}
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 复杂度判断依据：{{artifactPaths.routing-input.json}}
-设计方案（本节点生成，恢复时复用）：{{artifactPaths.design.md}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+设计方案（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.design.md}}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -189,7 +189,7 @@ CEZ:VERDICT blocked
 需求背景与影响面：{{artifactPaths.probe.md}}
 源码定位地图：{{artifactPaths.context-map.jsonl}}
 编译测试命令与版本约束（环境问题时读取）：{{artifactPaths.validation-plan.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -232,8 +232,8 @@ CEZ:VERDICT question
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 复杂度判断依据：{{artifactPaths.routing-input.json}}
 当前复杂度档位：{{artifactPaths.route.json}}
-实现计划（本节点生成，恢复时复用）：{{artifactPaths.plan.md}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+实现计划（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.plan.md}}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -278,7 +278,7 @@ CEZ:VERDICT question
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 复杂度判断依据：{{artifactPaths.routing-input.json}}
 当前复杂度档位：{{artifactPaths.route.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -322,7 +322,7 @@ CEZ:VERDICT question
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 复杂度判断依据：{{artifactPaths.routing-input.json}}
 当前复杂度档位：{{artifactPaths.route.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -363,7 +363,7 @@ CEZ:VERDICT blocked
 执行器选择及原因：{{artifactPaths.execution.json}}
 源码定位地图：{{artifactPaths.context-map.jsonl}}
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -404,7 +404,7 @@ CEZ:VERDICT question
 实现计划（执行前读取）：{{artifactPaths.plan.md}}
 源码定位地图：{{artifactPaths.context-map.jsonl}}
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -449,8 +449,8 @@ CEZ:VERDICT blocked
 当前验证结果与失败原因：{{artifactPaths.verify.json}}
 验证对应的变更凭据：{{artifactPaths.verified.json}}
 本次任务完整代码差异：{{artifactPaths.branch.diff}}
-修复前代码差异（复查时读取）：{{artifactPaths.fix-before.diff}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+修复前代码差异（可选输入，仅复查且文件存在时读取）：{{artifactPaths.fix-before.diff}}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -497,8 +497,8 @@ CEZ:VERDICT question
 当前验证结果与失败原因：{{artifactPaths.verify.json}}
 编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
 本次任务完整代码差异：{{artifactPaths.branch.diff}}
-修复前代码差异（修改前保存）：{{artifactPaths.fix-before.diff}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
+修复前代码差异（本节点输出；修改前保存，已存在时复用，不覆盖）：{{artifactPaths.fix-before.diff}}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
 {{stageContext}}
 ```
@@ -536,7 +536,7 @@ CEZ:VERDICT blocked
 任务与工作树信息：{{artifactPaths.run.json}}
 当前验证结果与失败原因：{{artifactPaths.verify.json}}
 验证对应的变更凭据：{{artifactPaths.verified.json}}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。
 
 {{stageContext}}
 ```
@@ -577,6 +577,8 @@ stageContext 仅在有实际内容时注入；不重复任务身份和路径，�
 | publish-mr | 推送分支并创建 Draft MR | github.draft-pr | 当前任务工作树、分支、基准分支与交付摘要 | created：MR 链接 / failed |
 | request-review | 请求 guohongwei 审核（GitLab 通知） | github.pr-update | 当前任务 MR、reviewers: guohongwei | done / failed |
 | publication-failed | 提交审核失败（保留已完成工作） | end | 推送、创建 MR 或请求审核失败 | failed |
+| notify-wecom | 企业微信群通知并 @ 审核人 | notify.wecom | 当前项目通知连接、任务标题与 MR 链接 | done / skipped / failed |
+| notification-failed | MR 已创建，群通知失败 | end | 保留 MR 与已完成工作 | success |
 | done | MR 已创建并请求审核 | end | MR 链接及审核请求已提交 | success |
 | stopped | 阻塞或返修耗尽 | end | 流程到达终点 | failed |
 
@@ -601,3 +603,11 @@ stageContext 仅在有实际内容时注入；不重复任务身份和路径，�
 ## GitLab 审核通知
 
 seal 通过后由宿主自动提交剩余变更、推送任务分支并创建 Draft MR，再指定 guohongwei 为审核人。已有 MR 复用；不自动合并、不删除工作树。推送/创建/请求审核失败时保留已完成工作和已有 MR 链接，在提交审核失败终点记录错误。邮件由 GitLab 发送，受实例邮件配置和审核人通知设置控制；接口成功仅表示审核请求成功，不代表邮件已送达。不增加 SMTP、邮件产物或代理节点。
+
+企业微信群通知：在“项目设置 → 企业微信通知”配置机器人与 @ 成员。审核请求提交后由 notify-wecom 推送 MR 链接；通知关闭或 dry-run 时跳过，群通知失败单独显示，不重跑开发或重新创建 MR。Webhook 仅保存在宿主凭据文件，不进入代理输入。
+
+阻塞分支：blocked-report → notify-blocked → stopped；推送/MR 失败分支：publish-mr.failed → notify-publication-failed → publication-failed。两者通知完成、跳过或失败均保留任务失败状态。通知正文使用 {{title}} 和 {{failure}}，原因来自本次失败节点的错误、阻塞摘要或检查输出，先脱敏并按企业微信文本上限截断。
+
+宿主按文件实际存在状态区分输入与输出。设计、轻量规划、完整规划和返修的待生成文件列在“本节点输出”；审查时 design.md（简单链路可能无设计）与 fix-before.diff（首次审查无返修快照）为可选输入，不存在时无需读取。
+
+裁决者会话：首次新建；后续问题通过 session.continue 延续自身会话。账号/后端不兼容或会话缺失时新建并注入持久化问答历史；正常续聊仅补充当前问题，历史记录仍由宿主保留。
