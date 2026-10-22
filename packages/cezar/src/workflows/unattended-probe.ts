@@ -52,10 +52,8 @@ export function artifactLabel(name: string, stage?: string): string {
   };
   const label = labels[name];
   if (!label) throw new Error(`Missing artifact purpose: ${name}`);
-  if (name === 'design.md' && stage === 'design' || name === 'plan.md' && (stage === 'fast-plan' || stage === 'plan')) return `${label}（本节点生成，恢复时复用）`;
   if (name === 'plan.md' && stage?.startsWith('execute-')) return `${label}（执行前读取）`;
   if (name === 'validation-plan.json' && stage === 'adjudicator') return `${label}（环境问题时读取）`;
-  if (name === 'fix-before.diff') return `${label}（${stage === 'fix' ? '修改前保存' : '复查时读取'}）`;
   return label;
 }
 
@@ -67,10 +65,23 @@ export function artifactInstructions(cwd: string, runId: string, stage?: string,
     throw error;
   }
   const names = stage ? ['run.json', ...(stageArtifacts[stage] ?? [])] : artifactNames;
+  const isOutput = (name: string) => name === 'design.md' && stage === 'design'
+    || name === 'plan.md' && (stage === 'fast-plan' || stage === 'plan')
+    || name === 'fix-before.diff' && stage === 'fix';
+  const optional = (name: string) => stage === 'review' && (name === 'design.md' || name === 'fix-before.diff');
+  const inputs = names.filter(name => !isOutput(name));
+  const outputs = names.filter(isOutput);
+  const describe = (name: string) => {
+    const present = existsSync(paths.file(name));
+    const usage = isOutput(name)
+      ? `${name === 'fix-before.diff' ? '本节点输出，修改前保存' : '本节点输出'}；${present ? name === 'fix-before.diff' ? '已存在，复用原始快照，不覆盖' : '已存在，读取后继续完善' : '尚未生成，直接创建，不预先读取'}`
+      : optional(name) ? present ? '可选输入，按需读取' : '可选输入，未生成，无需读取' : '';
+    return `${artifactLabel(name, stage)}${usage ? `（${usage}）` : ''}：${paths.relative(name)}`;
+  };
   return `任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-${names.map(name => `${artifactLabel(name, stage)}：${paths.relative(name)}`).join('\n')}
-必需输入缺失时报告具体缺口，不搜索其他任务产物。${names.includes('context-map.jsonl') ? '先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。' : ''}`;
+输入文件：
+${inputs.map(describe).join('\n')}${outputs.length ? `\n本节点输出：\n${outputs.map(describe).join('\n')}` : ''}
+必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。${names.includes('context-map.jsonl') ? '先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。' : ''}`;
 
 }
 
@@ -177,7 +188,7 @@ ${JSON.stringify(locations)}
 根据项目证据选择对应工具链；只核对选定版本，不逐一尝试所有已安装版本。版本查询仅使用宿主允许的命令：
 ${probeVersionPrefix()} '<installed executable name or absolute path>' '<--version or -version or -v>' '<absolute Java home or empty string>'
 
-遵守宿主工具边界，不执行编译、测试、安装或源码修改。独立读取每批最多三项，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
+遵守宿主工具边界，不执行编译、测试、安装或源码修改。相互独立的读取与搜索可并行，控制单次返回量，避免上下文过载；存在依赖的操作顺序执行，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
 
 本阶段总时限为 30 分钟。必要证据齐备后立即保存并交接；关键环境或证据缺失则明确记录阻塞。
 

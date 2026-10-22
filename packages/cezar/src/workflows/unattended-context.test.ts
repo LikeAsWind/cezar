@@ -40,22 +40,25 @@ it('hands existing map contents, selected tools and progress to the next node', 
     expect(recovery).toContain('Task 1 reviewed');
     expect(recovery).not.toContain('/selected/jdk8');
     const planningPaths = artifactInstructions(root, 'context-run', 'fast-plan');
-    expect(planningPaths).toContain(`实现计划（本节点生成，恢复时复用）：${paths.relative('plan.md')}`);
+    expect(planningPaths).toContain(`实现计划（本节点输出；尚未生成，直接创建，不预先读取）：${paths.relative('plan.md')}`);
     expect(planningPaths).toContain(`源码定位地图：${paths.relative('context-map.jsonl')}`);
     expect(planningPaths).not.toContain('"purpose"');
     expect(planningPaths).not.toContain('"mode"');
     expect(planningPaths).not.toContain('"exists"');
     expect(artifactInstructions(root, 'context-run', 'execute-fast')).toContain('实现计划（执行前读取）：');
     expect(artifactInstructions(root, 'context-run', 'adjudicator')).toContain('编译测试命令与版本约束（环境问题时读取）：');
-    expect(artifactInstructions(root, 'context-run', 'review')).toContain('修复前代码差异（复查时读取）：');
-    expect(artifactInstructions(root, 'context-run', 'fix')).toContain('修复前代码差异（修改前保存）：');
+    expect(artifactInstructions(root, 'context-run', 'review')).toContain('修复前代码差异（可选输入，未生成，无需读取）：');
+    expect(artifactInstructions(root, 'context-run', 'fix')).toContain('修复前代码差异（本节点输出，修改前保存；尚未生成，直接创建，不预先读取）：');
     const designPaths = artifactInstructions(root, 'context-run', 'design');
     expect(designPaths).toContain('validation-plan.json');
+    expect(designPaths).toContain('设计方案（本节点输出；尚未生成，直接创建，不预先读取）');
+    expect(artifactInstructions(root, 'context-run', 'review')).toContain('设计方案（可选输入，未生成，无需读取）');
     expect(designPaths).not.toContain('execution-input.json');
     expect(designPaths).not.toContain('fix-before.diff');
     expect(artifactInstructions(root, 'context-run', 'deliver')).not.toContain('question.md');
     await mkdir(join(paths.directory, 'plans'), { recursive: true });
     await writeFile(paths.file('plan.md'), 'Modify src/Counter.java');
+    for (const stage of ['fast-plan', 'plan']) expect(artifactInstructions(root, 'context-run', stage)).toContain('实现计划（本节点输出；已存在，读取后继续完善）');
     await writeFile(paths.file('context-map.jsonl'), [
       { path: 'src/Unrelated.java', summary: 'x'.repeat(50_000) },
       { path: 'src/Counter.java', summary: 'Relevant counter', symbols: ['recordFailure'] },

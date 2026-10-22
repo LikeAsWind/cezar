@@ -81,7 +81,8 @@ it('initializes before launch, supplies the thirty-minute limit, and refuses uns
     expect(launch.timeoutMs).toBe(1_800_000);
     expect(launch.instructions).toContain('probe-policy.mjs');
     expect(launch.instructions).toContain('不执行编译、测试、安装或源码修改');
-    expect(launch.instructions).toContain('独立读取每批最多三项');
+    expect(launch.instructions).toContain('相互独立的读取与搜索可并行');
+    expect(launch.instructions).not.toContain('每批最多三项');
     expect(launch.instructions).not.toContain('validation-plan.json');
     expect(launch.instructions).not.toContain('execution-input.json');
     expect(launch.instructions).not.toContain('CEZ:DONE');
