@@ -374,6 +374,41 @@ export function createTapdClient(
 
     return {
       association,
+      async updateStatus(id, statusName) {
+        try {
+          return await runOperation(async signal => {
+            const match = /^story:(\d{1,64})$/.exec(id);
+            if (!match) throw new TrackerRequestError('invalid_response', 'TAPD status updates require an associated story ID.');
+            const vendorId = match[1]!;
+            await checkAssociation(association, signal);
+            const read = async () => {
+              const rows = parseItems('story', await request('/stories', { workspace_id: association.externalId, id: vendorId, fields: storyFields }, signal));
+              const row = rows.find(item => item.id === vendorId);
+              if (!row || row.workspace_id !== association.externalId) throw new TrackerRequestError('invalid_response', 'The associated TAPD story could not be confirmed.');
+              return row as Story;
+            };
+            const story = await read();
+            const metadata = await workflow('story', story.workitem_type_id, signal);
+            const matches = Object.entries(metadata.names).filter(([, name]) => name === statusName);
+            if (matches.length !== 1) throw new TrackerRequestError('invalid_response', `TAPD status “${statusName}” must resolve to exactly one workflow status.`);
+            const status = matches[0]![0];
+            if (story.status !== status) {
+              if (metadata.terminal.has(story.status)) throw new TrackerRequestError('invalid_response', 'The TAPD story is already completed; its status was not changed.');
+              const body = new URLSearchParams({ workspace_id: association.externalId, id: vendorId, status });
+              try {
+                parseEnvelope(await http.json(`${apiOrigin}/stories?s=mcp`, {
+                  method: 'POST', headers: { Accept: 'application/json', Authorization: authorization, Via: 'mcp', 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(),
+                }, signal));
+              } finally { cache.clear(); }
+              if ((await read()).status !== status) throw new TrackerRequestError('invalid_response', 'TAPD did not confirm the requested status; inspect the story before retrying.');
+            }
+            return { available: true as const, id, status, statusName };
+          });
+        } catch (error) {
+          const failure = requestFailure(error);
+          return failure.code === 'not_found' || failure.code === 'invalid_cursor' ? { available: false as const, code: 'invalid_response' as const, reason: failure.reason } : failure;
+        }
+      },
       async automationOptions(query) {
         if (query?.cursor) throw new TrackerRequestError('invalid_cursor', 'This options catalog has no next page.');
         return runOperation(async signal => {

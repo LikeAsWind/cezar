@@ -118,6 +118,12 @@ export const trackerFailureSchema = z
   .strict();
 export type TrackerFailure = z.infer<typeof trackerFailureSchema>;
 
+export const trackerStatusUpdateResultSchema = z.union([
+  z.object({ available: z.literal(true), id: z.string(), status: z.string(), statusName: z.string() }).strict(),
+  trackerFailureSchema,
+]);
+export type TrackerStatusUpdateResult = z.infer<typeof trackerStatusUpdateResultSchema>;
+
 /** Driver-only cursor failure, mapped by the route to HTTP 400. */
 export const trackerInvalidCursorSchema = z
   .object({

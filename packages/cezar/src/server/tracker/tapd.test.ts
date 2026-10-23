@@ -35,6 +35,50 @@ function client(fetcher: typeof fetch) {
   return createTapdClient({ accessToken: 'synthetic-tapd-token', timeZone: 'Asia/Shanghai' }, fetcher);
 }
 
+describe('TAPD status writes', () => {
+  function fixture(options: { status?: string; map?: Record<string, string | undefined>; ignored?: boolean; foreign?: boolean; denied?: boolean } = {}) {
+    let status = options.status ?? 'develop';
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/workspaces/get_workspace_info') return json(workspaceInfo());
+      if (url.pathname === '/workflows/status_map') return json({ status: 1, data: options.map ?? { develop: '开发中', status_42: '验收', done: '已完成' } });
+      if (url.pathname === '/workflows/last_steps') return json({ status: 1, data: { done: '已完成' } });
+      if (init?.method === 'POST') {
+        expect(url.pathname).toBe('/stories');
+        expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-tapd-token');
+        expect(new URLSearchParams(String(init.body)).get('status')).toBe('status_42');
+        expect(new URLSearchParams(String(init.body)).get('id')).toBe('123');
+        expect(new URLSearchParams(String(init.body)).get('workspace_id')).toBe(workspaceId);
+        if (options.denied) return json({}, 403);
+        if (!options.ignored) status = 'status_42';
+        return json({ status: 1, data: story('123', { status }) });
+      }
+      return json({ status: 1, data: [story('123', { status, ...(options.foreign ? { workspace_id: '999' } : {}) })] });
+    });
+    return { fetcher, driver: client(fetcher).driver(association), writes: () => fetcher.mock.calls.filter(([, init]) => init?.method === 'POST') };
+  }
+  it('resolves the real acceptance code, posts the story update and verifies fresh state', async () => {
+    const f = fixture();
+    expect(await f.driver.updateStatus!('story:123', '验收')).toEqual({ available: true, id: 'story:123', status: 'status_42', statusName: '验收' });
+    expect(f.writes()).toHaveLength(1);
+    expect(await f.driver.updateStatus!('story:123', '验收')).toMatchObject({ available: true });
+    expect(f.writes()).toHaveLength(1);
+  });
+  it.each([
+    { map: { develop: '开发中', done: '已完成' } },
+    { map: { develop: '开发中', status_42: '验收', other: '验收', done: '已完成' } },
+    { status: 'done' }, { foreign: true },
+  ])('refuses missing/ambiguous statuses, terminal regressions and foreign items: %j', async options => {
+    const f = fixture(options);
+    expect(await f.driver.updateStatus!('story:123', '验收')).toMatchObject({ available: false });
+    expect(f.writes()).toHaveLength(0);
+  });
+  it.each([{ ignored: true }, { denied: true }])('does not claim success when an update is ignored or denied: %j', async options => {
+    const f = fixture(options);
+    expect(await f.driver.updateStatus!('story:123', '验收')).toMatchObject({ available: false });
+  });
+});
+
 describe('createTapdClient', () => {
   it('discovers the user\'s workspaces over fixed-origin Bearer-authenticated GET requests', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {

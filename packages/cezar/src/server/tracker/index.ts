@@ -136,6 +136,12 @@ export function createTrackerService(env: NodeJS.ProcessEnv = process.env, fetch
       };
       return {
         association, listIssues: read, searchItems: read,
+        ...(driver.updateStatus ? { updateStatus: async (id: string, statusName: string) => {
+          await assertCurrent();
+          const result = await driver.updateStatus!(id, statusName);
+          await assertCurrent();
+          return result;
+        } } : {}),
         ...(driver.automationOptions ? { automationOptions: async (query?: { search?: string; cursor?: string }) => {
           await assertCurrent();
           const result = await driver.automationOptions!(query);

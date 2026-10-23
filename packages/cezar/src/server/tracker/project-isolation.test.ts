@@ -47,7 +47,11 @@ it('restores a saved TAPD workspace and connection after creating a fresh servic
   expect(await restarted.connection(a)).toEqual(saved);
   const restored = await restarted.driver(a, data(a));
   expect(restored).toHaveProperty('association', association);
+  if ('available' in restored || !restored.updateStatus) throw new Error('Expected TAPD write capability');
   expect(await readFile(join(data(a), 'tracker.json'), 'utf8')).toBe(before);
+  expect(calls).toEqual([]);
+  await clearTrackerAssociation(data(a), connectionStore());
+  await expect(restored.updateStatus('story:123', '验收')).rejects.toMatchObject({ code: 'source_changed' });
   expect(calls).toEqual([]);
 });
 async function connect(s: ReturnType<typeof service>, project: string) {
