@@ -10,6 +10,37 @@ function answer(text: string | null) {
   exec.mockImplementation((_cmd, _args, _opts, cb) => cb(text === null ? new Error('ps unavailable') : null, text));
 }
 describe('timestamped process telemetry', () => {
+  it('samples active and parked trees together and retains their registration peaks', async () => {
+    const usage = await import('./process-usage.ts');
+    answer('100 1 100 1\n101 100 50 2\n200 1 200 3\n201 200 25 4\n');
+    const parkedPids: readonly number[] = [200];
+    usage.registerRunProcess('a', 100, parkedPids);
+    await tick();
+    expect(usage.currentUsage('a')).toEqual({ cpuPct: 10, rssBytes: 384000, procCount: 4 });
+    expect(exec).toHaveBeenCalledTimes(1);
+
+    answer('200 1 200 3\n201 200 25 4\n');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(usage.currentUsage('a')).toEqual({ cpuPct: 7, rssBytes: 230400, procCount: 2 });
+    expect(usage.currentTimedUsage('a')?.sampledAt).toBe('2026-09-18T00:00:02.000Z');
+
+    answer('');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(usage.currentTimedUsage('a')).toBeUndefined();
+    expect(usage.unregisterRunProcess('a')).toEqual({ peakRssBytes: 384000, peakProcCount: 4 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('starts fresh peaks when replacing a registration with additional roots', async () => {
+    const usage = await import('./process-usage.ts');
+    answer('100 1 100 1\n200 1 200 3\n');
+    usage.registerRunProcess('a', 100);
+    await tick();
+    usage.registerRunProcess('a', 200, [100]);
+    expect(usage.currentUsage('a')).toBeUndefined();
+    expect(usage.unregisterRunProcess('a')).toBeUndefined();
+  });
+
   it('records sampling time, not time a cached sample is requested', async () => {
     const usage = await import('./process-usage.ts');
     expect(usage).toHaveProperty('currentTimedUsage');

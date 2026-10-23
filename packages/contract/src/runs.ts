@@ -119,6 +119,8 @@ export const stepStateSchema = z.object({
   input: stepInputSchema.optional(),
   /** Latest agent session id — `claude --resume <id>` and friends. */
   sessionId: z.string().optional(),
+  /** Backend task ids whose terminal results have not been collected by this step. */
+  pendingBackgroundTaskIds: z.array(z.string()).optional(),
   /** Backend that owns `sessionId`; absent on records written before backend affinity. */
   backend: runnerSchema.optional(),
   /** Agent account (spec 2026-07-29-agent-profiles) that owns `sessionId` — `default`, or a

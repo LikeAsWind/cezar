@@ -66,12 +66,13 @@ export function parsePsOutput(text: string): ProcStat[] {
 }
 
 /**
- * Aggregate the full descendant tree rooted at `rootPid` from one `ps`
- * snapshot. Null when the root is gone (process exited between register and
- * sample) — callers treat that as "no data", not zero usage.
+ * Aggregate the full descendant trees rooted at `rootPid` and `additionalPids`
+ * from one `ps` snapshot, counting each pid once. Null when every root is gone
+ * (process exited between register and sample) — callers treat that as "no data",
+ * not zero usage.
  */
-export function aggregateTreeUsage(procs: ProcStat[], rootPid: number): ProcessUsage | null {
-  return aggregateIndexedTreeUsage(indexProcesses(procs), rootPid);
+export function aggregateTreeUsage(procs: ProcStat[], rootPid: number, additionalPids: readonly number[] = []): ProcessUsage | null {
+  return aggregateIndexedTreeUsage(indexProcesses(procs), [rootPid, ...additionalPids]);
 }
 
 function indexProcesses(procs: ProcStat[]): ProcessIndex {
@@ -86,13 +87,13 @@ function indexProcesses(procs: ProcStat[]): ProcessIndex {
   return { byPid, children };
 }
 
-function aggregateIndexedTreeUsage(index: ProcessIndex, rootPid: number): ProcessUsage | null {
+function aggregateIndexedTreeUsage(index: ProcessIndex, rootPids: readonly number[]): ProcessUsage | null {
   const { byPid, children } = index;
-  if (!byPid.has(rootPid)) return null;
+  const queue = rootPids.filter((pid) => byPid.has(pid));
+  if (queue.length === 0) return null;
   let cpuPct = 0;
   let rssKb = 0;
   let procCount = 0;
-  const queue = [rootPid];
   const seen = new Set<number>(); // pid-reuse in a torn snapshot can't loop us
   while (queue.length > 0) {
     const pid = queue.pop() as number;
@@ -113,7 +114,7 @@ function aggregateIndexedTreeUsage(index: ProcessIndex, rootPid: number): Proces
 export const SAMPLE_INTERVAL_MS = 2_000;
 
 interface Entry {
-  pid: number;
+  pids: readonly number[];
   last?: ProcessUsage;
   sampledAt?: string;
   peakRssBytes: number;
@@ -127,11 +128,11 @@ const listeners = new Set<UsageListener>();
 let timer: NodeJS.Timeout | null = null;
 let sampling = false;
 
-/** Start tracking a run's process tree. A re-register (a run's next agent
- *  step) replaces the pid but keeps nothing else — peaks are per session and
+/** Start tracking a run's process trees. A re-register (a run's next agent
+ *  step) replaces the pids but keeps nothing else — peaks are per session and
  *  the engine maxes them into the run record on unregister. */
-export function registerRunProcess(runId: string, pid: number): void {
-  entries.set(runId, { pid, peakRssBytes: 0, peakProcCount: 0 });
+export function registerRunProcess(runId: string, pid: number, additionalPids: readonly number[] = []): void {
+  entries.set(runId, { pids: [pid, ...additionalPids], peakRssBytes: 0, peakProcCount: 0 });
   if (!timer) {
     timer = setInterval(() => void sample(), SAMPLE_INTERVAL_MS);
     timer.unref?.();
@@ -204,7 +205,7 @@ async function sample(): Promise<void> {
     const index = indexProcesses(procs);
     const sampledAt = new Date().toISOString();
     for (const entry of entries.values()) {
-      const usage = aggregateIndexedTreeUsage(index, entry.pid);
+      const usage = aggregateIndexedTreeUsage(index, entry.pids);
       entry.last = usage ?? undefined;
       entry.sampledAt = usage ? sampledAt : undefined;
       if (usage) {

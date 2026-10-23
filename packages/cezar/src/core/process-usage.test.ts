@@ -58,4 +58,21 @@ describe('aggregateTreeUsage', () => {
     const cycle = parsePsOutput('700 701 100 1\n701 700 200 2\n');
     expect(aggregateTreeUsage(cycle, 700)).toEqual({ cpuPct: 3, rssBytes: 300 * 1024, procCount: 2 });
   });
+
+  it('includes separate parked caller trees', () => {
+    expect(aggregateTreeUsage(procs, 501, [900])).toEqual({ cpuPct: 106, rssBytes: 1074999 * 1024, procCount: 3 });
+  });
+
+  it('counts overlapping roots, repeated pids and cycles only once', () => {
+    const cycle = parsePsOutput('700 701 100 1\n701 700 200 2\n701 700 200 2\n');
+    expect(aggregateTreeUsage(cycle, 700, [701, 700, 701])).toEqual({ cpuPct: 3, rssBytes: 300 * 1024, procCount: 2 });
+  });
+
+  it('retains the parked caller when the active root has exited', () => {
+    expect(aggregateTreeUsage(procs, 12345, [501])).toEqual({ cpuPct: 7, rssBytes: 75000 * 1024, procCount: 2 });
+  });
+
+  it('returns null only when every registered root is absent', () => {
+    expect(aggregateTreeUsage(procs, 12345, [12346])).toBeNull();
+  });
 });

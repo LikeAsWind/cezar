@@ -1,6 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -37,6 +37,42 @@ vi.mock('node:child_process', async (importOriginal) => {
     },
   };
 });
+
+it('recovers a real stream-json API failure by resuming, preserving the node until the verdict', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cez-retry-'));
+  const bin = join(dir, 'retry.mjs');
+  writeFileSync(bin, `
+    import { createInterface } from 'node:readline';
+    const resumed = process.argv.includes('--resume');
+    const send = value => console.log(JSON.stringify(value));
+    createInterface({ input: process.stdin }).on('line', () => {
+      send({type:'system', subtype:'init', session_id:'existing-session', tools:[]});
+      send({type:'assistant', message:{role:'assistant', content:[{type:'text', text:resumed ? 'CEZ:VERDICT ready' : 'API Error: 502 Upstream request failed'}]}});
+      send({type:'result', subtype:resumed ? 'success' : 'error_during_execution',
+        is_error:!resumed, result:resumed ? 'CEZ:VERDICT ready' : 'API Error: 502 Upstream request failed'});
+    }).on('close', () => process.exit(0));
+  `);
+  try {
+    const events: AgentEvent[] = [];
+    const ui: UiEvent[] = [];
+    const session = new ClaudeCliRunner({ bin }).startSession(
+      { cwd: dir, userPrompt: 'work', sessionId: 'existing-session', timeoutMs: 15_000 },
+      event => events.push(event),
+      { autoEndAfterFirstTurn: true, onUiEvent: event => ui.push(event) },
+    );
+    expect((await session.result).text).toBe('CEZ:VERDICT ready');
+    expect(events.filter(e => e.type === 'error')).toEqual([]);
+    expect(events.filter(e => e.type === 'turn-end')).toHaveLength(1);
+    expect(events.filter(e => e.type === 'note' && e.message.includes('1/3'))).toHaveLength(1);
+    expect(ui.filter(e => e.type === 'turn.completed' && e.stopReason === 'error')).toHaveLength(1);
+    const turnIds = ui.filter(e => e.type === 'turn.started').map(e => e.turnId);
+    expect(turnIds).toHaveLength(2);
+    expect(new Set(turnIds).size).toBe(2);
+    const messageIds = ui.flatMap(e => e.type === 'item.completed' && e.item.kind === 'message' ? [e.item.id] : []);
+    expect(messageIds).toHaveLength(2);
+    expect(new Set(messageIds).size).toBe(2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 20_000);
 
 /**
  * The per-backend system-prompt delivery mechanism (spec §protocol v2

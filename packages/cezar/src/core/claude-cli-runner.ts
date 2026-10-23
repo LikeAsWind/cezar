@@ -23,6 +23,8 @@ import { writeClaudeProbeSettings } from './claude-probe-settings.ts';
 import { disclaimedCommand } from './disclaim-spawn.ts';
 import { resolveClaudeBin } from './claude-bin.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
+import { ClaudeBackgroundTasks } from './claude-background-tasks.ts';
+import { retryClaudeSession } from './claude-transport-retry.ts';
 import { readNdjson } from './ndjson.ts';
 import { claudeMcpAllowRules, toClaudeMcpConfig, type PrivateMcpServer } from './private-mcp.ts';
 import {
@@ -124,6 +126,23 @@ export class ClaudeCliRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
+    const uiContext = { state: createClaudeUiState({ fallbackSessionId: spec.sessionId }) };
+    const session = retryClaudeSession(
+      (nextSpec, emit, options) => this.startCliSession(nextSpec, emit, options ?? {}, uiContext),
+      { ...spec, timeoutMs: spec.timeoutMs ?? this.timeoutMs }, onEvent, opts,
+    );
+    this.lastSession = session;
+    return session;
+  }
+
+  private startCliSession(
+    spec: AgentRunSpec,
+    onEvent: ((event: AgentEvent) => void) | undefined,
+    opts: SessionOptions,
+    uiContext: { state: ReturnType<typeof createClaudeUiState> },
+  ): AgentSession {
+    // Fallback text is process-local; identity counters and plan state span recovery.
+    uiContext.state = { ...uiContext.state, sawAssistantText: false };
     const mcpConfig = writeClaudeMcpConfig(spec.probePolicy ? undefined : spec.mcpServers);
     const args = buildClaudeArgs(spec, process.env, mcpConfig?.path);
     let probeSettings: ReturnType<typeof writeClaudeProbeSettings>;
@@ -144,6 +163,7 @@ export class ClaudeCliRunner implements AgentRunner {
     }
 
     let stdinOpen = true;
+    const backgroundTasks = new ClaudeBackgroundTasks(spec.pendingBackgroundTaskIds);
     let autoEndTimer: NodeJS.Timeout | undefined;
     let eofTermTimer: NodeJS.Timeout | undefined;
     let eofKillTimer: NodeJS.Timeout | undefined;
@@ -153,11 +173,10 @@ export class ClaudeCliRunner implements AgentRunner {
     // byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
     // lands in R2 step 2.1). The mapper never throws, but a defect in it
     // must still never disturb the v1 stream — hence the belt-and-braces try.
-    let uiState = createClaudeUiState({ fallbackSessionId: spec.sessionId });
-    const emitUi = (map: (state: typeof uiState) => ClaudeUiMapping): void => {
+    const emitUi = (map: (state: typeof uiContext.state) => ClaudeUiMapping): void => {
       try {
-        const mapped = map(uiState);
-        uiState = mapped.state;
+        const mapped = map(uiContext.state);
+        uiContext.state = mapped.state;
         if (opts.onUiEvent) {
           for (const event of mapped.events) opts.onUiEvent(event);
         }
@@ -294,6 +313,7 @@ export class ClaudeCliRunner implements AgentRunner {
           // Normalize only this precise wire shape so genuine result errors
           // (authentication, limits, malformed sessions) stay authoritative.
           const mappedMessage = normalizeIntentionalTeardownResult(msg, terminatedByCezar);
+          if (backgroundTasks.observe(mappedMessage)) opts.onBackgroundTasks?.(backgroundTasks.ids);
           emitUi((state) => mapClaudeMessage(mappedMessage, state));
 
           let delta = 0;
@@ -393,7 +413,6 @@ export class ClaudeCliRunner implements AgentRunner {
         return stdinOpen;
       },
     };
-    this.lastSession = session;
     return session;
   }
 }

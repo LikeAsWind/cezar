@@ -77,6 +77,8 @@ export interface AgentRunSpec {
    * picks up the on-disk conversation (used by "Continue" after a run ends).
    */
   resume?: boolean;
+  /** Known uncollected task ids from the same step, retained across process recovery. */
+  pendingBackgroundTaskIds?: readonly string[];
 }
 
 /**
@@ -190,6 +192,8 @@ export interface AgentRunResult {
 }
 
 export interface SessionOptions {
+  /** A transport recovery replaced the session's OS process. Update resource tracking. */
+  onProcessReplaced?: (pid: number) => void;
   /** Close the session shortly after the first turn ends (single-turn
    *  behavior, used for non-interactive workflow steps). Interactive
    *  sessions omit this and control `end()` themselves. */
@@ -198,6 +202,8 @@ export interface SessionOptions {
    *  ALONGSIDE the v1 `AgentEvent`s (additive — v1 keeps flowing unchanged).
    *  RunManager consumption lands in R2 step 2.1. */
   onUiEvent?: (event: UiEvent) => void;
+  /** Authoritative backend task metadata, absent on backends without this capability. */
+  onBackgroundTasks?: (ids: readonly string[]) => void;
 }
 
 /**
