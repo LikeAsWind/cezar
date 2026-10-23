@@ -189,8 +189,8 @@ export function createGitlabApi(root: string, ref: GitlabRepoRef, run: GitlabCom
       const path = `users?${new URLSearchParams({ username, per_page: '100' })}`;
       return (await request(path, schema, { refresh: true }, true)).data;
     },
-    async version(): Promise<{ enterprise?: boolean }> {
-      return (await request('version', z.object({ enterprise: z.boolean().optional() }), { refresh: true }, true)).data;
+    async version(): Promise<{ enterprise?: boolean; version?: string }> {
+      return (await request('version', z.object({ enterprise: z.boolean().optional(), version: z.string().optional() }), { refresh: true }, true)).data;
     },
     ensureCurrent, get generation() { return revision; }, isCurrent: () => revision === gitlabConfigRevision(),
     invalidate(kind?: 'issue' | 'pr', number?: number) {

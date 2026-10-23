@@ -74,6 +74,46 @@ it('rejects fuzzy or absent usernames before any mutation', async () => {
   expect(await driver().updatePR?.(7, { reviewers: ['ada'] })).toMatchObject({ ok: false });
   expect(fixture.api.mock.calls.some(([args]) => args[4] !== 'GET')).toBe(false);
 });
+function legacyReviewApi(assignees: { id: number; username: string }[] = [], version = '12.5.3') {
+  fixture.api.mockImplementation(async (args, options) => {
+    if (args[6] === 'version') return JSON.stringify({ version });
+    if (args[6]!.startsWith('users?')) return JSON.stringify([{ id: 9, username: 'ada' }]);
+    const assigned = args[4] === 'PUT' ? JSON.parse(options.input!).assignee_id : undefined;
+    const current = assigned ? [{ id: assigned, username: 'ada' }] : assignees;
+    return JSON.stringify(mr({ reviewers: undefined, assignees: current, assignee: current[0] ?? null }));
+  });
+}
+it('uses a legacy GitLab assignee for review when reviewers are unsupported', async () => {
+  legacyReviewApi();
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toEqual({ ok: true });
+  const [, options] = fixture.api.mock.calls.find(([args]) => args[4] === 'PUT')!;
+  expect(JSON.parse(options.input!)).toEqual({ assignee_id: 9 });
+});
+it('keeps an existing legacy assignee and rejects replacing them before mutation', async () => {
+  legacyReviewApi([{ id: 5, username: 'existing' }]);
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toMatchObject({ ok: false, error: expect.stringContaining('assignee') });
+  expect(fixture.api.mock.calls.some(([args]) => args[4] === 'PUT')).toBe(false);
+});
+it('can repeat a legacy review assignment to the same assignee', async () => {
+  legacyReviewApi([{ id: 9, username: 'ada' }]);
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toEqual({ ok: true });
+});
+it('does not treat unreadable legacy assignees as an empty assignment', async () => {
+  fixture.api.mockImplementation(async args => JSON.stringify(args[6] === 'version' ? { version: '12.5.3' } : mr({ reviewers: undefined })));
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toMatchObject({ ok: false, error: expect.stringContaining('assignees could not be read') });
+  expect(fixture.api.mock.calls.some(([args]) => args[4] === 'PUT')).toBe(false);
+});
+it.each(['17.0.0', 'unknown'])('does not infer legacy reviewer support from missing fields on GitLab %s', async version => {
+  legacyReviewApi([], version);
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toMatchObject({ ok: false });
+  expect(fixture.api.mock.calls.some(([args]) => args[4] === 'PUT')).toBe(false);
+});
+it('does not report legacy review assignment as successful when GitLab ignores it', async () => {
+  fixture.api.mockImplementation(async args => JSON.stringify(args[6] === 'version' ? { version: '12.5.3' }
+    : args[6]!.startsWith('users?') ? [{ id: 9, username: 'ada' }]
+    : mr({ reviewers: undefined, assignees: [], assignee: null })));
+  expect(await driver().updatePR!(7, { reviewers: ['ada'] })).toMatchObject({ ok: false, error: expect.stringContaining('confirmed') });
+});
 it('keeps issue and MR comments distinct and invalidates only the affected resource', async () => {
   const d = driver(); expect(d.comment).toBeTypeOf('function');
   expect(await d.comment!('issue', 7, 'issue body')).toEqual({ ok: true });

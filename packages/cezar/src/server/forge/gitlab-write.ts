@@ -13,7 +13,8 @@ import type { DraftPrInput, DraftPrOutcome, ForgePrStatus, GitlabRepoRef } from 
 const execute = promisify(execFile);
 const creating = new Set<string>();
 const user = z.object({ id: z.number().int().positive(), username: z.string() });
-const updateSchema = gitlabItemSchema.extend({ reviewers: z.array(user).optional() });
+const updateSchema = gitlabItemSchema.extend({ reviewers: z.array(user).optional(), assignees: z.array(user).optional(), assignee: user.nullable().optional() });
+const assigneesOf = (row: z.infer<typeof updateSchema>) => row.assignees ?? (row.assignee === null ? [] : row.assignee ? [row.assignee] : undefined);
 const readyTitle = (title: string) => title.replace(/^(?:(?:draft|wip):\s*|\[(?:draft|wip)\]\s*|\((?:draft|wip)\)\s*)+/i, '');
 type WriteResult = { ok: true } | { ok: false; error: string };
 async function git(root: string, args: string[]): Promise<string> {
@@ -105,24 +106,45 @@ export function createGitlabWrites(root: string, ref: GitlabRepoRef, reads: Retu
       try {
         const row = await client.api(`merge_requests/${number}`, updateSchema, { refresh: true });
         const fields: NonNullable<GitlabApiOptions['fields']> = {};
+        let legacyAssignee: number | undefined;
         if (input.ready) fields.title = readyTitle(row.title);
         if (input.addLabels?.length) {
           if (input.addLabels.some((label) => label.includes(','))) return { ok: false, error: 'GitLab label names cannot contain commas in this operation' };
           fields.add_labels = [...new Set(input.addLabels)].join(',');
         }
         if (input.reviewers?.length) {
-          if (!row.reviewers) return { ok: false, error: 'Existing GitLab reviewers could not be read' };
-          const ids = new Set(row.reviewers.map((reviewer) => reviewer.id));
+          let existing = row.reviewers;
+          const legacy = existing === undefined;
+          if (legacy) {
+            const version = /^(\d+)\.(\d+)(?:\.|$)/.exec((await client.version()).version ?? '');
+            if (!version || Number(version[1]) > 13 || Number(version[1]) === 13 && Number(version[2]) >= 7) {
+              return { ok: false, error: 'GitLab reviewer support could not be confirmed; existing assignments were not changed' };
+            }
+            existing = assigneesOf(row);
+            if (!existing) return { ok: false, error: 'Existing GitLab assignees could not be read' };
+          }
+          const ids = new Set(existing!.map((reviewer) => reviewer.id));
           for (const username of new Set(input.reviewers)) {
             const users = await client.users(username, z.array(user));
             const matches = users.filter((candidate) => candidate.username.toLowerCase() === username.toLowerCase());
             if (matches.length !== 1) return { ok: false, error: 'GitLab reviewer username could not be resolved exactly' };
             ids.add(matches[0]!.id);
           }
-          fields.reviewer_ids = [...ids];
+          if (legacy) {
+            // Old GitLab editions may only support one assignee. Never let an
+            // attempted addition silently replace an existing review owner.
+            if (ids.size !== 1) return { ok: false, error: 'Legacy GitLab review assignment requires one assignee; existing assignees were not changed' };
+            legacyAssignee = [...ids][0]!;
+            fields.assignee_id = legacyAssignee;
+          } else fields.reviewer_ids = [...ids];
         }
         if (Object.keys(fields).length) {
-          try { await client.api(`merge_requests/${number}`, gitlabItemSchema, { method: 'PUT', fields }); }
+          try {
+            const updated = await client.api(`merge_requests/${number}`, updateSchema, { method: 'PUT', fields });
+            if (legacyAssignee !== undefined && !assigneesOf(updated)?.some(assignee => assignee.id === legacyAssignee)) {
+              return { ok: false, error: 'GitLab assignee update could not be confirmed; inspect the merge request before retrying' };
+            }
+          }
           finally { client.invalidate('pr', number); }
         }
         return { ok: true };
