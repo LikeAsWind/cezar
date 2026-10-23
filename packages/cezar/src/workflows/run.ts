@@ -5088,6 +5088,37 @@ export class RunManager {
       } else {
         const rendered = nodeToStep(node);
         if (rendered.command) rendered.command = renderNodeRefs(rendered.command, outputs);
+        let environmentError: string | undefined;
+        if (managedUnattended && workflowActionOf(rendered.command ?? '') === 'baseline') {
+          const probeNode = graph.nodes.find(candidate => candidate.type === 'agent' && candidate.skill === 'cezar:project-probe');
+          const lastTurn = { text: '' };
+          let repaired = false;
+          environmentError = await guardProbeEnvironment(this.dataDir, runId, state.cwd, async prompt => {
+            if (probeNode?.type !== 'agent' || state.cancelled || this.active.get(runId) !== state) return false;
+            repaired = true;
+            emit({ type: 'note', stepId: probeNode.id, message: prompt });
+            this.store.updateStep(runId, probeNode.id, { status: 'running', finishedAt: undefined });
+            const backend = probeNode.runner ?? taskBackend;
+            const verdicts = probeNode.verdicts ?? ['ready', 'blocked'];
+            const failure = await this.runAgentStep(
+              runId, state, nodeToStep(probeNode), input, skills, null, false, emit,
+              undefined, taskBackend, extraSystemPrompt, undefined, [],
+              { resumeSessionId: this.graphResumeSession(runId, probeNode, backend, emit, true), lastTurn, verdicts, probeRepair: prompt },
+            );
+            if (failure) lastTurn.text += `\n${failure}`;
+            if (failure || state.cancelled || state.askPark || this.active.get(runId) !== state || parseVerdict(lastTurn.text, verdicts) !== 'ready') return false;
+            try {
+              await guardUnattendedVerdict(this.dataDir, runId, state.cwd, probeNode.id, 'ready', false, graph, lastTurn.text);
+              return true;
+            } catch (error) { lastTurn.text += `\n${error instanceof Error ? error.message : String(error)}`; return false; }
+          });
+          if (state.cancelled || this.active.get(runId) !== state) return null;
+          if (probeNode && (repaired || environmentError)) {
+            outputs.set(probeNode.id, { summary: `${stripVerdictMarker(lastTurn.text.trim())}\n${environmentError ?? ''}`.trim(), verdict: environmentError ? 'blocked' : 'ready' });
+            this.finishStep(runId, probeNode.id, 'done', undefined, emit);
+          }
+          this.store.updateRun(runId, { currentStepId: node.id });
+        }
         // Check commands are allowed to generate tracked output, but that output
         // is verification residue rather than agent work. Save the agent's state
         // before the command, then keep the command's changed paths excluded from
@@ -5107,6 +5138,7 @@ export class RunManager {
         let checkResult: { ok: boolean; output: string; exitCode: number };
         state.checkInProgress = true;
         try {
+          if (environmentError) throw new Error(environmentError);
           await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'before');
           checkResult = await this.runCheckStep(runId, state, rendered, emit);
           if (checkResult.ok) await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'after');

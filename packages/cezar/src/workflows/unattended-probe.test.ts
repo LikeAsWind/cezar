@@ -157,7 +157,10 @@ it.each([false, true])('passes an explicit agent timeout on launch (Continue=%s)
   } finally { manager.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 30_000);
 
-it.each([true, false])('validates probe before baseline and resumes once for repair (repair succeeds=%s)', async repaired => {
+it.each([
+  { repaired: true, baseline: false }, { repaired: false, baseline: false },
+  { repaired: true, baseline: true }, { repaired: false, baseline: true },
+])('validates probe before baseline and resumes once for repair ($repaired, baseline recovery=$baseline)', async ({ repaired, baseline }) => {
   const root = await mkdtemp(join(tmpdir(), 'cez-probe-handoff-'));
   let manager: RunManager | undefined;
   let store: RunStore | undefined;
@@ -176,7 +179,7 @@ it.each([true, false])('validates probe before baseline and resumes once for rep
     store = RunStore.open(data);
     manager = new RunManager(store, cwd);
     const run = store.createRun({ title: 'Probe handoff', workflow: workflow.name, task: 'Investigate fixture', steps: workflow.steps.map(step => ({ id: step.id, name: step.id, kind: step.command ? 'check' : 'agent' })) });
-    store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: 'probe', taken: [], loops: {} } });
+    store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: baseline ? 'baseline' : 'probe', taken: [], loops: { 'final-retry': 1 } } });
     await mkdir(join(data, 'runs', run.id), { recursive: true });
     await writeFile(runFilePath(data, run.id, '.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
     vi.spyOn(manager as unknown as { agentEnvForStep: () => Promise<{ env: Record<string, string>; profileId: string }> }, 'agentEnvForStep').mockResolvedValue({ env: {}, profileId: 'fixture' });
@@ -192,24 +195,35 @@ it.each([true, false])('validates probe before baseline and resumes once for rep
       const paths = artifactPaths(cwd, run.id, join(data, 'runs', run.id));
       const command = { file: 'npm', args: ['test'], cwd: '.', source: 'README.md', kind: 'test', toolchain: 'fixture-toolchain' };
       writeFileSync(paths.file('environment.json'), JSON.stringify({ schemaVersion: 1,
-        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'], ...(repaired && probes.length === 2 ? { execution: {} } : {}) }],
+        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'], ...(repaired && probes.length === (baseline ? 1 : 2) ? { execution: {} } : {}) }],
         environmentChecks: [{ ...command, args: ['--version'], kind: 'check', expectedOutput: ['fixture'] }], baseline: [command], verify: [command] }));
       writeFileSync(paths.file('probe.md'), 'Located fixture build');
       writeFileSync(paths.file('context-map.jsonl'), JSON.stringify({ schemaVersion: 1, stage: 'probe', path: 'README.md', summary: 'Build', relevance: 'Validation', symbols: [], dependsOn: [], confidence: 'high' }));
       writeFileSync(paths.file('routing-input.json'), JSON.stringify({ likelyChangeFiles: [], highRisk: false, crossModule: false, requirementsClear: true }));
       return 'CEZ:VERDICT ready';
     };
+    if (baseline) {
+      await prepareUnattendedProbe(data, run.id, cwd, 'claude', true);
+      const paths = artifactPaths(cwd, run.id, join(data, 'runs', run.id));
+      const command = { file: 'npm', args: ['test'], cwd: '.', source: 'README.md', kind: 'test', toolchain: 'fixture-toolchain' };
+      await writeFile(paths.file('environment.json'), JSON.stringify({ schemaVersion: 1,
+        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'] }],
+        environmentChecks: [{ ...command, args: ['--version'], kind: 'check', expectedOutput: ['fixture'] }], baseline: [command], verify: [command] }));
+      store.updateStep(run.id, 'probe', { sessionId: 'original-probe-session', backend: 'claude', profileId: 'fixture', status: 'done' });
+    }
     expect(manager.continueRun(run.id, { text: 'Resume probe.' })).toEqual({ ok: true });
     await expect.poll(() => store!.getRun(run.id)?.status, { timeout: 60_000 }).toBe('failed');
     const probes = captures.specs.filter(spec => spec.probePolicy);
-    expect(probes).toHaveLength(2);
-    expect(probes[1]?.resume).toBe(true);
-    expect(probes[1]?.sessionId).toBe(probes[0]?.sessionId);
-    expect(probes[1]?.probePolicy).toEqual(probes[0]?.probePolicy);
-    expect(probes[1]?.userPrompt).toContain('宿主环境交接校验失败');
-    expect(probes[1]?.userPrompt).toContain('fixture-toolchain');
+    expect(probes).toHaveLength(baseline ? 1 : 2);
+    const repair = probes.at(-1)!;
+    expect(repair.resume).toBe(true);
+    expect(repair.sessionId).toBe(baseline ? 'original-probe-session' : probes[0]?.sessionId);
+    expect(repair.probePolicy).toEqual({ root: cwd, runId: run.id });
+    expect(repair.userPrompt).toContain('宿主环境交接校验失败');
+    expect(repair.userPrompt).toContain('fixture-toolchain');
     expect(checks.includes('baseline')).toBe(repaired);
     expect(store.getRun(run.id)?.graphState?.outputs?.probe?.verdict).toBe(repaired ? 'ready' : 'blocked');
+    expect(store.getRun(run.id)?.graphState?.loops['final-retry']).toBe(1);
   } finally {
     captures.onLaunch = undefined;
     manager?.dispose(); store?.flush();
