@@ -103,7 +103,7 @@ it('preserves repeated user decisions and merges only the same queued/event mess
   expect(unattendedUserUpdates({ queuedMessages: [{ id: 'same-message', text: 'Use Java 8', createdAt: events[0]!.ts }] } as never, events)).toEqual(['Use Java 8', 'Use Java 11', 'Use Java 8']);
 });
 
-it.each(['request-review', 'notify-wecom'])('recovers %s without rerunning code or publishing again', node => {
+it.each(['request-review', 'notify-wecom', 'tapd-acceptance'])('recovers %s without rerunning code or publishing again', node => {
   expect(unattendedRecoveryPoint(UNATTENDED_TEMPLATE, { loops: {}, taken: [`${node}.failed->notification-failed`] })).toBe(node);
 });
 it.each(['plan', 'fast-plan'])('returns a failed scope check to %s to supply missing coverage', planner => {

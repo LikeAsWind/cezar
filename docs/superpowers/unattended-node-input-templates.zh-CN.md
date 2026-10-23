@@ -487,7 +487,15 @@ Q-002：验收标准是否要求合入前复现触发路径？
 
 类型：`notify.wecom`。工作流入口。
 
-出口：done → MR 已创建，自动交接完成；skipped → MR 已创建，自动交接完成；failed → MR 已创建，群通知失败。
+出口：done → 更新 TAPD 需求为验收；skipped → MR 已创建，自动交接完成；failed → MR 已创建，群通知失败。
+
+## 更新 TAPD 需求为验收（tapd-acceptance）
+
+类型：`tracker.update-status`，目标状态名：`验收`。由宿主执行，不启动代理。
+
+读取任务保存的 TAPD 空间与需求编号，核对当前连接一致；查询需求所属工作流，解析“验收”的实际状态编号，调用 TAPD 更新接口并重新读取确认结果。已经处于验收状态时直接确认成功；不回退已完成的需求。
+
+出口：done → 自动交接完成；无关联 TAPD 需求时 skipped → 自动交接完成；failed → MR 已通知，TAPD 状态回写失败。恢复时只重试本节点，不重发 MR 通知、不重跑开发。
 
 ## MR 已创建，群通知失败（notification-failed）
 

@@ -1308,6 +1308,7 @@ const OUTPUTS: Record<GraphNodeType, string[]> = {
   'github.issue-comment': ['issue'],
   'notify.webhook': ['status'],
   'notify.wecom': ['status'],
+  'tracker.update-status': ['id', 'status', 'statusName'],
 }
 
 /** A node's template outputs — a fork's agent reports as a subtask (`runId`, `status`, `summary`). */
@@ -1650,6 +1651,12 @@ function Inspector({
             <Textarea value={node.body ?? ''} rows={3} onChange={e => set({ body: e.target.value || undefined })} />
           </Field>
         </>
+      )}
+
+      {node.type === 'tracker.update-status' && (
+        <Field label={t('Target tracker status')}>
+          <Input value={node.statusName} onChange={e => set({ statusName: e.target.value })} className="h-8 text-[11px]" />
+        </Field>
       )}
 
       {node.type === 'notify.webhook' && (

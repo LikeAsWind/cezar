@@ -1,6 +1,7 @@
 import { sendWecomNotification } from '../notifications/wecom.ts';
 import { runFilePath } from '../runs/files.ts';
-import type { TrackerAssociation } from '@open-mercato/cezar-contract';
+import { trackerReadScope, type TrackerAssociation } from '@open-mercato/cezar-contract';
+import { createTrackerService } from '../server/tracker/index.ts';
 import { TrackerAgentBindingError } from '../server/tracker/agent-credentials.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -5614,6 +5615,34 @@ export class RunManager {
         outputs.set(node.id, { issue });
         note(`commented on issue #${issue}`);
         return 'done';
+      }
+      case 'tracker.update-status': {
+        const run = record();
+        const source = run?.trackerTask;
+        if (!source || source.association.kind !== 'tapd' || !source.id.startsWith('story:') || process.env.CEZ_DRY_RUN === '1') {
+          outputs.set(node.id, { status: 'skipped' });
+          onOutputs();
+          note('TAPD status update skipped — no associated TAPD story or dry run');
+          return 'skipped';
+        }
+        try {
+          const driver = await createTrackerService().driver(this.repoRoot, this.dataDir);
+          if ('available' in driver) throw new Error(driver.reason);
+          if (trackerReadScope(driver.association) !== trackerReadScope(source.association)) throw new Error('The task TAPD connection or workspace changed; its status was not updated.');
+          if (!driver.updateStatus) throw new Error('The tracker does not support status updates.');
+          const result = await driver.updateStatus(source.id, node.statusName);
+          if (!result.available) throw new Error(result.reason);
+          outputs.set(node.id, { id: result.id, status: result.status, statusName: result.statusName });
+          onOutputs();
+          note(`TAPD ${result.id} 状态已更新为“${result.statusName}”`);
+          return 'done';
+        } catch (error) {
+          const reason = this.store.redactRunText(runId, error instanceof Error ? error.message : 'TAPD status update failed');
+          outputs.set(node.id, { error: reason });
+          onOutputs();
+          note(reason, 'danger');
+          return 'failed';
+        }
       }
       case 'notify.wecom': {
         const run = record();

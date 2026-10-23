@@ -179,10 +179,14 @@ it('publishes only after seal and requests the configured GitLab reviewer after 
     { from: 'publish-mr.failed', to: 'notify-publication-failed' },
     { from: 'request-review.done', to: 'notify-wecom' },
     { from: 'request-review.failed', to: 'notify-review-failed' },
-    { from: 'notify-wecom.done', to: 'done' },
+    { from: 'notify-wecom.done', to: 'tapd-acceptance' },
+    { from: 'tapd-acceptance.done', to: 'done' },
+    { from: 'tapd-acceptance.failed', to: 'tapd-update-failed' },
     { from: 'notify-wecom.failed', to: 'notification-failed' },
   ]));
   expect(graph.edges).not.toContainEqual({ from: 'seal.pass', to: 'done' });
+  expect(graph.nodes.find(node => node.id === 'tapd-acceptance')).toMatchObject({ type: 'tracker.update-status', statusName: '验收' });
+  expect(graph.edges).not.toContainEqual({ from: 'notify-wecom.skipped', to: 'tapd-acceptance' });
 });
 
 it('notifies blockers and publication errors without converting failures into success', async () => {

@@ -2810,6 +2810,8 @@
   "Test message failed. Check the robot configuration.": "测试消息发送失败，请检查机器人配置。",
   "Could not save WeCom settings.": "企业微信通知配置保存失败。",
   "WeCom notification": "企业微信通知",
+  "Update tracker status": "更新需求状态",
+  "Target tracker status": "目标需求状态",
   "Uses saved robot and mentions": "使用已保存的机器人和 @ 成员",
   "Uses this project’s Webhook and mentions from Project settings → WeCom robot notifications. No credentials are stored in this workflow.": "使用当前项目通知设置中保存的 Webhook 和 @ 成员，工作流不保存凭据。",
   "Optional message; supports {{title}} and {{failure}}; empty uses task title and MR link": "自定义消息（支持 {{title}} 任务标题、{{failure}} 失败原因；留空使用任务标题和 MR 链接）",

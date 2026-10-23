@@ -9,7 +9,7 @@ export function unattendedRecoveryPoint(graph: WorkflowGraph, state: RunRecord['
   for (let index = taken.length - 1; index >= 0; index--) {
     const [from, target] = taken[index]!.split('->');
     const failedNode = from!.split('.')[0]!;
-    if (/\.(?:failed|fail)->/.test(taken[index]!) && ['publish-mr', 'request-review', 'notify-wecom'].includes(failedNode)) return executable(failedNode) ? failedNode : undefined;
+    if (/\.(?:failed|fail)->/.test(taken[index]!) && ['publish-mr', 'request-review', 'notify-wecom', 'tapd-acceptance'].includes(failedNode)) return executable(failedNode) ? failedNode : undefined;
     if (target !== 'blocked-report') continue;
     const node = from!.split('.')[0]!;
     if (node === 'validation-scope') {
