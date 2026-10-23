@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   autoNamingActive,
   BRANCH_NAME_MAX,
@@ -10,6 +10,17 @@ import {
   sanitizeBranchName,
   TITLE_MAX,
 } from './auto-name.ts';
+
+// Run the dry-run fixture with Node on Windows, where .mjs is not executable.
+vi.mock('node:child_process', async original => {
+  const actual = await original<typeof import('node:child_process')>();
+  return { ...actual, spawn: (...args: Parameters<typeof actual.spawn>) => {
+    if (process.platform === 'win32' && typeof args[0] === 'string' && args[0].endsWith('.mjs')) {
+      return actual.spawn(process.execPath, [args[0], ...(Array.isArray(args[1]) ? args[1] : [])], args[2]);
+    }
+    return actual.spawn(...args);
+  } };
+});
 
 /** The namer's pure half (spec 2026-07-17-task-auto-naming): prompt, cross-check, post-validation. */
 
@@ -110,6 +121,11 @@ describe('postValidateTitle', () => {
 });
 
 describe('composeNameResult', () => {
+  it.each(['issue', 'pr'])('keeps a valid title when the optional %s is an unsafe tracker identifier', field => {
+    const raw = `{"title":"fixing scratch buffer pool bug","${field}":1169280376001346670}`;
+    expect(composeNameResult(raw, { task: 'Work on tracker ticket [story:1169280376001346670]: fix ScratchBufferPool' }))
+      .toEqual({ titleSummary: 'fixing scratch buffer pool bug' });
+  });
   const ctx = { task: '437', skillName: 'om-auto-review-pr' };
 
   it('parses a fenced JSON answer and applies the whole pipeline', () => {

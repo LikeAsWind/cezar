@@ -64,8 +64,8 @@ export const NAMER_BRANCH_PROMPT =
 
 const namerResponseSchema = z.object({
   title: z.string().min(1),
-  pr: z.number().int().positive().optional(),
-  issue: z.number().int().positive().optional(),
+  pr: z.number().int().positive().optional().catch(undefined),
+  issue: z.number().int().positive().optional().catch(undefined),
   branch: z.string().optional(),
 });
 
