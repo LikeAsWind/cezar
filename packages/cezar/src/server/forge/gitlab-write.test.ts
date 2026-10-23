@@ -49,6 +49,15 @@ it('stops on push failure and never creates an MR', async () => {
   expect(await driver().createPR(input)).toMatchObject({ ok: false, error: expect.stringContaining('push') });
   expect(fixture.api.mock.calls.some(([args]) => args[4] === 'POST')).toBe(false);
 });
+it('publishes the completed delivery report rather than the progress log', async () => {
+  const summary = '## 解决方案\nclose 幂等、按归属池归还。\n\n## 测试\n298 项测试通过。\n\n## 遗留限制\n待上线观察。';
+  await driver().createPR({ ...input, handoffText: '## Goal\n修复重复归还\n\n## Progress log\n- seal complete\n',
+    run: { ...input.run, graphState: { loops: {}, taken: [], outputs: { deliver: { summary, verdict: 'ready' } } } } });
+  const [, options] = fixture.api.mock.calls.find(([args]) => args[4] === 'POST')!;
+  const body = JSON.parse(options.input!).description;
+  expect(body).toContain(summary);
+  expect(body).not.toContain('Progress log');
+});
 it('matches duplicate MRs by branch AND both project IDs across forks, including uncertain creation', async () => {
   let posted = false;
   fixture.api.mockImplementation(async (args) => {

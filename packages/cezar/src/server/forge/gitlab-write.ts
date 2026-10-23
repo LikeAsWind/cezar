@@ -85,7 +85,7 @@ export function createGitlabWrites(root: string, ref: GitlabRepoRef, reads: Retu
         try {
           created = await ids.sourceClient.api('merge_requests', gitlabItemSchema, { method: 'POST', fields: {
             source_branch: run.branch, target_branch: targetBranch, target_project_id: ids.targetProject.id, title,
-            description: buildPrBody(input.handoffText, run.task),
+            description: buildPrBody(input.handoffText, run.task, run.graphState?.outputs?.deliver),
           } });
         } catch (error) {
           client.invalidate('pr');

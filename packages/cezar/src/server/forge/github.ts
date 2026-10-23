@@ -2658,7 +2658,7 @@ export async function createDraftPr(input: DraftPrInput): Promise<DraftPrOutcome
     return { ok: false, error: `git push failed — ${tail(push.stderr) || 'unknown error'}` };
   }
 
-  const body = buildPrBody(input.handoffText, run.task);
+  const body = buildPrBody(input.handoffText, run.task, run.graphState?.outputs?.deliver);
   // Target the branch the worktree forked from (config `baseBranch`) — without
   // --base, gh aims at the repo default (main) even when work started on
   // develop. `<remote>/x` normalizes to `x`; a raw sha (detached-HEAD fork
@@ -2708,12 +2708,13 @@ export async function prRepoArgs(worktree: string, baseRemote: string, pushRemot
 }
 
 /**
- * PR body from the handoff journal: the "## Goal" section (task text as
- * fallback) + the first ~10 lines of "## Progress log" (newest first) +
- * the cezar footer.
+ * Prefer the completed delivery report; workflows without one retain the
+ * handoff goal and progress skim.
  */
-export function buildPrBody(handoffText: string, task: string): string {
+export function buildPrBody(handoffText: string, task: string, delivery?: Record<string, string | number>): string {
   const goal = section(handoffText, '## Goal') || task.trim();
+  const summary = delivery?.verdict === 'ready' && typeof delivery.summary === 'string' ? delivery.summary.trim() : '';
+  if (summary) return ['## 需求背景', '', goal, '', '## 交付说明', '', summary, '', '---', '', '🤖 made with cezar'].join('\n');
   const progress = section(handoffText, '## Progress log')
     .split('\n')
     .filter((l) => l.trim())

@@ -240,7 +240,7 @@ ${QUESTION('fix')}`,
       name: '整理验证证据与裁决',
       skill: 'superpowers:verification-before-completion',
       prompt: `执行已加载的 verification-before-completion，核对 verify.json、verified.json、官方进度账本及宿主裁决 和已批准的独立审查。
-最终回复给出需求与证据对应关系、变更文件、实际命令及结果、裁决、遗留限制和证据路径；读取宿主提供的已批准审查报告并复用。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。`,
+最终回复将直接用于 MR 描述，按“问题”“解决方案”“测试”“遗留限制”四部分组织：说明需求与实现如何对应、关键变更文件及裁决、实际验证命令与结果、尚未验证的事项和证据路径，不包含节点执行流水。读取宿主提供的已批准审查报告并复用。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。`,
       verdicts: ['ready', 'blocked'],
     },
     {
