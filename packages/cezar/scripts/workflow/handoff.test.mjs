@@ -54,6 +54,19 @@ test('scope expansion preserves frozen checks and detects module selectors inste
   assert.doesNotThrow(() => assertValidationExtension(previous, { ...previous, verify: [a, { ...a, args: ['-pl', 'module-b', 'test'] }] }));
 });
 
+test('Maven also-make preserves coverage of selected modules without covering unrelated modules', () => {
+  const files = ['yw-search-sort-v2/src/main/java/Pool.java', 'yw-search-sort-v2/src/test/java/PoolTest.java', 'other-module/src/Main.java'];
+  for (const flag of ['-am', '--also-make']) {
+    const command = {
+      file: 'C:/Program Files/Development/apache-maven-3.9.9/bin/mvn.cmd',
+      args: ['-pl', 'yw-search-sort-v2', flag, '-DskipTests=false', '-Dmaven.test.skip=false', 'test'],
+      cwd: '.', source: 'pom.xml', kind: 'test',
+    };
+    assert.deepEqual(validationCoverage({ verify: [command] }, files), ['other-module/src/Main.java']);
+    assert.deepEqual(validationCoverage({ verify: [{ ...command, args: [...command.args, '-Dtest=PoolTest'] }] }, files), files);
+  }
+});
+
 test('scope check runs only added baselines, preserves original results and freezes the expanded plan', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'cez-scope-handoff-'));
   try {

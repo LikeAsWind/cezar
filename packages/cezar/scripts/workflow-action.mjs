@@ -45,7 +45,7 @@ export function validationCoverage(plan, files) {
     // Infer broad scope only for whole-project invocations. Unknown flags,
     // profiles and positional filters need an explicit evidence-backed scope.
     const all = pattern => operations.every(arg => pattern.test(arg));
-    const projectWide = ['mvn', 'mvnw'].includes(program) && all(/^(?:clean|test|verify|package|install|compile|test-compile|validate|-q|-B|-U|-ntp|-D(?:skipTests|maven\.test\.skip)=(?:true|false))$/)
+    const projectWide = ['mvn', 'mvnw'].includes(program) && all(/^(?:clean|test|verify|package|install|compile|test-compile|validate|-q|-B|-U|-ntp|-am|--also-make|-D(?:skipTests|maven\.test\.skip)=(?:true|false))$/)
       || ['gradle', 'gradlew'].includes(program) && all(/^(?:(?::[\w.-]+:)*(?:clean|test|build|check|assemble|classes)|--no-daemon|--console=plain)$/)
       || ['npm', 'pnpm', 'yarn', 'bun'].includes(program) && operations.some(arg => /^(?:test|build|typecheck)$/.test(arg)) && all(/^(?:run|test|build|typecheck|--silent|--if-present|--runInBand|--)$/)
       || program === 'pytest' && all(/^(?:\.|\.\/|-q|-v|--disable-warnings)$/)
