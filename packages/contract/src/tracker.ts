@@ -38,6 +38,10 @@ export const trackerAssociationSchema = z
   .strict();
 export type TrackerAssociation = z.infer<typeof trackerAssociationSchema>;
 
+/** Frozen, non-secret item identity carried from a tracker handoff into a run. */
+export const trackerTaskSchema = z.object({ association: trackerAssociationSchema, id: z.string().min(1).max(256) }).strict();
+export type TrackerTask = z.infer<typeof trackerTaskSchema>;
+
 /** What a tracker automation can fire on. Lives beside the association rather than in
  *  `automations.ts` because `runs.ts` describes it too (a run's `automationTracker` provenance),
  *  and `automations.ts` already imports `runs.ts` — this module imports neither. */

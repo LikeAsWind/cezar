@@ -1,5 +1,5 @@
 import { t } from '@/lib/i18n'
-import type { CreateRunInput, TrackerItem } from '@open-mercato/cezar-api-client'
+import type { CreateRunInput, TrackerItem, TrackerAssociation } from '@open-mercato/cezar-api-client'
 
 import { MAX_CHAIN_STEPS, skillChainSteps } from './github-task'
 
@@ -43,7 +43,7 @@ export function trackerRunBody(
   workflow: string | null,
   skills: readonly string[],
   backend: Pick<CreateRunInput, 'model' | 'runner' | 'agentProfile'>,
-  options: TrackerPromptOptions & { acknowledgeLoss?: boolean },
+  options: TrackerPromptOptions & { acknowledgeLoss?: boolean; association?: TrackerAssociation },
 ): CreateRunInput {
   if (!workflow && skills.length > MAX_CHAIN_STEPS) {
     throw new Error(t('A skill chain can contain at most {0} skills. Remove a skill before launching.', { 0: MAX_CHAIN_STEPS }))
@@ -55,7 +55,8 @@ export function trackerRunBody(
     ...options,
     skills: workflow ? skills : [],
   })
-  if (workflow) return { ...backend, workflow, task }
-  if (skills.length) return { ...backend, steps: skillChainSteps(skills), task }
-  return { ...backend, workflow: 'quick-task', task }
+  const trackerTask = options.association ? { trackerTask: { association: options.association, id: item.id } } : {}
+  if (workflow) return { ...backend, ...trackerTask, workflow, task }
+  if (skills.length) return { ...backend, ...trackerTask, steps: skillChainSteps(skills), task }
+  return { ...backend, ...trackerTask, workflow: 'quick-task', task }
 }

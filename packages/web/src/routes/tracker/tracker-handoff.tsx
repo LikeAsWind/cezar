@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, PlayIcon, XIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import type { Skill, TrackerItem, WorkflowDef } from '@open-mercato/cezar-api-client'
+import type { Skill, TrackerItem, TrackerAssociation, WorkflowDef } from '@open-mercato/cezar-api-client'
 import { createRun } from '@/api/client'
 import { queryKeys } from '@/api/queries'
 import { EnginePills, engineRunBody, useResolvedEngine, type EnginePick } from '@/components/engine-pills'
@@ -25,7 +25,8 @@ export type TrackerHandoffSelection = {
   engine: EnginePick
 }
 
-export function TrackerHandoff({ item, workflows, skills, selection, onSelectionChange, drafts, scopePending = false, detailUnavailable = false }: {
+export function TrackerHandoff({ item, association, workflows, skills, selection, onSelectionChange, drafts, scopePending = false, detailUnavailable = false }: {
+  association?: TrackerAssociation
   item: TrackerItem
   scopePending?: boolean
   detailUnavailable?: boolean
@@ -70,7 +71,7 @@ export function TrackerHandoff({ item, workflows, skills, selection, onSelection
       workflow,
       validSkills,
       engineRunBody(resolved),
-      { instruction, supplemental, acknowledgeLoss },
+      { instruction, supplemental, acknowledgeLoss, association },
     )),
     onSuccess: (created) => {
       const run = 'runs' in created ? created.runs[0] : created

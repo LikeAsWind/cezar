@@ -298,7 +298,8 @@ export async function launchTrackerAutomationRun(options: {
 }): Promise<{ runId: string }> {
   const { definition, candidate } = options;
   const workflow = await resolveWorkflow(options.root, definition);
-  const input = startInput(definition, renderTrackerTask(definition, candidate), options.dispatchEnabled ?? false);
+  const input = { ...startInput(definition, renderTrackerTask(definition, candidate), options.dispatchEnabled ?? false),
+    trackerTask: { association: candidate.association, id: candidate.issueId } };
   const runs = (definition.task.variants ?? 1) > 1
     ? options.manager.startVariants(workflow, input, definition.task.variants ?? 1)
     : [options.manager.startRun(workflow, input)];

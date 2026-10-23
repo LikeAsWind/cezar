@@ -21,6 +21,10 @@ const item: TrackerItem = {
 }
 
 describe('tracker handoff', () => {
+  it('carries the selected tracker scope and exact item ID separately from the prompt', () => {
+    const association = { kind: 'tapd' as const, source: { id: 'tapd', webUrl: 'https://www.tapd.cn' }, externalId: '123', externalName: 'Search' };
+    expect(trackerRunBody({ ...item, id: 'story:456' }, 'unattended', [], {}, { association }).trackerTask).toEqual({ association, id: 'story:456' });
+  });
   it('keeps full detail and puts the custom instruction last', () => {
     const longBody = 'x'.repeat(9_000)
     const prompt = trackerTaskPrompt(

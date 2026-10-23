@@ -728,6 +728,7 @@ function formatWakeInstant(at: Date): string {
 }
 
 export interface StartRunInput {
+  trackerTask?: RunRecord['trackerTask'];
   task: string;
   model?: string;
   /** Agent backend chosen for this task (GUI). Unset = the config default. */
@@ -1480,6 +1481,7 @@ export class RunManager {
     // Persist the full definition so a queued run survives a restart (#367) —
     // ad-hoc "(planned)" chains exist nowhere else to re-resolve from.
     this.store.updateRun(run.id, { workflowDef: workflow });
+    if (input.trackerTask) this.store.updateRun(run.id, { trackerTask: input.trackerTask });
     // A pull-request head run (spec 2026-10-06-agentic-e2e-checks Phase 3): the fetched sha is
     // recorded before queueing. The primary-base policy rejects new non-primary forks rather
     // than silently testing a different commit; existing worktree recovery preserves its base.

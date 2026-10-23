@@ -8,7 +8,7 @@ import { workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
 // one. `src/runs/store.ts` imports the SAME value for its persistence twin, so the two halves of
 // `contract-parity.runs.test.ts` cannot drift apart by construction.
 import { dispatchIntentSchema, dispatchSchema } from './dispatch.ts';
-import { trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema } from './tracker.ts';
+import { trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema, trackerTaskSchema } from './tracker.ts';
 
 /**
  * The RUNS family of `/api/v1` — a task's record, its lifecycle mutations, and the artifacts
@@ -247,6 +247,7 @@ export const runRecordSchema = z.object({
    * described here so the cockpit can tell an automation's task from a person's (the Tasks
    * tables' origin filter) without reaching past the type. No secret rides on it.
    */
+  trackerTask: trackerTaskSchema.optional(),
   automationTracker: z
     .object({
       automationId: z.string(),
@@ -999,6 +1000,7 @@ export const createRunInputBaseSchema = z
      *  a file). The catalog's own step shape, not a copy of it. */
     steps: z.array(workflowStepDefSchema).min(1).max(8).optional(),
     task: z.string().min(1).max(100_000, 'must be at most 100000 characters'),
+    trackerTask: trackerTaskSchema.optional(),
     model: z.string().optional(),
     runner: runnerSchema.optional(),
     /** Agent account for this task (spec 2026-07-29-agent-profiles). Omit to follow the

@@ -26,7 +26,7 @@ import { MAX_REF } from './task-refs.ts';
 import { workflowDefSchema } from '../workflows/types.ts';
 // A contract VALUE, like `workspaceUiStateSchema` in `workspace/migrations.ts`: the persisted
 // `dispatch` object and its wire half are literally the same schema, so they cannot drift.
-import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema, stepInputSchema, type StepInput } from '@open-mercato/cezar-contract';
+import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema, trackerKindSchema, trackerTaskSchema, stepInputSchema, type StepInput } from '@open-mercato/cezar-contract';
 
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
@@ -231,6 +231,7 @@ export const runRecordSchema = z.object({
    *  The optional association binds credentials to the exact source, scope and connection
    *  that fired the run. Legacy records without that snapshot receive no tracker credentials.
    *  No secret is stored on this record. */
+  trackerTask: trackerTaskSchema.optional(),
   automationTracker: z
     .object({
       automationId: z.string(),

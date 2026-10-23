@@ -273,15 +273,17 @@ describe('tracker automation task templates (2026-09-19)', () => {
     const root = await mkdtemp(join(tmpdir(), 'cezar-tracker-template-'));
     try {
       const store = RunStore.open(join(root, '.ai/cezar'));
+      const startRun = vi.fn((workflow: { name: string; steps: Array<{ id: string; name?: string; command?: string }> }, input: { task: string }) =>
+        store.createRun({ title: 'automation', workflow: workflow.name, task: input.task, steps: workflow.steps.map((step) => ({ id: step.id, name: step.name ?? step.id, kind: step.command ? 'check' as const : 'agent' as const })) }));
       const manager = {
-        startRun: (workflow: { name: string; steps: Array<{ id: string; name?: string; command?: string }> }, input: { task: string }) =>
-          store.createRun({ title: 'automation', workflow: workflow.name, task: input.task, steps: workflow.steps.map((step) => ({ id: step.id, name: step.name ?? step.id, kind: step.command ? 'check' as const : 'agent' as const })) }),
+        startRun,
       } as unknown as RunManager;
       const launched = await launchTrackerAutomationRun({
         root, manager, store,
         definition: { ...trackerDefinition, task: { ...trackerDefinition.task, workflow: 'quick-task' } },
         candidate: trackerCandidate, receiptId: 'receipt',
       });
+      expect(startRun.mock.calls[0]?.[1]).toMatchObject({ trackerTask: { association: trackerCandidate.association, id: trackerCandidate.issueId } });
       expect(store.getRun(launched.runId)?.automationTracker).toEqual({
         automationId: 'todo', automationRevision: 1, receiptId: 'receipt', provider: 'jira', key: 'ABC-1', url: trackerCandidate.url, association: trackerCandidate.association, eventId: trackerCandidate.eventId, event: trackerCandidate.event, timestamp: trackerCandidate.timestamp, change: trackerCandidate.change,
       });

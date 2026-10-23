@@ -12,6 +12,7 @@ import { E2E_SETUP_TASK, e2eCredentialsAmong, e2eSetupWorkflow, latestE2eSetupRu
 import { createTrackerService } from './tracker/index.ts';
 import { TrackerWatches } from './tracker/watch.ts';
 import { readTrackerAssociation, writeTrackerAssociation, clearTrackerAssociation } from '../tracker-association.ts';
+import { trackerTaskSchema } from '@open-mercato/cezar-contract';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { AutomationCoordinator } from '../automations/coordinator.ts';
@@ -649,6 +650,7 @@ const startRunSchema = z
     // unbounded body can't be piped into a spawned process (#429). 100k chars
     // (~25k tokens) is well past any hand-written task.
     task: z.string().min(1).max(100_000, 'must be at most 100000 characters'),
+    trackerTask: trackerTaskSchema.optional(),
     model: z.string().optional(),
     // Agent backend for this task (falls back to config `defaultRunner`).
     runner: z.enum(RUNNER_IDS).optional(),
@@ -4282,6 +4284,7 @@ export function createApp(deps: ServerDeps) {
       const images = parsed.data.images?.map((image) => toPastedContent(image));
       const input = {
         task: parsed.data.task,
+        trackerTask: parsed.data.trackerTask,
         model: parsed.data.model,
         runner: parsed.data.runner,
         agentProfile: parsed.data.agentProfile,
