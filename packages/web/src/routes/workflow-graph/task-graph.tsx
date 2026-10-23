@@ -1,6 +1,4 @@
-import { useRunEvents } from '@/api/run-events'
-import { reduceThread } from '../task-thread/thread-state'
-import { ClarificationCard } from '../task-thread/clarification-card'
+import { NodeClarifications } from './node-clarifications'
 import { t, useLocale } from '@/lib/i18n'
 import '@xyflow/react/dist/style.css'
 
@@ -117,8 +115,6 @@ function TaskGraphView({ run }: { run: ApiRun }) {
   const [selectedId, setSelectedId] = useState<string | null>(() => search.get('node'))
   useEffect(() => { if (search.get('node')) setSelectedId(search.get('node')) }, [search])
   const selected = graph?.nodes.find((n) => n.id === selectedId)
-  const questionEvents = useRunEvents(selected?.type === 'agent' && selected.skill === 'cezar:adjudicator' ? run.id : undefined)
-  const questions = useMemo(() => reduceThread(questionEvents).turns.flatMap(turn => turn.items).flatMap(entry => entry.kind === 'note' && entry.clarification ? [entry.clarification] : []), [questionEvents])
 
   const nodes: Node<LiveNodeData>[] = useMemo(
     () =>
@@ -207,7 +203,7 @@ function TaskGraphView({ run }: { run: ApiRun }) {
           </ReactFlow>
           {selected && overlay ? (
             <FloatingPanel side="right" label={t('Node details')} title={selected.name ?? selected.id} onClose={() => setSelectedId(null)}>
-              {questions.length ? <div className="px-4">{questions.map(question => <ClarificationCard key={`${question.origin}:${question.q}:${question.round}`} value={question} />)}</div> : null}
+              <NodeClarifications runId={run.id} node={selected} />
               <NodeDetails
                 node={selected}
                 input={run.steps.find(step => step.id === selected.id)?.input}

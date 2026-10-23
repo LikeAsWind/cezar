@@ -9,6 +9,7 @@ const labels = { pending: 'Awaiting adjudication', answering: 'Adjudicator is an
 export function ClarificationCard({ value }: { value: WorkflowClarification }) {
   useLocale()
   const { id } = useParams<{ id: string }>()
+  const answer = value.answer?.trim()
   const Icon = value.status === 'answering' ? LoaderCircleIcon : value.status === 'answered' ? CheckCircle2Icon : (value.status === 'blocked' || value.status === 'failed') ? CircleAlertIcon : MessageCircleQuestionIcon
   const highlights = value.answer?.split('\n').flatMap(line => {
     const match = /^\s*(?:#{1,6}\s*)?(?:\*\*)?(回答|结论|依据|影响|取舍)(?:\*\*)?[：:]\s*(.+)$/.exec(line)
@@ -24,14 +25,19 @@ export function ClarificationCard({ value }: { value: WorkflowClarification }) {
         <span role="status" className="text-xs text-muted-foreground">{t(labels[value.status])} · {t('Round {0}', { 0: value.round })}</span>
       </header>
       <div className="space-y-3 px-4 py-3 text-sm">
-        <p className="text-xs text-muted-foreground">{value.originName} · {t('Clarification question')}</p>
-        <Markdown breaks>{questionSection || question}</Markdown>
-        {questionSection ? <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('Full question and context')}</summary><Markdown breaks>{question}</Markdown></details> : null}
-        {value.answer ? <div className="space-y-2 border-t border-border pt-3">
-          {highlights.length ? highlights.map((field, index) => <div key={index}><span className="text-xs font-medium text-muted-foreground">{field.label}</span><Markdown breaks>{field.text}</Markdown></div>) : <Markdown breaks>{value.answer}</Markdown>}
-          <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('Full answer and evidence')}</summary><div className="mt-2"><Markdown breaks>{value.answer}</Markdown></div></details>
-        </div> : <p className="text-xs text-muted-foreground">{t(value.status === 'answering' ? 'The answer will appear here when adjudication finishes.' : 'Waiting for the workflow to invoke the adjudicator.')}</p>}
-        {value.status === 'answered' ? <p className="text-xs text-primary">{t('Decision recorded; the originating node will continue.')}</p> : null}
+        <section aria-label={`${value.originName} · ${t('Assistant question')}`} className="space-y-2">
+          <p className="flex flex-wrap items-center gap-2 text-xs"><span className="font-medium">{value.originName}</span><span className="text-muted-foreground">{t('Assistant question')}</span></p>
+          <Markdown breaks>{questionSection || question}</Markdown>
+          {questionSection || question !== value.question ? <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('Full question and context')}</summary><Markdown breaks>{value.question}</Markdown></details> : null}
+        </section>
+        <section aria-label={`${t('Adjudicator')} · ${t('Assistant answer')}`} className="space-y-2 border-t border-border pt-3">
+          <p className="flex flex-wrap items-center gap-2 text-xs"><span className="font-medium">{t('Adjudicator')}</span><span className="text-muted-foreground">{t('Assistant answer')}</span></p>
+          {answer ? <>
+            {highlights.length ? highlights.map((field, index) => <div key={index}><span className="text-xs font-medium text-muted-foreground">{field.label}</span><Markdown breaks>{field.text}</Markdown></div>) : <Markdown breaks>{answer}</Markdown>}
+            <details><summary className="cursor-pointer text-xs text-muted-foreground">{t('Full answer and evidence')}</summary><div className="mt-2"><Markdown breaks>{value.answer ?? ''}</Markdown></div></details>
+          </> : <p className="text-xs text-muted-foreground">{t(value.status === 'answering' ? 'The answer will appear here when adjudication finishes.' : value.status === 'pending' ? 'Waiting for the workflow to invoke the adjudicator.' : 'No adjudicator answer was recorded.')}</p>}
+        </section>
+        {value.status === 'answered' && answer ? <p className="text-xs text-primary">{t('Decision recorded; the originating node will continue.')}</p> : null}
         {id ? <Link className="inline-flex text-xs text-primary hover:underline" to={`/tasks/${id}/graph?node=${encodeURIComponent(value.origin)}`}>{t('View originating node')}</Link> : null}
       </div>
     </article>

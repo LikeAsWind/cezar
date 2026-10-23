@@ -2829,5 +2829,9 @@
   "The answer will appear here when adjudication finishes.": "裁决完成后，回答会更新在这里。",
   "Waiting for the workflow to invoke the adjudicator.": "等待工作流调用裁决者。",
   "Decision recorded; the originating node will continue.": "裁决已记录，工作流将返回发起节点继续处理。",
-  "View originating node": "查看发起节点"
+  "View originating node": "查看发起节点",
+  "Unknown": "未知",
+  "Assistant question": "助手提问",
+  "Assistant answer": "助手回答",
+  "No adjudicator answer was recorded.": "未记录裁决者的回答。"
 }

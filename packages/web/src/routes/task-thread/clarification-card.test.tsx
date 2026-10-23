@@ -1,4 +1,4 @@
-import { cleanup, render, screen, fireEvent } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent, within } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { ClarificationCard } from './clarification-card'
@@ -30,4 +30,23 @@ it('keeps unstructured answers intact and distinguishes missing authority from e
  show({ ...base, status: 'failed', answer: 'CLI timed out' })
  expect(screen.getByRole('status').textContent).toContain('Adjudication failed')
  expect(screen.queryByText('Decision recorded; the originating node will continue.')).toBeNull()
+})
+it('attributes both sides of the exchange to the assistant that produced them', () => {
+ show({ ...base, status: 'answered', answer: 'Keep the approved behavior.' })
+ const question = screen.getByRole('region', { name: `${base.originName} · Assistant question` })
+ const answer = screen.getByRole('region', { name: 'Adjudicator · Assistant answer' })
+ expect(within(question).getByText(base.question)).toBeTruthy()
+ expect(within(answer).getAllByText('Keep the approved behavior.').length).toBeGreaterThan(0)
+})
+it.each(['answered', 'blocked', 'failed'] as const)('does not claim a reply or continuation for %s without an answer', status => {
+ show({ ...base, status, answer: '  ' })
+ expect(screen.queryByText('Decision recorded; the originating node will continue.')).toBeNull()
+ expect(screen.queryByText('Waiting for the workflow to invoke the adjudicator.')).toBeNull()
+ expect(screen.getByText('No adjudicator answer was recorded.')).toBeTruthy()
+})
+it('keeps the original question context available behind the readable question', () => {
+ show({ ...base, question: 'origin: design\n## 问题\nWhich behavior is approved?\nCEZ:VERDICT needs-adjudication' })
+ const toggle = screen.getByText('Full question and context')
+ fireEvent.click(toggle)
+ expect(toggle.closest('details')?.textContent).toContain('origin: design')
 })
