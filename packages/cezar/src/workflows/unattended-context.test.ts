@@ -42,14 +42,16 @@ it('hands existing map contents, selected tools and progress to the next node', 
     expect(recovery).not.toContain('/selected/jdk8');
     const planningPaths = artifactInstructions(root, 'context-run', 'fast-plan');
     expect(planningPaths).toContain(`实现计划（本节点输出；尚未生成，直接创建，不预先读取）：${paths.relative('plan.md')}`);
+    expect(planningPaths).toContain(join(dirname(paths.file('run.json')), 'handoff.md'));
+    expect(planningPaths).toContain('无需查询环境变量');
     expect(planningPaths).toContain(`源码定位地图：${paths.relative('context-map.jsonl')}`);
     expect(planningPaths).not.toContain('"purpose"');
     expect(planningPaths).not.toContain('"mode"');
     expect(planningPaths).not.toContain('"exists"');
     expect(artifactInstructions(root, 'context-run', 'execute-fast')).toContain('实现计划（执行前读取）：');
     expect(artifactInstructions(root, 'context-run', 'adjudicator')).toContain('编译测试命令与版本约束（环境问题时读取）：');
-    expect(artifactInstructions(root, 'context-run', 'review')).toContain('修复前代码差异（可选输入，未生成，无需读取）：');
-    expect(artifactInstructions(root, 'context-run', 'fix')).toContain('修复前代码差异（本节点输出，修改前保存；尚未生成，直接创建，不预先读取）：');
+    expect(artifactInstructions(root, 'context-run', 'review')).not.toContain('fix-before.diff');
+    expect(artifactInstructions(root, 'context-run', 'fix')).toContain('本次任务完整代码差异（可选输入，未生成，无需读取）：');
     const designPaths = artifactInstructions(root, 'context-run', 'design');
     expect(designPaths).toContain('validation-plan.json');
     expect(designPaths).toContain('设计方案（本节点输出；尚未生成，直接创建，不预先读取）');

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile, realpath, appendFile, stat, link, unlink, mkdtemp, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { existsSync, openSync, closeSync, readdirSync } from 'node:fs';
-import { basename, dirname, join, resolve, relative, isAbsolute, delimiter } from 'node:path';
+import { basename, dirname, join, resolve, relative, isAbsolute, delimiter, posix } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
@@ -19,6 +19,62 @@ const routingSchema = z.object({
   requirementsClear: z.boolean(),
 });
 const rank = { fast: 0, standard: 1, deep: 2 };
+/** Revisions may add coverage, never remove or rewrite a frozen obligation. */
+export function assertValidationExtension(previous, next) {
+  if (previous.schemaVersion !== next.schemaVersion) throw new Error('Frozen validation schema changed');
+  for (const [key, value] of Object.entries(previous)) {
+    if (key === 'schemaVersion') continue;
+    if (Array.isArray(value)) {
+      if (!Array.isArray(next[key]) || value.some(item => !next[key].some(candidate => JSON.stringify(candidate) === JSON.stringify(item)))) throw new Error(`Frozen validation ${key} changed; only additive coverage is allowed`);
+    } else if (JSON.stringify(value) !== JSON.stringify(next[key])) throw new Error(`Frozen validation ${key} changed`);
+  }
+}
+export function validationCoverage(plan, files) {
+  const under = (file, scope) => scope === '.' || file === scope || file.startsWith(scope.replace(/\/$/, '') + '/');
+  const scopes = plan.verify.flatMap(command => {
+    if (command.kind === 'lint') return [];
+    if (command.coverage?.length) return command.coverage;
+    let cwd = posix.normalize(command.cwd ?? '.');
+    const args = command.args;
+    const program = basename(command.file.replaceAll('\\', '/')).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+    const operations = [];
+    for (let i = 0; i < args.length; i++) {
+      const locator = /^(?:-pl|--projects|-w|--workspace|--prefix|-p|--project-dir|-f|--file)(?:=|$)/.test(args[i]);
+      if (locator) { if (!args[i].includes('=')) i++; } else operations.push(args[i]);
+    }
+    // Infer broad scope only for whole-project invocations. Unknown flags,
+    // profiles and positional filters need an explicit evidence-backed scope.
+    const all = pattern => operations.every(arg => pattern.test(arg));
+    const projectWide = ['mvn', 'mvnw'].includes(program) && all(/^(?:clean|test|verify|package|install|compile|test-compile|validate|-q|-B|-U|-ntp|-D(?:skipTests|maven\.test\.skip)=(?:true|false))$/)
+      || ['gradle', 'gradlew'].includes(program) && all(/^(?:(?::[\w.-]+:)*(?:clean|test|build|check|assemble|classes)|--no-daemon|--console=plain)$/)
+      || ['npm', 'pnpm', 'yarn', 'bun'].includes(program) && operations.some(arg => /^(?:test|build|typecheck)$/.test(arg)) && all(/^(?:run|test|build|typecheck|--silent|--if-present|--runInBand|--)$/)
+      || program === 'pytest' && all(/^(?:\.|\.\/|-q|-v|--disable-warnings)$/)
+      || program === 'go' && operations.includes('./...') && all(/^(?:test|\.\/\.\.\.|-race|-v|-count=1)$/)
+      || program === 'cargo' && all(/^(?:test|build|check|--all|--all-targets|--all-features)$/)
+      || program === 'dotnet' && all(/^(?:test|build|--no-restore|--no-build)$/)
+      || program === 'node' && args.includes('--test') && all(/^(?:--test|--test-reporter=(?:spec|tap|dot))$/);
+    if (!projectWide) return [command.source, ...args.filter(arg => /\.(?:[cm]?js|ts|py|sh)$/.test(arg)).map(path => posix.join(cwd, path))].filter(Boolean);
+    const selected = [];
+    for (let i = 0; i < args.length; i++) {
+      const match = /^(-pl|--projects|-w|--workspace|--prefix|-p|--project-dir|-f|--file)(?:=(.*))?$/.exec(args[i]);
+      if (match) {
+        const value = match[2] ?? args[++i];
+        if (!value) continue;
+        if (['-pl', '--projects', '-w', '--workspace'].includes(match[1])) selected.push(...value.split(','));
+        else cwd = posix.join(cwd, ['-f', '--file'].includes(match[1]) ? posix.dirname(value.replaceAll('\\', '/')) : value);
+      }
+    }
+    if (!selected.length && !args.some(arg => /^(?:test|build|check|assemble)$/.test(arg))) {
+      selected.push(...args.flatMap(arg => {
+        const task = /^:(.+):(?:test|build|check|assemble)(?:$|:)/.exec(arg);
+        return task ? [task[1].replaceAll(':', '/')] : [];
+      }));
+    }
+    if (!selected.length) return [cwd];
+    return selected.filter(path => !path.startsWith('!') && !path.startsWith(':') && !path.startsWith('@')).map(path => posix.normalize(cwd === '.' ? path : `${cwd}/${path}`));
+  });
+  return files.filter(file => !scopes.some(scope => under(file, scope)));
+}
 const riskPath = /(?:^|\/)(?:auth|permissions?|payments?|migrations?|contracts?|scheduler|semaphore|worktrees?)(?:\/|\.|-)|(?:^|\/)\.env\.example$/i;
 const commandSchema = z.object({
   file: z.string().min(1).max(4096).refine(file => file.trim() === file && !/[\r\n\0"%!^&|<>]/.test(file) && !file.replaceAll('\\', '/').split('/').includes('..'), 'expected one executable name or observed tool path, not a shell expression'),
@@ -27,6 +83,7 @@ const commandSchema = z.object({
   source: repoPath,
   kind: z.enum(['test', 'typecheck', 'build', 'lint', 'package', 'check']),
   toolchain: z.string().min(1).optional(),
+  coverage: z.array(repoPath).min(1).max(100).optional(),
 }).strict();
 const baselineCommandSchema = commandSchema.extend({
   expectedFailure: z.object({
@@ -287,11 +344,43 @@ export async function commandResult(command, cwd, logPath, timeoutMs = 900_000, 
   return { command, exitCode: timedOut || cancelled || failure ? 1 : status ?? 1, durationMs: Date.now() - started, timedOut, cancelled, ...(failure ? { spawnError: failure } : {}) };
 }
 
-export async function captureDiff(root, runId, base) {
-  const paths = artifactPaths(root, runId);
+function diffSelection(root, runId, hostDirectory) {
+  const paths = artifactPaths(root, runId, hostDirectory);
   const ownState = relative(root, paths.stateDirectory).replaceAll('\\', '/');
   const excluded = [...artifactNames.map(name => paths.relative(name)), `.ai/cezar/artifact-topics/${paths.prefix}`, ...(!ownState.startsWith('../') && !isAbsolute(ownState) ? [ownState] : [])].filter(path => !path.startsWith('../'));
-  const selection = ['.', ...excluded.map(path => `:(exclude,literal)${path}`)];
+  return ['.', ':(exclude,literal).superpowers', ...excluded.map(path => `:(exclude,literal)${path}`)];
+}
+
+/** Snapshot code without modifying the user's index or requiring a commit. */
+export async function captureTree(root, runId, hostDirectory) {
+  const temporary = await mkdtemp(join(tmpdir(), 'cez-review-index-'));
+  try {
+    const env = { ...process.env, GIT_INDEX_FILE: join(temporary, 'index') };
+    const git = args => {
+      const result = spawnSync('git', args, { cwd: root, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      if (result.status !== 0) throw new Error(result.stderr || 'Cannot snapshot review tree');
+      return result.stdout.trim();
+    };
+    git(['read-tree', 'HEAD']);
+    const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...diffSelection(root, runId, hostDirectory)], { cwd: root, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (listed.status !== 0) throw new Error(listed.stderr || 'Cannot enumerate review files');
+    if (listed.stdout) {
+      const files = join(temporary, 'paths');
+      await writeFile(files, listed.stdout);
+      git(['--literal-pathspecs', 'add', '--all', `--pathspec-from-file=${files}`, '--pathspec-file-nul']);
+    }
+    return git(['write-tree']);
+  } finally { await rm(temporary, { recursive: true, force: true }); }
+}
+export async function treeDiff(root, base, head) {
+  if (![base, head].every(value => /^[a-f0-9]{40,64}$/.test(value))) throw new Error('Invalid review snapshot identity');
+  const result = spawnSync('git', ['diff', '--no-ext-diff', '--binary', base, head], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(result.stderr || 'Cannot produce fix diff');
+  return result.stdout;
+}
+export async function captureDiff(root, runId, base) {
+  const paths = artifactPaths(root, runId);
+  const selection = diffSelection(root, runId);
   const tracked = spawnSync('git', ['diff', '--no-ext-diff', '--binary', base, '--', ...selection], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (tracked.status !== 0) throw new Error(tracked.stderr || 'cannot capture task diff');
   const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', ...selection], { cwd: root, encoding: 'utf8' });
@@ -340,7 +429,7 @@ function diagnostics(output) {
 }
 
 export async function main(action, title = 'task') {
-  if (!['init', 'route', 'execution', 'baseline', 'verify', 'seal', 'blocked'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
+  if (!['init', 'route', 'execution', 'baseline', 'scope', 'verify', 'seal', 'blocked'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
   const root = process.cwd();
   const runId = ['init', 'route'].includes(action)
     ? process.env.CEZ_TASK_ID || process.env.CEZ_RUN_ID
@@ -395,42 +484,91 @@ export async function main(action, title = 'task') {
     console.log(decision.mode);
     return;
   }
-  if (action === 'baseline' || action === 'verify') {
-    if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Node 20+ is required');
-    const plan = await validationPlan(root, await json(paths.file(action === 'baseline' ? 'environment.json' : 'validation-plan.json')));
-    if (action === 'baseline') await save(paths.file('validation-plan.json'), plan);
-    const commands = action === 'baseline' ? [...plan.setup, ...plan.baseline] : plan.verify;
+  if (action === 'baseline' || action === 'scope' || action === 'verify') {
     const results = [];
     const report = { runId, results };
-    let dependenciesChecked = false;
-    for (const spec of commands) {
-      if (spec.kind !== 'setup' && !dependenciesChecked) {
-        await checkDependencies(root, plan);
-        await checkEnvironment(root, paths, plan, action, report);
-        dependenciesChecked = true;
+    try {
+      if (action === 'scope' && existsSync(paths.file('baseline.json'))) {
+        const saved = await json(paths.file('baseline.json'));
+        results.push(...saved.results);
+        Object.assign(report, saved, { results });
+        delete report.error;
       }
-      const cwd = await executionDirectory(root, spec);
-      const command = formatCommand(spec);
-      const temporary = await mkdtemp(join(tmpdir(), 'cez-validation-'));
-      const log = join(temporary, 'output.tmp');
-      const result = await commandResult(command, cwd, log, 900_000, executionEnvironment(plan, spec));
-      const expected = action === 'baseline' ? spec.expectedFailure : undefined;
-      const output = stripVTControlCharacters(await readFile(log, 'utf8')).replaceAll('\r\n', '\n');
-      const outputHash = createHash('sha256').update(output).digest('hex');
-      const testExecution = testExecutionEvidence(spec, output);
-      const testsMissing = testExecution && testExecution.status !== 'executed';
-      const knownFailure = expected && !result.timedOut && !result.cancelled && !result.spawnError && result.exitCode === expected.exitCode && outputHash === expected.outputHash && expected.outputIncludes.every(fragment => output.includes(fragment));
-      const classification = testsMissing && result.exitCode === 0 ? 'tests-not-executed' : result.exitCode === 0 ? 'passed' : knownFailure ? 'known-product-failure' : 'unexpected-failure';
-      results.push({ ...result, spec, classification, outputHash, ...(testExecution ? { testExecution } : {}), ...(classification === 'passed' ? {} : { diagnostics: diagnostics(output) }) });
-      await rm(temporary, { recursive: true, force: true });
-      console.log(`${command}: exit ${result.exitCode} (${result.durationMs}ms)`);
-      await save(paths.file(`${action}.json`), report);
-      if (result.exitCode !== 0 && !knownFailure) throw new Error(`${action} failed; read ${action}.json diagnostics`);
-      if (testsMissing) throw new Error(`${action}: Maven tests ${testExecution.status}; build success is not test evidence. Read ${action}.json diagnostics and the Surefire skip configuration.`);
-    }
-    if (action === 'verify') {
-      const diffHash = await captureDiff(root, runId, context.base);
-      await save(paths.file('verified.json'), { runId, diffHash, commands });
+      if (action === 'verify') {
+        await rm(paths.file('verified.json'), { force: true });
+        await save(paths.file('verify.json'), report);
+        await captureDiff(root, runId, context.base);
+      }
+      if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Node 20+ is required');
+      const previous = action === 'scope' ? await json(paths.file('validation-plan.json')) : undefined;
+      const plan = await validationPlan(root, await json(paths.file(action === 'baseline' || action === 'scope' && existsSync(paths.file('environment.json')) ? 'environment.json' : 'validation-plan.json')));
+      if (action === 'scope') {
+        assertValidationExtension(previous, plan);
+        for (const spec of plan.verify.filter(spec => !previous.verify.some(old => JSON.stringify(old) === JSON.stringify(spec)))) {
+          if (!plan.baseline.some(({ expectedFailure, ...baseline }) => JSON.stringify(baseline) === JSON.stringify(spec))) throw new Error('New validation checks require matching baseline commands');
+        }
+      }
+      if (action === 'scope' || action === 'verify') {
+        const routing = action === 'verify' && !existsSync(paths.file('routing-input.json')) ? {} : await json(paths.file('routing-input.json'));
+        const files = [...(routing.likelyChangeFiles ?? [])];
+        if (action === 'verify') {
+          const changed = spawnSync('git', ['diff', '--name-only', '-z', context.base, '--', ...diffSelection(root, runId)], { cwd: root, encoding: 'utf8' });
+          const added = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', ...diffSelection(root, runId)], { cwd: root, encoding: 'utf8' });
+          if (changed.status !== 0 || added.status !== 0) throw new Error('Cannot determine validation scope');
+          files.push(...changed.stdout.split('\0').filter(Boolean), ...added.stdout.split('\0').filter(Boolean));
+        }
+        const missing = validationCoverage(plan, [...new Set(files)]);
+        if (missing.length) throw new Error(`Validation coverage missing for: ${missing.join(', ')}; add checks and baseline evidence without changing frozen obligations`);
+      }
+      if (action === 'baseline') await save(paths.file('validation-plan.json'), plan);
+      const commands = action === 'baseline' ? [...plan.setup, ...plan.baseline] : action === 'scope'
+        ? [...plan.setup.filter(spec => !previous.setup.some(old => JSON.stringify(old) === JSON.stringify(spec))), ...plan.baseline.filter(spec => !previous.baseline.some(old => JSON.stringify(old) === JSON.stringify(spec)))] : plan.verify;
+      let dependenciesChecked = false;
+      const reportName = action === 'scope' ? 'baseline' : action;
+      if (action === 'scope' && !commands.length) {
+        await checkDependencies(root, plan);
+        await checkEnvironment(root, paths, plan, reportName, report);
+      }
+      for (const spec of commands) {
+        if (spec.kind !== 'setup' && !dependenciesChecked) {
+          await checkDependencies(root, plan);
+          await checkEnvironment(root, paths, plan, reportName, report);
+          dependenciesChecked = true;
+        }
+        const cwd = await executionDirectory(root, spec);
+        const command = formatCommand(spec);
+        const temporary = await mkdtemp(join(tmpdir(), 'cez-validation-'));
+        const log = join(temporary, 'output.tmp');
+        const result = await commandResult(command, cwd, log, 900_000, executionEnvironment(plan, spec));
+        const expected = action !== 'verify' ? spec.expectedFailure : undefined;
+        const output = stripVTControlCharacters(await readFile(log, 'utf8')).replaceAll('\r\n', '\n');
+        const outputHash = createHash('sha256').update(output).digest('hex');
+        const testExecution = testExecutionEvidence(spec, output);
+        const testsMissing = testExecution && testExecution.status !== 'executed';
+        const knownFailure = expected && !result.timedOut && !result.cancelled && !result.spawnError && result.exitCode === expected.exitCode && outputHash === expected.outputHash && expected.outputIncludes.every(fragment => output.includes(fragment));
+        const classification = testsMissing && result.exitCode === 0 ? 'tests-not-executed' : result.exitCode === 0 ? 'passed' : knownFailure ? 'known-product-failure' : 'unexpected-failure';
+        results.push({ ...result, spec, classification, outputHash, ...(testExecution ? { testExecution } : {}), ...(classification === 'passed' ? {} : { diagnostics: diagnostics(output) }) });
+        await rm(temporary, { recursive: true, force: true });
+        if (action !== 'scope') console.log(`${command}: exit ${result.exitCode} (${result.durationMs}ms)`);
+        await save(paths.file(action === 'scope' ? 'baseline.json' : `${action}.json`), report);
+        if (result.exitCode !== 0 && !knownFailure) throw new Error(`${action} failed; read ${reportName}.json diagnostics`);
+        if (testsMissing) throw new Error(`${action}: Maven tests ${testExecution.status}; build success is not test evidence. Read ${reportName}.json diagnostics and the Surefire skip configuration.`);
+      }
+      if (action === 'verify') {
+        const diffHash = await captureDiff(root, runId, context.base);
+        await save(paths.file('verified.json'), { runId, diffHash, tree: await captureTree(root, runId), commands });
+      }
+      if (action === 'scope') {
+        await save(paths.file('validation-plan.json'), plan);
+        const previousTier = existsSync(paths.file('route.json')) ? (await json(paths.file('route.json'))).tier : undefined;
+        const decision = routeDecision(await json(paths.file('routing-input.json')), previousTier);
+        await save(paths.file('route.json'), decision);
+        console.log(decision.tier);
+      }
+    } catch (error) {
+      report.error = error.message;
+      await save(paths.file(action === 'scope' ? 'baseline.json' : `${action}.json`), report);
+      throw error;
     }
     return;
   }

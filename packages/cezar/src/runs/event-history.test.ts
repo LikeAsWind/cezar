@@ -537,3 +537,10 @@ it('keeps launch snapshots as separate visible items on history replay', async (
   expect((await readRunHistoryPage(file)).events.filter(event => event.type === 'agent-launch')).toHaveLength(2);
 
 });
+
+it('keeps clarification cards visible when the history contains only their status updates', async () => {
+  const clarification = { q: 'Q-001', origin: 'design', originName: '设计', round: 1, question: '需要怎样验收？', status: 'pending' };
+  const events = [{ seq: 1, ts: 'x', type: 'workflow-clarification', clarification }, { seq: 2, ts: 'x', type: 'workflow-clarification', clarification: { ...clarification, status: 'answered', answer: '保留原始验收要求。' } }];
+  expect(canonicalSessionItems(events)).toHaveLength(2);
+  expect((await readRunHistoryPage(fixture(events))).events.filter(e => e.type === 'workflow-clarification')).toHaveLength(2);
+});

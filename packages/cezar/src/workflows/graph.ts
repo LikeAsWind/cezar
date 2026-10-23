@@ -295,7 +295,9 @@ export function verdictInstruction(verdicts: readonly string[]): string {
   const list = verdicts.map((v) => `\`CEZ:VERDICT ${v}\``).join(', ');
   return (
     `When you finish this step, end your final message with exactly one verdict marker on its own ` +
-    `last line — one of: ${list}. The workflow branches on it.`
+    `last line — one of: ${list}. The workflow branches on it. ` +
+    `Before handing off, collect the completion and exit results of background commands and sub-agents you started. ` +
+    `Do not declare completion while required work is still running or its outcome is unknown.`
   );
 }
 

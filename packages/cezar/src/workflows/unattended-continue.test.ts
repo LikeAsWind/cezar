@@ -2,6 +2,7 @@ import { runFilePath } from '../runs/files.ts';
 import { mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
@@ -12,6 +13,7 @@ import { unattendedWorkflows } from './superpowers-bundle.ts';
 import * as guards from './unattended-guards.ts';
 import { RunManager } from './run.ts';
 import { newArtifactPaths } from '../../scripts/workflow/artifacts.mjs';
+import { captureTree } from '../../scripts/workflow-action.mjs';
 
 const gitState = vi.hoisted(() => ({ missing: false, creationFails: false, recordedPath: '' }));
 vi.mock('../server/git.ts', async importOriginal => {
@@ -66,6 +68,12 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
       gitState.missing = true;
       gitState.creationFails = fail;
     }
+    const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+    git('init', '-q');
+    await writeFile(join(cwd, '.gitignore'), '.ai/\n.superpowers/\n');
+    await writeFile(join(cwd, 'fixture.txt'), 'existing task code');
+    git('add', '.gitignore', 'fixture.txt');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture');
     store.updateRun(run.id, { status: 'failed', worktree: isolated ? undefined : false, workflowDef: workflow, graphState: { cursor: 'design', loops: { 'clarification-round': 3, 'final-retry': 1 }, taken: [] } });
     await mkdir(join(data, 'runs', run.id), { recursive: true });
     await writeFile(runFilePath(data, run.id, '.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
@@ -75,6 +83,11 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
     await mkdir(dirname(paths.file('run.json')), { recursive: true }); await writeFile(paths.file('run.json'), JSON.stringify({ runId: run.id, root: await realpath(cwd), artifactPrefix: paths.prefix }));
     await writeFile(paths.file('context-map.jsonl'), JSON.stringify({ schemaVersion: 1, stage: 'probe', path: 'src/ExistingCounter.java', summary: 'Existing fixture counter', relevance: 'Continue existing work', symbols: ['recordFailure'], dependsOn: [], confidence: 'high' }) + '\n');
     for (const name of ['design.md', 'ledger.md']) await writeFile(paths.file(name), '# Existing evidence');
+    await writeFile(paths.file('plan.md'), '# Plan\n### Task 1: fixture\n- [x] Step 1: verify\n');
+    const workspace = join(cwd, '.superpowers/sdd', `${paths.prefix}-plan`);
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, 'plan-path'), paths.relative('plan.md'));
+    await writeFile(join(workspace, 'progress.md'), `# SDD ledger — plan: ${paths.relative('plan.md')}\nTask 1: complete (tests: fixture → passed)\n`);
     await writeFile(paths.file('validation-plan.json'), '{}');
     const baseline = bundled.graph!.nodes.find(node => node.id === 'baseline');
     if (baseline?.type !== 'check') throw Error('missing baseline');
@@ -85,7 +98,13 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
     const checks: string[] = [];
     vi.spyOn(manager as unknown as { runCheckStep: (...args: unknown[]) => Promise<{ ok: boolean; output: string; exitCode: number }> }, 'runCheckStep').mockImplementation(async (...args) => {
       const step = args[2] as { id: string }; checks.push(step.id);
-      if (step.id === 'verify') await writeFile(paths.file('verified.json'), JSON.stringify({ runId: run.id, diffHash: 'example' }));
+      if (step.id === 'verify') {
+        await writeFile(paths.file('verify.json'), '{"results":[{"exitCode":0}]}');
+        await writeFile(paths.file('verified.json'), JSON.stringify({ runId: run.id, tree: await captureTree(cwd, run.id, join(data, 'runs', run.id)), diffHash: 'example' }));
+        const verify = graph.nodes.find(node => node.id === 'verify');
+        if (verify?.type !== 'check') throw new Error('missing verify');
+        await guards.guardUnattendedCheck(data, run.id, cwd, verify.command, 'after');
+      }
       return { ok: true, output: 'passed', exitCode: 0 };
     });
     const pinPath = runFilePath(data, run.id, '.superpowers.json');
@@ -127,5 +146,9 @@ it.each([{ name: 'in place', isolated: false, fail: false }, { name: 'isolated d
     expect(store.getRun(run.id)?.steps.some(step => step.id.startsWith('continue-'))).toBe(false);
     await expect(readFile(paths.file('resume-message.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     expect(captures.specs[0]?.userPrompt).toContain('Use exact matching.');
+    expect(captures.specs[0]?.userPrompt).toContain('builder check 恢复');
+    expect(captures.specs[0]?.userPrompt).toContain('确认旧任务编号不存在或已失效');
+    expect(captures.specs.slice(1).every(spec => !spec.userPrompt.includes('builder check 恢复'))).toBe(true);
+    expect(bundled.graph?.nodes.find(node => node.id === 'design' && node.type === 'agent')).not.toHaveProperty('prompt', expect.stringContaining('builder check 恢复'));
   } finally { gitState.missing = false; gitState.creationFails = false; gitState.recordedPath = ''; captures.onLaunch = undefined; manager?.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 60_000);

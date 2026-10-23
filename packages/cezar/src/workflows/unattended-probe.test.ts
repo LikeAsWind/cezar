@@ -80,6 +80,8 @@ it('initializes before launch, supplies the thirty-minute limit, and refuses uns
     expect(launch.timeoutMs).toBe(PROBE_TIMEOUT_MS);
     expect(launch.timeoutMs).toBe(1_800_000);
     expect(launch.instructions).toContain('probe-policy.mjs');
+    expect(launch.instructions).toContain(runFilePath(dataDir, 'probe-run', '.handoff.md'));
+    expect(launch.instructions).toContain('无需查询环境变量');
     expect(launch.instructions).toContain('不执行编译、测试、安装或源码修改');
     expect(launch.instructions).toContain('相互独立的读取与搜索可并行');
     expect(launch.instructions).not.toContain('每批最多三项');
@@ -119,7 +121,7 @@ it('initializes before launch, supplies the thirty-minute limit, and refuses uns
       expect(captures.specs[0]?.probePolicy).toEqual({ root: cwd, runId: run.id });
       expect(captures.specs[0]?.timeoutMs).toBe(1_800_000);
       expect(captures.specs[0]?.mcpServers).toBeUndefined();
-      expect(captures.specs[0]?.userPrompt).toContain('原始需求：读取 CEZ_HANDOFF_FILE');
+      expect(captures.specs[0]?.userPrompt).toContain('原始需求：使用 Read 读取交接文件');
       expect(captures.specs[0]?.userPrompt).toContain('Resume discovery only.');
       expect(captures.specs[0]?.userPrompt).not.toContain('chain of');
       expect(captures.specs[0]?.userPrompt).not.toContain('CEZ:DONE');

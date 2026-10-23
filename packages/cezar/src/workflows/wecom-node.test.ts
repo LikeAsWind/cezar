@@ -29,8 +29,19 @@ it('uses skipped for a disabled connection and failed for a rejection without re
   send.mockRejectedValueOnce(new Error('WeCom rejected the message (code 93000)'));
   const node = invoke();
   expect(await node.run()).toBe('failed');
+  expect(node.outputs.get('notify')).toEqual({ status: 'failed', error: 'WeCom rejected the message (code 93000)' });
+  expect(node.persist).toHaveBeenCalledOnce();
   expect(node.note).toHaveBeenCalledWith(expect.objectContaining({ tone: 'danger', message: expect.stringContaining('93000') }));
   expect(send).toHaveBeenCalledTimes(2);
+});
+
+it('includes reviewer assignment failure together with the already-created MR', async () => {
+  send.mockResolvedValue(true);
+  const node = invoke();
+  node.outputs.set('request-review', { error: 'Reviewer account is not a project member' });
+  expect(await node.run()).toBe('done');
+  expect(send).toHaveBeenCalledWith('project-a', expect.stringContaining('审核人设置失败：Reviewer account is not a project member'));
+  expect(send).toHaveBeenCalledWith('project-a', expect.stringContaining(record.pullRequestUrl));
 });
 
 it('sends the actual originating blocker even when the blocker-report command also failed', async () => {

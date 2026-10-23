@@ -100,6 +100,7 @@ interface CanonicalItem {
 
 const STANDALONE_TYPES = new Set([
   'agent-launch',
+  'workflow-clarification',
   'user-message',
   'note',
   'lifecycle',

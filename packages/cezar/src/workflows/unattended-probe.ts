@@ -1,9 +1,9 @@
 import { runFilePath } from '../runs/files.ts';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync } from 'node:fs';
-import { readFile, realpath } from 'node:fs/promises';
-import { join, delimiter } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
+import { join, dirname, delimiter, relative } from 'node:path';
 import { z } from 'zod';
 import { superpowersBundleRefSchema } from '@open-mercato/cezar-contract';
 import { snapshotPath } from '../superpowers-update.ts';
@@ -12,23 +12,35 @@ import type { AgentBackend, AgentRunSpec } from '../core/agent-runner.ts';
 import { artifactNames, artifactPaths, artifactTopic } from '../../scripts/workflow/artifacts.mjs';
 import { discoverJavaLocations } from './probe-tools.ts';
 import { WORKFLOW_ACTION_SCRIPT } from './workflow-actions.ts';
-import type { RunRecord } from '../runs/store.ts';
+import type { RunEvent, RunRecord } from '../runs/store.ts';
 import { getHeadCommit } from '../server/git.ts';
+import { officialWorkspace } from './unattended-ledger.ts';
+import { treeDiff } from '../../scripts/workflow-action.mjs';
 
 const exec = promisify(execFile);
+
+/** Replay decisions in chronological order. Equal wording may be a later reversal. */
+export function unattendedUserUpdates(run: Pick<RunRecord, 'queuedMessages'> | undefined, events: RunEvent[]): string[] {
+  const messages = new Map<string, { text: string; createdAt: string }>();
+  for (const event of events) if (event.type === 'user-message' && typeof event.text === 'string') {
+    messages.set(typeof event.messageId === 'string' ? event.messageId : `event:${event.seq}`, { text: event.text, createdAt: event.ts });
+  }
+  for (const message of run?.queuedMessages ?? []) messages.set(message.id, { text: message.text, createdAt: messages.get(message.id)?.createdAt ?? message.createdAt });
+  return [...messages.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(message => message.text);
+}
 // Stage-local aliases keep later outputs and unrelated execution evidence out of the input.
 export const stageArtifacts: Record<string, string[]> = {
   design: ['probe.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'design.md'],
-  'fast-plan': ['probe.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json', 'plan.md'],
-  plan: ['design.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json', 'plan.md'],
+  'fast-plan': ['probe.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json', 'plan.md', 'environment.json'],
+  plan: ['design.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json', 'plan.md', 'environment.json'],
   adjudicator: ['probe.md', 'context-map.jsonl', 'validation-plan.json'],
   'execute-fast': ['plan.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json'],
   'execute-standard': ['plan.md', 'context-map.jsonl', 'validation-plan.json', 'routing-input.json', 'route.json'],
   'execute-deep': ['plan.md', 'context-map.jsonl', 'validation-plan.json'],
   'execute-deep-native': ['plan.md', 'execution.json', 'context-map.jsonl', 'validation-plan.json'],
-  review: ['design.md', 'plan.md', 'context-map.jsonl', 'verify.json', 'verified.json', 'branch.diff', 'fix-before.diff'],
-  fix: ['plan.md', 'context-map.jsonl', 'baseline.json', 'verify.json', 'validation-plan.json', 'branch.diff', 'fix-before.diff'],
-  deliver: ['verify.json', 'verified.json'],
+  review: ['design.md', 'plan.md', 'context-map.jsonl', 'verify.json', 'verified.json', 'branch.diff'],
+  fix: ['plan.md', 'context-map.jsonl', 'baseline.json', 'verify.json', 'validation-plan.json', 'branch.diff'],
+  deliver: ['plan.md', 'verify.json', 'verified.json'],
 };
 
 /** Keep each path's purpose readable without a metadata envelope. */
@@ -48,7 +60,7 @@ export function artifactLabel(name: string, stage?: string): string {
     'verify.json': '当前验证结果与失败原因',
     'verified.json': '验证对应的变更凭据',
     'branch.diff': '本次任务完整代码差异',
-    'fix-before.diff': '修复前代码差异',
+    'fix.diff': '本轮修复增量差异',
   };
   const label = labels[name];
   if (!label) throw new Error(`Missing artifact purpose: ${name}`);
@@ -64,21 +76,28 @@ export function artifactInstructions(cwd: string, runId: string, stage?: string,
     if (error instanceof Error && error.message === 'Run artifacts have not been initialized') return 'Run artifacts were not initialized. Report the failed initialization through CEZ_HANDOFF_FILE; never invent another run context.';
     throw error;
   }
-  const names = stage ? ['run.json', ...(stageArtifacts[stage] ?? [])] : artifactNames;
+  let names = stage ? ['run.json', ...(stageArtifacts[stage] ?? [])] : artifactNames;
+  if (stage === 'adjudicator' && dataDir) {
+    const pending = JSON.parse(readFileSync(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8'));
+    const relevant = stageArtifacts[pending.origin] ?? stageArtifacts.adjudicator!;
+    names = [...new Set([...names, ...relevant.filter(name => existsSync(paths.file(name)))])];
+  }
   const isOutput = (name: string) => name === 'design.md' && stage === 'design'
     || name === 'plan.md' && (stage === 'fast-plan' || stage === 'plan')
-    || name === 'fix-before.diff' && stage === 'fix';
-  const optional = (name: string) => stage === 'review' && (name === 'design.md' || name === 'fix-before.diff');
+    || name === 'environment.json' && (stage === 'fast-plan' || stage === 'plan');
+  const optional = (name: string) => stage === 'review' && name === 'design.md'
+    || stage === 'fix' && ['verify.json', 'branch.diff'].includes(name);
   const inputs = names.filter(name => !isOutput(name));
   const outputs = names.filter(isOutput);
   const describe = (name: string) => {
     const present = existsSync(paths.file(name));
     const usage = isOutput(name)
-      ? `${name === 'fix-before.diff' ? '本节点输出，修改前保存' : '本节点输出'}；${present ? name === 'fix-before.diff' ? '已存在，复用原始快照，不覆盖' : '已存在，读取后继续完善' : '尚未生成，直接创建，不预先读取'}`
+      ? `本节点输出${name === 'environment.json' ? '，仅范围扩大时按冻结计划追加检查与基线，不改旧约束' : ''}；${present ? '已存在，读取后继续完善' : '尚未生成，直接创建，不预先读取'}`
       : optional(name) ? present ? '可选输入，按需读取' : '可选输入，未生成，无需读取' : '';
     return `${artifactLabel(name, stage)}${usage ? `（${usage}）` : ''}：${paths.relative(name)}`;
   };
-  return `任务身份：读取 run.json，确认任务与工作树一致。
+  return `原始需求：使用 Read 读取交接文件 ${join(dirname(paths.file('run.json')), 'handoff.md')} 的 ## Goal，无需查询环境变量。
+任务身份：读取 run.json，确认任务与工作树一致。
 输入文件：
 ${inputs.map(describe).join('\n')}${outputs.length ? `\n本节点输出：\n${outputs.map(describe).join('\n')}` : ''}
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。${names.includes('context-map.jsonl') ? '先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。' : ''}`;
@@ -86,7 +105,7 @@ ${inputs.map(describe).join('\n')}${outputs.length ? `\n本节点输出：\n${ou
 }
 
 /** Feed existing discovery and progress to the next role, rather than only naming files. */
-export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string, resumingSession = false): Promise<string> {
+export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string, resumingSession = false, deliveredUserUpdates?: string[]): Promise<string> {
   const paths = artifactPaths(cwd, runId, dataDir ? join(dataDir, 'runs', runId) : undefined);
   const identity = JSON.parse(await readFile(paths.file('run.json'), 'utf8'));
   if (identity.runId !== runId || identity.root !== await realpath(cwd)) throw new Error('Shared context belongs to another run or worktree');
@@ -116,7 +135,7 @@ export async function unattendedContext(cwd: string, runId: string, run?: Pick<R
     ...(!stage ? { map, omittedMapEntries: rows.length - map.length } : {}),
     ...(!stage ? { toolchains: environment.toolchains ?? [], environmentBlockers: environment.blocked ?? [], baseline: validation(baselineText) } : {}),
     ...(!stage ? { verification: validation(verifyText) } : {}),
-    ...(stage && !(stage === 'adjudicator' && resumingSession) && run?.graphState?.outputs?.[stage] ? { checkpoint: run.graphState.outputs[stage] } : {}) };
+    ...(stage && !['review', 'deliver'].includes(stage) && !(stage === 'adjudicator' && resumingSession) && run?.graphState?.outputs?.[stage] ? { checkpoint: run.graphState.outputs[stage] } : {}) };
   let questions;
   if (dataDir) {
     try { questions = JSON.parse(await readFile(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8')); }
@@ -126,9 +145,32 @@ export async function unattendedContext(cwd: string, runId: string, run?: Pick<R
   const clarification = stage === 'adjudicator'
     ? resumingSession && questions ? { ...questions, history: [] } : questions
     : decisions;
-  const userUpdates = run?.queuedMessages?.map(message => message.text).filter(Boolean) ?? [];
+  const userUpdates = deliveredUserUpdates ?? unattendedUserUpdates(run, []);
+  const workspace = stage && (stage.startsWith('execute-') || ['review', 'fix', 'adjudicator', 'deliver'].includes(stage))
+    ? await officialWorkspace(cwd, paths.file('plan.md')) : undefined;
+  const workspaceInput = workspace ? `执行事实与原生报告目录：${relative(cwd, workspace).replaceAll('\\', '/')}\n执行账本：${relative(cwd, join(workspace, 'progress.md')).replaceAll('\\', '/')}\n先核对账本与已有报告；临时程序缺失不代表未执行，部分复现与未执行须区分。` : '';
+  const fixReport = workspace && stage === 'review' && existsSync(join(workspace, 'final-fix-report.md'))
+    ? relative(cwd, join(workspace, 'final-fix-report.md')).replaceAll('\\', '/') : undefined;
+  const reviewReport = workspace && ['fix', 'adjudicator', 'deliver'].includes(stage ?? '') && existsSync(join(workspace, 'final-review.md'))
+    ? `独立审查报告：${relative(cwd, join(workspace, 'final-review.md')).replaceAll('\\', '/')}` : '';
+  let rereview = '';
+  if (stage === 'review' && dataDir && workspace) {
+    const trusted = JSON.parse(await readFile(runFilePath(dataDir, runId, '.unattended.json'), 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return '{}'; throw error;
+    }));
+    if (trusted.review?.tree && fixReport) {
+      const verified = JSON.parse(await read('verified.json'));
+      const diff = await treeDiff(cwd, trusted.review.tree, verified.tree);
+      await writeFile(paths.file('fix.diff'), diff);
+      rereview = `限定复查参数：\nFINDINGS：读取 ${relative(cwd, join(workspace, 'final-review.md')).replaceAll('\\', '/')}\nREPORT_FILE：${relative(cwd, join(workspace, 'final-fix-report.md')).replaceAll('\\', '/')}\nFIX_BASE_SHA（前次审查代码树，含未提交文件）：${trusted.review.tree}\nHEAD_SHA（当前验证代码树）：${verified.tree}\nDIFF_FILE：${paths.relative('fix.diff')}`;
+    }
+  }
   const shared = { ...data, ...(clarification && (!Array.isArray(clarification) || clarification.length) ? { clarification } : {}) };
   return [
+    ...(workspaceInput ? [workspaceInput] : []),
+    ...(reviewReport ? [reviewReport] : []),
+    ...(rereview ? [rereview] : []),
+    ...(fixReport && !rereview ? [`本轮返修报告：${fixReport}`] : []),
     ...(userUpdates.length ? [`Persisted user updates for this task:\n${userUpdates.join('\n\n')}`] : []),
     ...(Object.keys(shared).length ? [`共享证据（reference data）：\n${JSON.stringify(shared, null, 2)}`] : []),
   ].join('\n\n');
@@ -175,7 +217,7 @@ export async function prepareUnattendedProbe(dataDir: string, runId: string, cwd
   const paths = artifactPaths(cwd, runId, dataDir ? join(dataDir, 'runs', runId) : undefined);
   return { policy, timeoutMs: PROBE_TIMEOUT_MS, instructions: `执行已加载的 cezar:project-probe，完成需求影响面、源码地图和必要环境探测。不要进入设计或实现。
 
-原始需求：读取 CEZ_HANDOFF_FILE 的 ## Goal。
+原始需求：使用 Read 读取交接文件 ${runFilePath(dataDir, runId, '.handoff.md')} 的 ## Goal；这是 CEZ_HANDOFF_FILE 对应的实际路径，无需查询环境变量。
 任务身份：读取 ${paths.relative('run.json')}，确认当前任务与工作树一致。
 
 仅维护本阶段四份产物：
@@ -189,6 +231,7 @@ ${JSON.stringify(locations)}
 
 根据项目证据选择对应工具链；只核对选定版本，不逐一尝试所有已安装版本。版本查询仅使用宿主允许的命令：
 ${probeVersionPrefix()} '<installed executable name or absolute path>' '<--version or -version or -v>' '<absolute Java home or empty string>'
+自定义验证脚本在命令的 coverage 中列明覆盖的仓库相对文件或模块；根目录 cwd 不代表覆盖整个项目。
 
 遵守宿主工具边界，不执行编译、测试、安装或源码修改。相互独立的读取与搜索可并行，控制单次返回量，避免上下文过载；存在依赖的操作顺序执行，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
 

@@ -26,6 +26,7 @@ import {
 import { onUsage, registerRunProcess, unregisterRunProcess, type ProcessUsage } from '../core/process-usage.ts';
 import { parseUsageLimit } from '../core/usage-limit.ts';
 import { createRunner } from '../core/runner-factory.ts';
+import { collectBackgroundTasksInstruction } from '../core/claude-background-tasks.ts';
 import type { RunnerId } from '../core/agent-runner.ts';
 import { modelConflictsWithRunner } from '../core/model-presets.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
@@ -58,9 +59,9 @@ import {
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { pinSuperpowersRun } from './superpowers-pin.ts';
-import { clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
+import { adjudicationTurnInput, clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
 import { unattendedRecoveryPoint } from './unattended-recovery.ts';
-import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext } from './unattended-probe.ts';
+import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext, unattendedUserUpdates } from './unattended-probe.ts';
 import { WORKFLOW_ACTION_SCRIPT, workflowActionOf } from './workflow-actions.ts';
 import { startSessionWithInput } from './step-input.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
@@ -176,8 +177,8 @@ import {
   type WorkflowGraph,
 } from './graph.ts';
 
-/** Backends whose runner honors `resume` (AgentRunSpec) — graph `session.continue` and the
- *  verdict nudge need it. OpenCode always starts a new session; Cursor has no resume yet. */
+/** Backends whose runner honors `resume` (AgentRunSpec) — graph `session.continue` and
+ *  restart recovery need it. OpenCode always starts a new session; Cursor has no resume yet. */
 const RESUMABLE_BACKENDS: ReadonlySet<RunnerId> = new Set<RunnerId>(['claude', 'codex', 'pi']);
 /**
  * The reply to a one-question ask card without the card's own framing: a click on an option
@@ -471,6 +472,15 @@ const REPOSITORY_ROOT_LOCK_DISABLED_NOTE =
   'repository-root lock disabled by CEZ_DISABLE_REPO_LOCK=1 (shared checkout is unsafe)';
 
 interface ActiveRun {
+  adjudicationTimer?: NodeJS.Timeout;
+  /** One caller can wait while this serial graph invokes its adjudicator. */
+  parkedAgent?: {
+    stepId: string;
+    session: AgentSession;
+    failure?: string;
+    resume: (lastTurn: { text: string }, prompt: string) => Promise<string | null>;
+    close: () => Promise<void>;
+  };
   /** Identity of this async owner; stale promises must not mutate a replacement owner. */
   ownerToken: symbol;
   cancelled: boolean;
@@ -1253,6 +1263,7 @@ export class RunManager {
     this.offSemaphore();
     clearInterval(this.queueWatchdog);
     for (const [runId, state] of this.active) {
+      if (state.adjudicationTimer) clearTimeout(state.adjudicationTimer);
       this.clearIdleTimer(state);
       this.clearMonitoringWakeTimer(state, runId);
       this.clearAutosaveTimer(state);
@@ -2055,6 +2066,7 @@ export class RunManager {
     if (expectedState !== undefined && state !== expectedState) return;
     state?.releaseRepoRoot?.();
     if (state) state.releaseRepoRoot = undefined;
+    if (state?.adjudicationTimer) clearTimeout(state.adjudicationTimer);
     if (state?.cancellationTimer) clearTimeout(state.cancellationTimer);
     if (state) state.cancellationTimer = undefined;
     this.waiting.delete(runId);
@@ -3149,7 +3161,10 @@ export class RunManager {
     const state = this.active.get(runId);
     if (!state) return false;
     state.cancelled = true;
+    if (state.adjudicationTimer) clearTimeout(state.adjudicationTimer);
     this.clearIdleTimer(state);
+    state.parkedAgent?.session.hardStop?.();
+    state.parkedAgent?.session.interrupt();
     try {
       state.interrupt();
     } catch {
@@ -3699,7 +3714,7 @@ export class RunManager {
           this.store.updateRun(runId, { status: 'queued', error: undefined, finishedAt: undefined, currentStepId: undefined, runner, model, agentProfile, queuedMessages,
             graphState: { ...run.graphState!, cursor } });
           this.store.updateStep(runId, cursor, { status: 'pending', error: undefined });
-          this.store.appendEvent(runId, { type: 'user-message', text: prompt, imageCount: opts.images?.length ?? 0, images: saved.map(image => image.url) });
+          this.store.appendEvent(runId, { type: 'user-message', messageId: queuedMessages.at(-1)!.id, text: prompt, imageCount: opts.images?.length ?? 0, images: saved.map(image => image.url) });
           this.pendingJobs.set(runId, { workflow: run.workflowDef, input: { task: run.task, runner, model, agentProfile, systemPrompt: run.systemPrompt, worktree: run.worktree, autonomous: run.autonomous, generateFollowups: run.generateFollowups, dispatch: run.dispatch } });
           this.queue.push(runId);
           this.store.appendEvent(runId, { type: 'lifecycle', message: `resuming the pinned unattended workflow at "${cursor}"; existing loop budgets retained` });
@@ -3985,6 +4000,10 @@ export class RunManager {
     let stepCost = 0;
     let turnText = '';
     let sessionError: string | undefined;
+    let pendingBackgroundTaskIds: readonly string[] = [...(record?.steps ?? [])].reverse()
+      .find(step => step.id !== stepId && step.sessionId === sessionId)?.pendingBackgroundTaskIds ?? [];
+    if (pendingBackgroundTaskIds.length) this.store.updateStep(runId, stepId, { pendingBackgroundTaskIds: [...pendingBackgroundTaskIds] });
+    let backgroundContinues = 0;
     const sink = this.makeUiSink(runId, stepId);
     const onEvent = (event: AgentEvent) => {
       if (state.cancelled || this.active.get(runId) !== state) return;
@@ -4041,6 +4060,18 @@ export class RunManager {
         // because a turn that finished or dispatched is progress too.
         if (!compacted) state.compactionContinues = 0;
         const done = sessionOpen && endsWithDoneMarker(turnText);
+        if (sessionOpen && pendingBackgroundTaskIds.length &&
+            (done || (endsWithMonitoringMarker(turnText) && resolveAskTurn(turnText, true).ask === null))) {
+          turnText = '';
+          if (backgroundContinues >= MAX_AUTO_CONTINUES || !state.session?.sendMessage([{ type: 'text', text: collectBackgroundTasksInstruction(pendingBackgroundTaskIds) }])) {
+            sessionError = `Background results could not be collected: ${pendingBackgroundTaskIds.join(', ')}; completion is unverified.`;
+            state.session?.end();
+          } else {
+            backgroundContinues += 1;
+            this.store.appendEvent(runId, { type: 'note', stepId, message: 'completion deferred — background results still need collection' });
+          }
+          return;
+        }
         // The dispatch facts of this turn (spec 2026-09-10-dispatch), through the ONE helper both
         // turn-end handlers call. Inert for a run with no `dispatch`.
         const dispatchTurn = this.handleDispatchTurn(runId, turnText, {
@@ -4278,7 +4309,7 @@ export class RunManager {
     if (record?.workflowDef?.graph && isUnattendedGraph(this.dataDir, runId, record.workflowDef.graph)) {
       try {
         continuationEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, continuationEnv);
-        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId, record.graphState?.cursor, this.dataDir)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), record.graphState?.cursor, this.dataDir)}`;
+        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId, record.graphState?.cursor, this.dataDir)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), record.graphState?.cursor, this.dataDir, false, unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)))}`;
       } catch (error) {
         this.failOwnedContinuation(runId, effectiveOwnerToken, error instanceof Error ? error.message : String(error));
         return;
@@ -4298,9 +4329,9 @@ export class RunManager {
           record?.systemPrompt,
           generateFollowups ? HANDOFF_INSTRUCTIONS : HANDOFF_ONLY_INSTRUCTIONS,
         ),
-        userPrompt: attachments.length
+        userPrompt: (attachments.length
           ? `${contextualOpeningPrompt}\n\n${pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))}`
-          : contextualOpeningPrompt,
+          : contextualOpeningPrompt) + (pendingBackgroundTaskIds.length ? `\n\n${collectBackgroundTasksInstruction(pendingBackgroundTaskIds)}` : ''),
         ...(openingImages.length ? { images: openingImages } : {}),
         cwd: state.cwd,
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
@@ -4315,10 +4346,23 @@ export class RunManager {
         model: continueModel,
         sessionId: spawnSessionId,
         resume: sessionId !== undefined,
+        ...(pendingBackgroundTaskIds.length ? { pendingBackgroundTaskIds } : {}),
         timeoutMs: toolsStep?.timeoutMs ?? 0,
       },
       onEvent,
-      { onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event) },
+      {
+        onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
+        onProcessReplaced: pid => {
+          if (state.cancelled || this.active.get(runId) !== state) return;
+          this.recordUsagePeaks(runId, state);
+          registerRunProcess(runId, pid);
+        },
+        onBackgroundTasks: ids => {
+          if (state.cancelled || this.active.get(runId) !== state) return;
+          pendingBackgroundTaskIds = [...ids];
+          this.store.updateStep(runId, stepId, { pendingBackgroundTaskIds: [...ids] });
+        },
+      },
     );
     state.session = session;
     state.sessionEverOpened = true;
@@ -4329,6 +4373,9 @@ export class RunManager {
     const finishedAt = () => new Date().toISOString();
     try {
       await session.result;
+      if (!state.cancelled && pendingBackgroundTaskIds.length) {
+        sessionError ??= `Agent process exited with uncollected background task results: ${pendingBackgroundTaskIds.join(', ')}; completion is unverified.`;
+      }
       if (sessionError) throw new Error(sessionError);
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
       if (state.cancelled && this.active.get(runId) === state) {
@@ -4865,8 +4912,9 @@ export class RunManager {
       : enterGraph(graph, loopCounts);
     if (resumeNode) emit({ type: 'note', message: `resuming the workflow at "${resumeNode.name ?? resumeNode.id}" after a restart` });
     else record(step.transitions);
+    try {
     while (step.kind === 'node') {
-      if (state.cancelled) return null;
+      if (state.cancelled || this.active.get(runId) !== state) return null;
       const node = step.node;
       const resuming = resumeNode?.id === node.id && cursor === undefined;
       cursor = node.id;
@@ -4889,7 +4937,7 @@ export class RunManager {
         const shape = forkShape(graph, node.id);
         const outcome =
           typeof shape === 'string' ? shape : await this.runFork(graph, runId, state, node, shape, outputs, input.task, emit, persistWalk, resuming);
-        if (state.cancelled) return null;
+        if (state.cancelled || this.active.get(runId) !== state) return null;
         if (outcome === 'finished') {
           this.finishStep(runId, node.id, 'done', undefined, emit);
           return null;
@@ -4911,7 +4959,7 @@ export class RunManager {
       } else if (node.type !== 'agent' && node.type !== 'check') {
         // Nodes cezar runs itself: gates, questions, dispatch, git and GitHub (phase 1c).
         const outcome = await this.runSystemNode(runId, state, node, outputs, input.task, emit, persistWalk, resuming);
-        if (state.cancelled) return null;
+        if (state.cancelled || this.active.get(runId) !== state) return null;
         // Finish on a parked gate/question is "stop here and accept" — the same settlement a
         // Finish on a parked agent step gets (`askPark === 'abandoned'`).
         if (outcome === 'finished') {
@@ -4933,7 +4981,8 @@ export class RunManager {
         if (verdicts.length) rendered.prompt = `${rendered.prompt ?? '{{task}}'}\n\n${verdictInstruction(verdicts)}`;
         const backend = node.runner ?? taskBackend;
         const lastTurn = { text: '' };
-        const failure = await this.runAgentStep(
+        const adjudicationReturn = managedUnattended && taken[taken.length - 1] === `adjudicator.${node.id === 'design' ? 'answered' : node.id}->${node.id}`;
+        let failure = await this.runAgentStep(
           runId,
           state,
           rendered,
@@ -4947,14 +4996,15 @@ export class RunManager {
           extraSystemPrompt,
           stepIdx >= 0 ? chainStepNote(workflow.steps, stepIdx) : undefined,
           startAttachments,
-          resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn, emit, managedUnattended) : {
+          { ...(resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn, emit, managedUnattended) : {
             resumeSessionId: this.graphResumeSession(runId, node, backend, emit,
-              managedUnattended && taken[taken.length - 1] === `adjudicator.${node.id === 'design' ? 'answered' : node.id}->${node.id}`), lastTurn },
+              adjudicationReturn), lastTurn, verdicts }), adjudicationReturn },
         );
         startImages = undefined;
         startAttachments = [];
+        failure ??= state.parkedAgent?.failure ?? null;
         checkFailure = null;
-        if (state.cancelled) return null;
+        if (state.cancelled || this.active.get(runId) !== state) return null;
         if (state.askPark) {
           if (state.askPark === 'abandoned') this.finishStep(runId, node.id, 'done', undefined, emit);
           return null;
@@ -4970,29 +5020,8 @@ export class RunManager {
         let verdict: string | null = null;
         if (!failure && verdicts.length) {
           verdict = parseVerdict(lastTurn.text, verdicts);
-          // D14: one nudge on the node's own session, then `failed`.
-          const own = this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
-          if (!verdict && own && RESUMABLE_BACKENDS.has(backend) && !state.cancelled) {
-            emit({ type: 'note', stepId: node.id, message: 'no verdict marker — asking the agent once more' });
-            const nudge = await this.runAgentStep(
-              runId,
-              state,
-              { ...rendered, prompt: `You did not end with a verdict. ${verdictInstruction(verdicts)}` },
-              input,
-              skills,
-              null,
-              false,
-              emit,
-              undefined,
-              taskBackend,
-              extraSystemPrompt,
-              undefined,
-              [],
-              { resumeSessionId: own, lastTurn },
-            );
-            if (state.cancelled) return null;
-            if (!nudge) verdict = parseVerdict(lastTurn.text, verdicts);
-          }
+          // Missing handoffs are recovered before teardown, in runAgentStep.
+          // Reopening here would lose process-owned background tasks and reset the deadline.
         }
         let handoffFailure: string | undefined;
         if (managedUnattended && !failure && verdict) {
@@ -5021,7 +5050,7 @@ export class RunManager {
           agentFailure = failure ?? handoffFailure;
           port = 'failed';
         } else if (verdicts.length && !verdict) {
-          const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}`;
+          const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}${stepRec?.pendingBackgroundTaskIds?.length ? `; uncollected background tasks: ${stepRec.pendingBackgroundTaskIds.join(', ')}` : ''}`;
           if (managedUnattended && node.skill === 'cezar:adjudicator') {
             const clarification = await clarificationForEvent(this.dataDir, runId, graph);
             if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: { ...clarification, status: 'failed', answer: error } });
@@ -5030,7 +5059,10 @@ export class RunManager {
           agentFailure = error;
           port = 'failed';
         } else {
-          this.finishStep(runId, node.id, 'done', undefined, emit);
+          if (verdict === 'question' && state.parkedAgent?.stepId === node.id) {
+            this.store.updateStep(runId, node.id, { status: 'waiting', finishedAt: undefined });
+            emit({ type: 'note', stepId: node.id, message: '原会话保持打开，等待裁决答复。' });
+          } else this.finishStep(runId, node.id, 'done', undefined, emit);
           port = verdict ?? 'done';
           if (verdict) emit({ type: 'note', stepId: node.id, message: `verdict: ${verdict}` });
         }
@@ -5071,7 +5103,7 @@ export class RunManager {
           state.checkInProgress = false;
         }
         const { ok, output, exitCode } = checkResult;
-        if (state.cancelled) return null;
+        if (state.cancelled || this.active.get(runId) !== state) return null;
         outputs.set(node.id, { exitCode, output });
         if (ok) {
           this.finishStep(runId, node.id, 'done', undefined, emit);
@@ -5120,6 +5152,21 @@ export class RunManager {
         : `loop "${from.name ?? from.id}" exhausted after ${from.max} iterations`;
     }
     return `node "${last?.from ?? '?'}" ended on "${last?.port ?? '?'}" with nothing wired`;
+    } finally {
+      const parked = state.parkedAgent;
+      if (this.active.get(runId) === state) state.parkedAgent = undefined;
+      if (parked && this.active.get(runId) === state) {
+        const caller = this.store.getRun(runId)?.steps.find(candidate => candidate.id === parked.stepId);
+        if (caller?.status === 'waiting') {
+          this.store.updateStep(runId, parked.stepId, {
+            status: state.cancelled ? 'cancelled' : 'failed',
+            finishedAt: new Date().toISOString(),
+            error: state.cancelled ? undefined : 'Adjudication ended without returning an answer to this node',
+          });
+        }
+        await parked.close();
+      }
+    }
   }
 
   /**
@@ -5134,12 +5181,19 @@ export class RunManager {
     lastTurn: { text: string },
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
     managedUnattended = false,
-  ): { resumeSessionId?: string; lastTurn: { text: string }; freshPrompt?: string } {
+  ): { resumeSessionId?: string; lastTurn: { text: string }; freshPrompt?: string; verdicts?: readonly string[] } {
     const own = managedUnattended ? this.graphResumeSession(runId, node, backend, emit, true) : this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
-    if (!own || !RESUMABLE_BACKENDS.has(backend)) return { lastTurn };
+    const builderRecovery = managedUnattended && node.id === 'design'
+      ? '\n\nbuilder check 恢复：先复用与当前设计一致的完整检查结果。只有 TaskOutput 明确确认旧任务编号不存在或已失效，且没有可复用结果时，才按已加载 brainstorming 的 builder check 要求，使用原检查提示词启动一个全新上下文的通用子代理检查当前设计；最多重新启动一次。仍在运行、等待超时或接口失败不属于编号失效，不重复启动。收取新检查的完整结果并处理反馈后再继续；再次失败则明确报告阻塞。仅重做检查，不重跑探测、基线或重复起草设计。'
+      : '';
+    if (!own || !RESUMABLE_BACKENDS.has(backend)) {
+      if (builderRecovery) rendered.prompt = `${rendered.prompt ?? ''}${builderRecovery}`;
+      return { lastTurn, verdicts: node.verdicts };
+    }
     const freshPrompt = rendered.prompt;
     rendered.prompt = managedUnattended ? `${RESTART_CONTINUATION_PROMPT}\n\nUse the queued user continuation already supplied in this session; do not create a duplicate resume-message file. Continue this node, not a standalone follow-up. ${node.verdicts?.length ? verdictInstruction(node.verdicts) : ''}` : RESTART_CONTINUATION_PROMPT;
-    return { resumeSessionId: own, lastTurn, ...(freshPrompt ? { freshPrompt } : {}) };
+    rendered.prompt += builderRecovery;
+    return { resumeSessionId: own, lastTurn, verdicts: node.verdicts, ...(freshPrompt ? { freshPrompt } : {}) };
   }
 
   /**
@@ -5502,6 +5556,8 @@ export class RunManager {
       case 'github.pr-update': {
         const number = prNumber();
         if (number === undefined) {
+          outputs.set(node.id, { error: 'No PR on this task to update' });
+          onOutputs();
           note('no PR on this task to update', 'danger');
           return 'failed';
         }
@@ -5511,9 +5567,13 @@ export class RunManager {
           ...(node.reviewers?.length ? { reviewers: node.reviewers } : {}),
         });
         if (!res.ok) {
+          outputs.set(node.id, { error: res.error });
+          onOutputs();
           note(`PR update failed — ${res.error}`, 'danger');
           return 'failed';
         }
+        outputs.set(node.id, { status: 'updated', number });
+        onOutputs();
         note(`updated PR #${number}`);
         return 'done';
       }
@@ -5550,6 +5610,7 @@ export class RunManager {
           'cezar 研发任务审核',
           `任务：${(run?.titleSummary ?? run?.title ?? task).slice(0, 240)}`,
           ...(run?.pullRequestUrl ? [`MR：${run.pullRequestUrl}`] : []),
+          ...(outputs.get('request-review')?.error ? [`审核人设置失败：${outputs.get('request-review')!.error}`] : []),
         ].join('\n');
         content = this.store.redactRunText(runId, content);
         if (Buffer.byteLength(content, 'utf8') > 2048) content = Buffer.from(content).subarray(0, 2045).toString('utf8').replace(/\uFFFD$/, '') + '…';
@@ -5560,6 +5621,8 @@ export class RunManager {
           note(sent ? 'WeCom notification accepted; configured members mentioned' : 'WeCom notification skipped — disabled, unconfigured or dry run');
           return sent ? 'done' : 'skipped';
         } catch (error) {
+          outputs.set(node.id, { status: 'failed', error: error instanceof Error ? error.message : 'WeCom notification failed' });
+          onOutputs();
           note(error instanceof Error ? error.message : 'WeCom notification failed', 'danger');
           return 'failed';
         }
@@ -5875,8 +5938,29 @@ export class RunManager {
     attachments: PersistedAttachment[] = [],
     /** Graph-workflow hooks (spec 2026-09-30-workflow-node-editor): reopen an earlier session
      *  instead of minting one, and hand back the last turn's text for verdict parsing. */
-    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string },
+    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string; verdicts?: readonly string[]; adjudicationReturn?: boolean },
   ): Promise<string | null> {
+    const parked = state.parkedAgent;
+    if (graphHooks?.adjudicationReturn && parked?.stepId === step.id) {
+      const graph = this.store.getRun(runId)?.workflowDef?.graph;
+      if (!graph || !graphHooks.lastTurn) return 'Missing adjudication caller context';
+      try {
+        const record = this.store.getRun(runId);
+        const previous = record?.steps.find(candidate => candidate.id === step.id)?.input;
+        const updates = unattendedUserUpdates({ queuedMessages: record?.queuedMessages?.filter(message => !previous || message.createdAt > previous.capturedAt) }, this.store.readEvents(runId).filter(event => !previous || event.ts > previous.capturedAt));
+        const prompt = [
+          this.flushPendingReports(runId), this.flushInbox(runId),
+          await adjudicationTurnInput(this.dataDir, runId, graph, step.id, true),
+          ...(graphHooks.verdicts?.length ? [verdictInstruction(graphHooks.verdicts)] : []),
+          ...(updates.length ? [`本轮用户补充：\n${updates.join('\n\n')}`] : []),
+          ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
+        ].filter(Boolean).join('\n\n');
+        if (state.cancelled || this.active.get(runId) !== state) return null;
+        if (previous) this.store.updateStep(runId, step.id, { input: { ...previous, capturedAt: new Date().toISOString(), userPrompt: prompt } });
+        emit({ type: 'note', stepId: step.id, message: '裁决答复送回原会话，继续执行。' });
+        return await parked.resume(graphHooks.lastTurn, prompt);
+      } catch (error) { return error instanceof Error ? error.message : String(error); }
+    }
     let systemPrompt: string | undefined;
     if (step.skill) {
       const skill = skills.find((s) => s.name === step.skill);
@@ -5960,10 +6044,22 @@ export class RunManager {
     let stepCost = stepRecord?.costUsd ?? 0;
     let turnText = '';
     let finalAssistantMessage = '';
+    let verdictContinues = 0;
+    let emptyTurns = 0;
+    let turnHadTools = false;
+    let pendingBackgroundTaskIds: readonly string[] = stepRecord?.pendingBackgroundTaskIds ?? [];
     let sessionError: string | undefined;
+    let session: AgentSession;
+    let completion: Promise<string | null>;
+    let parkedForAdjudication = false;
+    let questionTimer: NodeJS.Timeout | undefined;
+    let resolveHandoff: (failure: string | null) => void;
+    const nextHandoff = () => new Promise<string | null>(resolve => { resolveHandoff = resolve; });
+    let handoff = nextHandoff();
     const sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
       if (state.cancelled || this.active.get(runId) !== state) return;
+      if (event.type === 'tool-call' || event.type === 'tool-result') turnHadTools = true;
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
         if (saved) emit({ type: 'image', stepId: step.id, ...saved });
@@ -5984,7 +6080,7 @@ export class RunManager {
       emit({ ...event, stepId: step.id });
       if (event.type === 'error') {
         sessionError ??= event.message;
-        state.session?.interrupt();
+        session?.interrupt();
         return;
       }
       if (sessionError) return;
@@ -6000,6 +6096,7 @@ export class RunManager {
         this.store.updateStep(runId, step.id, { costUsd: stepCost });
       }
       if (event.type === 'turn-end') {
+        if (parkedForAdjudication) return;
         // v2 `turn.completed` already flushed the coalescers; the v1 turn
         // boundary flushes again (idempotent) as a backstop.
         sink.flushAll();
@@ -6011,7 +6108,7 @@ export class RunManager {
         const compacted = event.reason === 'context-compaction';
         const markerless = compacted && markerlessTurn(turnText);
         if (!compacted) state.compactionContinues = 0;
-        const done = interactive && sessionOpen && endsWithDoneMarker(turnText);
+        const done = interactive && sessionOpen && pendingBackgroundTaskIds.length === 0 && endsWithDoneMarker(turnText);
         // The dispatch facts, through the same ONE helper `runContinuation` calls (spec
         // 2026-09-10-dispatch A5). Not gated on `interactive`: a report and a dispatch
         // are the agent telling cezar what it did, and a chained workflow's non-final step that
@@ -6057,7 +6154,9 @@ export class RunManager {
           !done &&
           !ask &&
           !dispatchTurn.overBudget &&
-          (dispatchTurn.dispatched || endsWithMonitoringMarker(turnText));
+          // Native background work has no host dispatch wake-up. Collect it in
+          // this session even if the model says it is merely monitoring.
+          (dispatchTurn.dispatched || (pendingBackgroundTaskIds.length === 0 && endsWithMonitoringMarker(turnText)));
         const parksWorkflow = !interactive && (ask !== null || monitoring);
         // A turn that does not park retires a park an earlier turn left standing. The park is
         // otherwise cleared only by `sendMessage`, and a parked session can wake without one:
@@ -6069,10 +6168,57 @@ export class RunManager {
           state.askPark = undefined;
           if (this.store.getRun(runId)?.askParked) this.store.updateRun(runId, { askParked: undefined });
         }
-        if (graphHooks?.lastTurn) graphHooks.lastTurn.text = this.store.redactRunText(runId, finalAssistantMessage || turnText);
+        const finalText = this.store.redactRunText(runId, finalAssistantMessage || turnText);
+        emptyTurns = !finalText.trim() && !turnHadTools && !compacted ? emptyTurns + 1 : 0;
+        turnHadTools = false;
+        // Empty CLI turns must not erase the last useful recovery evidence.
+        const turnVerdict = graphHooks?.verdicts?.length ? parseVerdict(finalText, graphHooks.verdicts) : null;
+        const pendingHandoff = pendingBackgroundTaskIds.length > 0 && turnVerdict !== 'blocked';
+        if (graphHooks?.lastTurn && finalText.trim()) graphHooks.lastTurn.text = pendingHandoff ? stripVerdictMarker(finalText) : finalText;
         finalAssistantMessage = '';
         turnText = '';
         for (const note of askNotes) emit({ type: 'note', stepId: step.id, ...note });
+        if (turnVerdict === 'question' && !pendingHandoff && sessionOpen && managedStage && graphHooks?.lastTurn && !state.parkedAgent) {
+          parkedForAdjudication = true;
+          this.clearIdleTimer(state);
+          const usageInvocation = state.usageInvocation;
+          const attachmentLibrary = state.grantedAttachmentLibrary;
+          state.parkedAgent = {
+            stepId: step.id, session,
+            resume: async (lastTurn, prompt) => {
+              if (state.cancelled || this.active.get(runId) !== state) return null;
+              if (sessionError || !session.open) return sessionError ?? 'Waiting caller session closed before adjudication returned';
+              state.parkedAgent = undefined;
+              parkedForAdjudication = false;
+              graphHooks.lastTurn = lastTurn;
+              handoff = nextHandoff();
+              turnText = ''; finalAssistantMessage = '';
+              state.session = session;
+              state.currentStepId = step.id;
+              state.usageInvocation = usageInvocation;
+              state.grantedAttachmentLibrary = attachmentLibrary;
+              this.store.updateRun(runId, { modelIdentity: this.store.getRun(runId)?.steps.find(candidate => candidate.id === step.id)?.modelIdentity });
+              state.interrupt = () => session.interrupt();
+              if (session.pid !== undefined) this.trackAgentProcess(runId, state, session.pid);
+              if (!session.sendMessage([{ type: 'text', text: prompt }])) {
+                sessionError = 'Unable to deliver adjudication to the waiting caller';
+                session.hardStop?.(); session.end();
+              }
+              return await Promise.race([handoff, completion]);
+            },
+            close: async () => {
+              parkedForAdjudication = false;
+              session.hardStop?.(); session.end();
+              await completion;
+            },
+          };
+          questionTimer = setTimeout(() => {
+            if (this.active.get(runId) === state && !state.cancelled) resolveHandoff(null);
+          }, AUTO_END_DELAY_MS);
+          state.adjudicationTimer = questionTimer;
+          questionTimer.unref?.();
+          return;
+        }
         if (done) {
           // Goal achieved (agent contract, #347): close the session instead
           // of parking at `waiting` — the run completes and frees its slot.
@@ -6112,7 +6258,33 @@ export class RunManager {
           !autoContinued && compacted && Boolean(sessionOpen)
             ? this.tryCompactionContinue(runId, state, step.id, { markerless, dispatchTurn })
             : false;
-        const continued = autoContinued || compactionContinued;
+        // A model turn is not a workflow handoff. Keep the ORIGINAL process alive:
+        // closing it here kills background shells and loses their completion notices.
+        // The existing session deadline/cancellation still bounds all these turns together.
+        let verdictContinued = false;
+        const requiresHandoff = pendingHandoff || (!interactive && Boolean(graphHooks?.verdicts?.length) && !turnVerdict);
+        if (sessionOpen && !parksWorkflow && !autoContinued && !compactionContinued && requiresHandoff) {
+          if (emptyTurns >= 2) {
+            sessionError = 'Agent returned two consecutive empty turns without text or tool activity; unfinished work has not been verified.';
+            state.session?.end();
+          } else if (verdictContinues >= MAX_AUTO_CONTINUES) {
+            sessionError = `No workflow handoff after ${MAX_AUTO_CONTINUES} in-session continuations; unfinished work has not been verified.${pendingBackgroundTaskIds.length ? ` Uncollected background tasks: ${pendingBackgroundTaskIds.join(', ')}.` : ''}`;
+            state.session?.end();
+          } else {
+            verdictContinued = state.session?.sendMessage([{ type: 'text', text:
+              `${pendingHandoff ? collectBackgroundTasksInstruction(pendingBackgroundTaskIds) : 'You did not end with a verdict. Continue this node in this live session. Collect pending command/sub-agent results using blocking task tools; do not merely wait for a notification or restart work. Never report completion without verified results. If progress is impossible, explain the concrete blocker and use an allowed blocking verdict.'} ${graphHooks?.verdicts?.length ? verdictInstruction(graphHooks.verdicts) : 'Finish with a summary of verified results when the node is complete.'}`,
+            }]) ?? false;
+            if (verdictContinued) {
+              verdictContinues += 1;
+              if (emptyTurns) emit({ type: 'note', stepId: step.id, message: 'empty agent turn — attempting one recovery in the live session; no completion inferred' });
+              emit({ type: 'note', stepId: step.id, message: `continuing unfinished node in the live session (${verdictContinues}/${MAX_AUTO_CONTINUES})` });
+            } else {
+              sessionError = 'Unable to continue the live agent session; unfinished work has not been verified.';
+              state.session?.end();
+            }
+          }
+        }
+        const continued = autoContinued || compactionContinued || verdictContinued;
         if (waiting && !continued) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `CEZ:ASK` question the
@@ -6221,7 +6393,7 @@ export class RunManager {
           ...treeBlocks,
           ...(checkFailure ? [`上次检查失败证据（仅用于探测，不在本阶段修复）：\n${checkFailure}`] : []),
           ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
-          ...((this.store.getRun(runId)?.queuedMessages ?? []).map(message => message.text)),
+          ...unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)),
         ].join('\n\n');
       } catch (error) { return error instanceof Error ? error.message : String(error); }
     }
@@ -6279,15 +6451,36 @@ export class RunManager {
     const runner = createRunner(stepBackend);
     const stepMcp = await this.privateMcpForLaunch(stepBackend, onEvent);
     let launchEnv = stepProfile.env;
+    let omitConversationalSystemPrompt = false;
     if (!probe && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
       try {
         launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
-        userPrompt += `\n\n${artifactInstructions(state.cwd, runId, step.id, this.dataDir)}`;
-        userPrompt += `\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir, Boolean(graphHooks?.resumeSessionId))}`;
+        const judge = step.skill === 'cezar:adjudicator';
+        const adjudicationDelta = Boolean(graphHooks?.resumeSessionId && (judge || graphHooks.adjudicationReturn));
+        // Codex carries this field in its user message; Claude and pi use a
+        // real system channel that must remain configured across compaction.
+        omitConversationalSystemPrompt = adjudicationDelta && stepBackend === 'codex';
+        if (adjudicationDelta) {
+          const previousLaunch = stepRecord?.input?.capturedAt;
+          const record = this.store.getRun(runId);
+          const updates = unattendedUserUpdates({ queuedMessages: record?.queuedMessages?.filter(message => !previousLaunch || message.createdAt > previousLaunch) }, this.store.readEvents(runId).filter(event => !previousLaunch || event.ts > previousLaunch));
+          userPrompt = [
+            ...treeBlocks,
+            await adjudicationTurnInput(this.dataDir, runId, stageGraph, step.id, !judge),
+            ...(!judge && graphHooks?.verdicts?.length ? [verdictInstruction(graphHooks.verdicts)] : []),
+            ...(updates.length ? [`本轮用户补充：\n${updates.join('\n\n')}`] : []),
+            ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
+          ].join('\n\n');
+        } else {
+          userPrompt += `\n\n${artifactInstructions(state.cwd, runId, step.id, this.dataDir)}`;
+          userPrompt += `\n\n${judge
+            ? await adjudicationTurnInput(this.dataDir, runId, stageGraph, step.id, false, true)
+            : await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir, Boolean(graphHooks?.resumeSessionId), unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)))}`;
+          if (judge) userPrompt += `\n\n${unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)).join('\n\n')}`;
+        }
       }
       catch (error) { return error instanceof Error ? error.message : String(error); }
     }
-    let session: AgentSession;
     state.currentStepId = step.id;
     this.beginUsageInvocation(runId, state, step.id);
     if (state.cancelled) return 'cancelled';
@@ -6299,7 +6492,7 @@ export class RunManager {
           // — how a task creates a GitHub automation), then the run's extra
           // prompt (POST override or config default, which may amend any of them), then the
           // handoff/todos contract — every agent step.
-          systemPrompt: composeSystemPrompt(
+          systemPrompt: omitConversationalSystemPrompt ? undefined : composeSystemPrompt(
             systemPrompt,
             dispatchPromptPart(state.dispatchPrompt, extraSystemPrompt),
             state.automationsPrompt,
@@ -6308,7 +6501,7 @@ export class RunManager {
               ? HANDOFF_INSTRUCTIONS
               : HANDOFF_ONLY_INSTRUCTIONS,
           ),
-          userPrompt,
+          userPrompt: userPrompt + (pendingBackgroundTaskIds.length ? `\n\n${collectBackgroundTasksInstruction(pendingBackgroundTaskIds)}` : ''),
           images,
           cwd: state.cwd,
           allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
@@ -6324,6 +6517,7 @@ export class RunManager {
           model: backendModel,
           sessionId,
           resume: graphHooks?.resumeSessionId !== undefined,
+          ...(pendingBackgroundTaskIds.length ? { pendingBackgroundTaskIds } : {}),
           // Interactive sessions have no wall clock — the idle timer rules.
           //
           // A non-final step keeps its wall clock (`DEFAULT_RUN_TIMEOUT_MS`)
@@ -6345,7 +6539,21 @@ export class RunManager {
           // the turn-end handler hold an intermediate `CEZ:ASK` session open for
           // the user's answer rather than have the runner close it first (#917).
           autoEndAfterFirstTurn: false,
+          onProcessReplaced: pid => {
+            if (state.cancelled || this.active.get(runId) !== state) return;
+            this.trackAgentProcess(runId, state, pid);
+          },
+          onBackgroundTasks: ids => {
+            if (state.cancelled || this.active.get(runId) !== state) return;
+            pendingBackgroundTaskIds = [...ids];
+            this.store.updateStep(runId, step.id, { pendingBackgroundTaskIds: [...ids] });
+            emit({ type: 'note', stepId: step.id, message: ids.length
+              ? `background results awaiting collection: ${ids.join(', ')}`
+              : 'background task results collected; waiting for the node handoff' });
+          },
           onUiEvent: (event) => {
+            if (state.cancelled || this.active.get(runId) !== state) return;
+            if (parkedForAdjudication) { sink.handle(event); return; }
             if (event.type === 'item.completed' && event.item.kind === 'message' && event.item.role === 'assistant') {
               finalAssistantMessage = event.item.text;
             }
@@ -6361,38 +6569,65 @@ export class RunManager {
     state.sessionEverOpened = true;
     this.flushDeferred(runId);
     state.currentStepId = step.id;
-    state.interrupt = () => session.interrupt();
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    state.interrupt = () => {
+      state.parkedAgent?.session.hardStop?.();
+      state.parkedAgent?.session.interrupt();
+      session.interrupt();
+    };
+    if (session.pid !== undefined) this.trackAgentProcess(runId, state, session.pid);
 
-    try {
-      const result = await session.result;
-      if (sessionError) {
-        sink.sessionEnded('error', sessionError);
-        return sessionError;
+    completion = (async () => {
+      try {
+        const result = await session.result;
+        if (this.active.get(runId) !== state) return null;
+        if (parkedForAdjudication && !state.cancelled && this.active.get(runId) === state) {
+          sessionError ??= 'Caller session exited while waiting for adjudication';
+          if (state.parkedAgent?.session === session) state.parkedAgent.failure = sessionError;
+          if (state.session !== session) { state.session?.hardStop?.(); state.session?.interrupt(); }
+          this.store.updateStep(runId, step.id, { status: 'failed', error: sessionError });
+        }
+        if (!state.cancelled && pendingBackgroundTaskIds.length && parseVerdict(graphHooks?.lastTurn?.text ?? '', ['blocked']) !== 'blocked') {
+          sessionError ??= `Agent process exited with uncollected background task results: ${pendingBackgroundTaskIds.join(', ')}; completion is unverified.`;
+        }
+        if (sessionError) {
+          sink.sessionEnded('error', sessionError);
+          return sessionError;
+        }
+        // v2 counterpart of v1's `done` (spec: the mappers leave session-close
+        // events to the RunManager — only it knows how the session settled).
+        sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
+        if (!state.cancelled && this.active.get(runId) === state) {
+          this.store.updateStep(runId, step.id, { tokensUsed: startTokens + result.tokensUsed });
+        }
+        return null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (this.active.get(runId) !== state) return message;
+        if (parkedForAdjudication && !state.cancelled && this.active.get(runId) === state) {
+          if (state.parkedAgent?.session === session) state.parkedAgent.failure = message;
+          if (state.session !== session) { state.session?.hardStop?.(); state.session?.interrupt(); }
+          this.store.updateStep(runId, step.id, { status: 'failed', error: message });
+        }
+        sink.sessionEnded('error', message); // alongside v1's fatal `error`
+        return message;
+      } finally {
+        if (questionTimer) clearTimeout(questionTimer);
+        if (state.adjudicationTimer === questionTimer) state.adjudicationTimer = undefined;
+        if (this.active.get(runId) === state && state.session === session) {
+          this.recordUsagePeaks(runId, state);
+          this.clearIdleTimer(state);
+          if (this.active.get(runId) === state) {
+            this.leaveMonitoring(runId);
+            this.waiting.delete(runId);
+          }
+          this.clearMonitoringWakeTimer(state, runId);
+          state.session = undefined;
+          state.currentStepId = undefined;
+          state.interrupt = () => undefined;
+        }
       }
-      // v2 counterpart of v1's `done` (spec: the mappers leave session-close
-      // events to the RunManager — only it knows how the session settled).
-      sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
-      if (!state.cancelled && this.active.get(runId) === state) {
-        this.store.updateStep(runId, step.id, { tokensUsed: startTokens + result.tokensUsed });
-      }
-      return null;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sink.sessionEnded('error', message); // alongside v1's fatal `error`
-      return message;
-    } finally {
-      this.recordUsagePeaks(runId, state);
-      this.clearIdleTimer(state);
-      if (this.active.get(runId) === state) {
-        this.leaveMonitoring(runId);
-        this.waiting.delete(runId);
-      }
-      this.clearMonitoringWakeTimer(state, runId);
-      state.session = undefined;
-      state.currentStepId = undefined;
-      state.interrupt = () => undefined;
-    }
+    })();
+    return await Promise.race([handoff, completion]);
   }
 
   /**
@@ -6707,6 +6942,12 @@ export class RunManager {
       peakRssBytes: Math.max(run?.peakRssBytes ?? 0, peaks.peakRssBytes),
       peakProcCount: Math.max(run?.peakProcCount ?? 0, peaks.peakProcCount),
     });
+  }
+
+  private trackAgentProcess(runId: string, state: ActiveRun, pid: number): void {
+    this.recordUsagePeaks(runId, state);
+    const parkedPid = state.parkedAgent?.session.pid;
+    registerRunProcess(runId, pid, parkedPid !== undefined && parkedPid !== pid ? [parkedPid] : []);
   }
 
   /**

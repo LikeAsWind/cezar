@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { snapshotPath } from '../superpowers-update.ts';
-import { clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict } from './unattended-guards.ts';
+import { adjudicationTurnInput, clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict } from './unattended-guards.ts';
+import type { WorkflowGraph } from './graph.ts';
 import { newArtifactPaths } from '../../scripts/workflow/artifacts.mjs';
+import { workflowActionCommand } from './workflow-actions.ts';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -24,6 +26,38 @@ async function fixture() {
   return { root, data, cwd, runId, command, path, guard: (action: string, phase: 'before' | 'after') => guardUnattendedCheck(data, runId, cwd, command(action), phase) };
 }
 
+it('sends the current question as a delta and returns only its matching answer to the caller', async () => {
+  const f = await fixture();
+  const graph: WorkflowGraph = { nodes: [
+    { id: 'design', type: 'agent', verdicts: ['question', 'ready'] },
+    { id: 'adjudicator', type: 'agent', skill: 'cezar:adjudicator', verdicts: ['answered', 'blocked'] },
+  ], edges: [{ from: 'adjudicator.answered', to: 'design' }] };
+  const path = runFilePath(f.data, f.runId, '.unattended-question.json');
+  const question = { q: 'Q-002', origin: 'design', text: '旧的恢复状态，不是问题。\n\n**Q-002：合入前必须复现吗？**\n必须复现还是保留防护？\n\norigin: design\n\n另外，不相关的历史说明。\n\n证据路径：\n- docs/design.md', answered: false, history: [{ q: 'Q-001', origin: 'design', text: '旧问题', answer: '旧答案', status: 'answered' }] };
+  await writeFile(path, JSON.stringify(question));
+  const input = await adjudicationTurnInput(f.data, f.runId, graph, 'adjudicator');
+  expect(input).toContain('Q-002');
+  expect(input).toContain('origin: design');
+  expect(input).toContain('合入前必须复现吗');
+  expect(input).toContain('docs/design.md');
+  expect(input).toContain('CEZ:VERDICT answered');
+  expect(input).not.toContain('旧的恢复状态');
+  expect(input).not.toContain('旧答案');
+  expect(input).not.toContain('"clarification"');
+  await writeFile(path, JSON.stringify({ ...question, text: '# Q-002\norigin: design\nWhich matching rule?\nEvidence: src/Matcher.java' }));
+  const originFirst = await adjudicationTurnInput(f.data, f.runId, graph, 'adjudicator');
+  expect(originFirst).toContain('Which matching rule?');
+  expect(originFirst).toContain('src/Matcher.java');
+  await writeFile(path, JSON.stringify(question));
+  await expect(adjudicationTurnInput(f.data, f.runId, graph, 'design', true)).rejects.toThrow('matching');
+  await writeFile(path, JSON.stringify({ ...question, answered: true, answer: 'Q-002\norigin: design\n必须保留明确的复现要求。' }));
+  const answer = await adjudicationTurnInput(f.data, f.runId, graph, 'design', true);
+  expect(answer).toContain('裁决结果');
+  expect(answer).toContain('必须保留明确的复现要求');
+  expect(answer).not.toContain('旧答案');
+  await expect(adjudicationTurnInput(f.data, f.runId, graph, 'plan', true)).rejects.toThrow('matching');
+});
+
 it('keeps a host-owned validation plan and rejects changes before verification', async () => {
   const f = await fixture(); await writeFile(f.path('validation-plan.json'), '{"verify":["test"]}');
   await f.guard('baseline', 'after'); await expect(f.guard('verify', 'before')).resolves.toBeUndefined();
@@ -41,12 +75,39 @@ it('binds the verified receipt and plan through sealing', async () => {
   await writeFile(f.path('verified.json'), '{"diffHash":"changed"}');
   await expect(f.guard('seal', 'before')).rejects.toThrow('verification receipt');
 });
+it('invalidates stale success and diagnostics even when the host rejects verification before spawn', async () => {
+  const f = await fixture();
+  await writeFile(f.path('validation-plan.json'), '{}'); await f.guard('baseline', 'after');
+  await writeFile(f.path('verified.json'), '{"old":true}'); await f.guard('verify', 'after');
+  await writeFile(f.path('verify.json'), '{"results":[{"old":true}]}');
+  await writeFile(f.path('branch.diff'), 'old diff');
+  await writeFile(f.path('validation-plan.json'), '{"tampered":true}');
+  await expect(f.guard('verify', 'before')).rejects.toThrow('Frozen');
+  for (const name of ['verified.json', 'branch.diff']) await expect(readFile(f.path(name))).rejects.toMatchObject({ code: 'ENOENT' });
+  const report = JSON.parse(await readFile(f.path('verify.json'), 'utf8'));
+  expect(report).toMatchObject({ results: [], error: expect.stringContaining('Frozen') });
+  expect(JSON.parse(await readFile(runFilePath(f.data, f.runId, '.unattended.json'), 'utf8')).verified).toBeUndefined();
+});
 it('does not silently rebaseline an altered plan or affect unrelated commands', async () => {
   const f = await fixture(); await writeFile(f.path('validation-plan.json'), '{}'); await f.guard('baseline', 'after');
   await writeFile(f.path('validation-plan.json'), '{"changed":true}');
   await expect(f.guard('baseline', 'after')).rejects.toThrow('validation plan');
   await expect(guardUnattendedCheck(f.data, f.runId, f.cwd, 'npm test', 'before')).resolves.toBeUndefined();
   expect(await readFile(runFilePath(f.data, f.runId, '.unattended.json'), 'utf8')).not.toContain('changed');
+});
+
+it('accepts only additive validation revisions through the scope check and invalidates old approval', async () => {
+  const f = await fixture();
+  const previous = { schemaVersion: 1, verify: [{ file: 'npm', args: ['test'] }], toolchains: [{ name: 'jdk', targetVersion: '8' }] };
+  await writeFile(f.path('validation-plan.json'), JSON.stringify(previous)); await f.guard('baseline', 'after');
+  const check = (phase: 'before' | 'after') => guardUnattendedCheck(f.data, f.runId, f.cwd, workflowActionCommand('scope'), phase);
+  await expect(check('before')).resolves.toBeUndefined();
+  const revised = { ...previous, verify: [...previous.verify, { file: 'npm', args: ['test', '-w', 'new-module'] }] };
+  await writeFile(f.path('validation-plan.json'), JSON.stringify(revised));
+  await expect(check('after')).resolves.toBeUndefined();
+  await expect(f.guard('verify', 'before')).resolves.toBeUndefined();
+  await writeFile(f.path('validation-plan.json'), JSON.stringify({ ...revised, toolchains: [{ name: 'jdk', targetVersion: '21' }] }));
+  await expect(check('after')).rejects.toThrow(/Frozen/);
 });
 
 it('requires real stage artifacts before accepting success', async () => {

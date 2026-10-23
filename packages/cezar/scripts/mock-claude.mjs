@@ -58,6 +58,12 @@ if (process.env.CEZ_MOCK_ARGS_FILE) {
 emit({ type: 'system', subtype: 'init' });
 
 let turn = 0;
+let backgroundVerdict = false;
+let emptyVerdict = false;
+let slowVerdict = false;
+let unmarkedVerdict = false;
+let pendingVerdict = false;
+let recoveredVerdict = false;
 
 // `mock:autonomous` → the autonomous auto-nudge fixture (#autonomous). Cezar's nudge text is
 // fixed and carries no `mock:` marker, so a marker-per-message mock could never end such a
@@ -122,7 +128,47 @@ function writeHandoffAndTodo() {
 
 async function respond(userText, imageCount) {
   turn += 1;
-  await sleep(250);
+  await sleep(unmarkedVerdict ? 5 : 250);
+  if (userText.includes('mock:foreground-task')) {
+    emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'foreground-1', name: 'Bash', input: { command: 'mvn test', timeout: 600000 } }] } });
+    emit({ type: 'system', subtype: 'task_started', task_id: 'foreground-progress', tool_use_id: 'foreground-1', task_type: 'local_bash' });
+    emit({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'foreground-1', content: 'Tests run: 297, Failures: 0, Errors: 0, Skipped: 9' }] }, tool_use_result: { stdout: 'Tests run: 297, Failures: 0, Errors: 0, Skipped: 9', stderr: '', interrupted: false } });
+    emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Foreground test results collected.\nCEZ:VERDICT approve' }] } });
+    emit({ type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 0 });
+    return;
+  }
+  if (userText.includes('mock:pending-verdict')) pendingVerdict = true;
+  if (userText.includes('mock:recovered-verdict')) { pendingVerdict = true; recoveredVerdict = true; }
+  if (pendingVerdict) {
+    const collecting = turn > 1;
+    if (!recoveredVerdict || collecting) {
+    emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: `bg-${turn}`, name: collecting ? 'TaskOutput' : 'Bash', input: collecting ? { task_id: 'mock-bg', block: true } : { command: 'mvn test', run_in_background: true } }] } });
+    emit({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `bg-${turn}`, content: collecting ? 'exit code 0' : 'running in background' }] }, tool_use_result: collecting ? { retrieval_status: 'success', task: { task_id: 'mock-bg', status: 'completed', exitCode: 0 } } : { backgroundTaskId: 'mock-bg' } });
+    }
+    emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: !collecting && userText.includes('mock:monitoring')
+      ? 'Waiting for the background builder check.\nCEZ:MONITORING'
+      : `${collecting ? 'Collected background test exit code 0.' : 'Premature handoff.'}\nCEZ:VERDICT approve` }] } });
+    emit({ type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 0 });
+    return;
+  }
+  if (userText.includes('mock:verdict-timeout')) slowVerdict = true;
+  if (userText.includes('mock:unmarked-verdict')) unmarkedVerdict = true;
+  if (userText.includes('mock:empty-verdict') || slowVerdict || unmarkedVerdict) emptyVerdict = true;
+  if (emptyVerdict) {
+    if (slowVerdict && turn > 1) await sleep(5000);
+    if (turn === 1 || unmarkedVerdict) emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Background test outcome is unknown.' }] } });
+    emit({ type: 'result', subtype: 'success', usage: { input_tokens: 0, output_tokens: 0 }, total_cost_usd: 0 });
+    return;
+  }
+  // A background command belongs to this live process, not to a resumed CLI.
+  if (userText.includes('mock:background-verdict')) backgroundVerdict = true;
+  if (backgroundVerdict) {
+    if (turn !== 2) emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: turn === 1
+      ? 'Tests are running in background; waiting for completion.'
+      : 'Background tests finished with exit code 0.\nCEZ:VERDICT approve' }] } });
+    emit({ type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 0 });
+    return;
+  }
   // `mock:done` anywhere in the message → the reply ends with the CEZ:DONE
   // completion marker (#347), so the auto-close path is testable dry. `mock:report` implies it:
   // a unit that has reported is finished, and a report with no done marker would leave the child

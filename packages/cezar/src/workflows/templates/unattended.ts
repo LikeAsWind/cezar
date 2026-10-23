@@ -2,7 +2,7 @@ import type { WorkflowGraphFile } from '../graph.ts';
 
 // Only host handoff conventions belong here; execution procedures stay in upstream skills.
 const QUESTION = (origin: string) => `需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: ${origin} 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。`;
-const IMPLEMENTATION_EXECUTION = `每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
+const IMPLEMENTATION_EXECUTION = `使用官方 sdd-workspace 为当前 plan.md 定位唯一工作目录；progress.md、brief 和报告都保存在该目录，不新建宿主进度副本。native 按官方 task-done 的测试完成契约将步骤标为 [x]；SDD 在逐任务审查通过并写入完成账本后勾选，未完成不得勾选。合并派发时，在账本用 Task N: report: 文件名 标明各任务共用的报告，不复制报告。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。保留工作目录供后续验证、独立审查与裁决读取。
 完成所有 Task 后返回 complete。`;
 
 /** Canonical built-in template. Snapshot serialization is owned by the host. */
@@ -53,6 +53,7 @@ export const UNATTENDED_TEMPLATE: WorkflowGraphFile = {
       skill: 'superpowers:writing-plans',
       prompt: `执行已加载的 writing-plans，按原始需求编写最小完整计划，保存 plan.md。原始需求作为本分支的规格；复用 probe.md 和源码地图中的证据。
 按官方格式自查，并将项目约束与实际验证入口纳入计划。核对 routing-input.json 与计划影响面，运行 cezar workflow-action route，返回实际 fast/standard/deep；不以升档代替重试。
+范围扩大时，以冻结 validation-plan.json 为底稿，在 environment.json 仅追加新模块检查及对应基线；宿主核对覆盖并执行新增基线。不得删除或改写旧检查、版本与预期输出。
 ${QUESTION('fast-plan')}`,
       verdicts: ['fast', 'standard', 'deep', 'blocked', 'question'],
     },
@@ -62,9 +63,23 @@ ${QUESTION('fast-plan')}`,
       name: '设计与需求消歧',
       skill: 'superpowers:brainstorming',
       prompt: `执行已加载的 brainstorming，结合原始需求和 probe.md 完成澄清与设计，保存 design.md。
-恢复时复用已完成的 builder check 及反馈。
-必要问题解决并完成 builder check 后返回 ready。遵守 validation-plan.json 的目标版本约束。范围变化时更新 routing-input.json 并运行 cezar workflow-action route，不降档。最终回复说明设计进度和未完成检查。
-${QUESTION('design')}`,
+恢复时复用已有设计、已完成的 builder check 及反馈。
+
+设计阶段按以下原则收口：
+- 项目事实、依赖库行为由本节点定向核实。影响方案成立的关键假设，不留给实现者确认。
+- 已授权范围内的技术细节可自行决定，在设计中说明依据和取舍。
+- 涉及需求歧义、外部可观察的行为变化且授权不明确，或证据冲突导致无法决定时，返回 question，交给裁决者。
+- 实现阶段可承担编码细节、测试落地与运行验证；不能承担决定方案是否成立的前提核实。
+
+必要问题已解决、关键前提有证据支持，且完成 builder check 并处理反馈后，才返回 ready。
+存在尚未解决的关键问题时，提出具体问题；无法继续且没有可裁决的问题时返回 blocked。
+最终回复简述设计结论、关键依据及留给实现阶段的验证事项。
+
+遵守 validation-plan.json 的目标版本约束。
+范围变化时更新 routing-input.json，并运行 cezar workflow-action route，不降档。
+
+需要裁决时，在最终回复中给出一个完整问题、稳定编号（如 Q-001）、独立一行 origin: design，以及证据路径，返回 question。
+恢复时核对宿主注入的裁决，更新设计后继续。`,
       verdicts: ['ready', 'question', 'blocked'],
     },
     {
@@ -90,9 +105,28 @@ ${QUESTION('design')}`,
       skill: 'superpowers:writing-plans',
       prompt: `执行已加载的 writing-plans，以 design.md 为依据保存完整 plan.md，按官方格式自查，纳入项目约束和实际验证入口。
 根据计划影响面更新 routing-input.json，运行 cezar workflow-action route，保留至少 standard，返回 standard 或 deep，不降档。
+范围扩大时，以冻结 validation-plan.json 为底稿，在 environment.json 仅追加新模块检查及对应基线；宿主核对覆盖并执行新增基线。不得删除或改写旧检查、版本与预期输出。
 返回 deep 前，在最终回复中单独一行输出 CEZ:EXECUTION 后跟 JSON：{"schemaVersion":1,"tasksIndependent":true/false/null,"subagents":{"available":true/false/null,"tool":"实际工具名或 null","evidence":"实际观察或缺失说明"}}。宿主保存证据并选择执行器。
 ${QUESTION('plan')}`,
       verdicts: ['standard', 'deep', 'blocked', 'question'],
+    },
+    {
+      id: 'validation-scope',
+      type: 'check',
+      name: '核对验证覆盖与新增模块基线',
+      command: 'cezar workflow-action scope',
+    },
+    {
+      id: 'scope-fast',
+      type: 'if',
+      name: '验证后选择轻量执行',
+      condition: { kind: 'output', ref: 'validation-scope.output', op: 'equals', value: 'fast' },
+    },
+    {
+      id: 'scope-standard',
+      type: 'if',
+      name: '验证后选择标准或复杂执行',
+      condition: { kind: 'output', ref: 'validation-scope.output', op: 'equals', value: 'standard' },
     },
     {
       id: 'execute-fast',
@@ -175,10 +209,8 @@ ${QUESTION('execute-deep')}`,
       skill: 'superpowers:code-reviewer',
       prompt: `执行已加载的 code-reviewer，担任独立、只读的最终分支审查。核对需求、设计、计划、当前 branch.diff 及 verify.json/verified.json 的验证证据。
 首次审查使用官方模板：DESCRIPTION 来自任务，PLAN_OR_REQUIREMENTS 使用相关产物路径，BASE_SHA 来自 run.json，HEAD_SHA 来自当前 HEAD；branch.diff 补足未提交及新增文件。
-仅在已有完整审查时，使用官方 subagent-driven-development/re-review-prompt.md，结合既有发现、修复报告及 fix-before.diff，限定复查修复引入的问题。验证失败后的首次审查仍覆盖全分支。
-最终回复说明未评判范围；无实质阻塞返回 approve，需要修复返回 changes，证据不足返回 blocked。
-既有审查（首次为空）：
-{{nodes.review.summary}}`,
+仅在宿主提供限定复查参数时，使用官方 subagent-driven-development/re-review-prompt.md，读取 FINDINGS、REPORT_FILE 与 DIFF_FILE，按 FIX_BASE_SHA/HEAD_SHA 范围复查。两者是包含未提交文件的 Git 代码树快照。验证失败后的首次审查仍覆盖全分支。先核对官方账本和既有测试证据，临时程序文件不存在不能推断从未执行。
+最终回复说明未评判范围；无实质阻塞返回 approve，需要修复返回 changes，证据不足返回 blocked。`,
       verdicts: ['approve', 'changes', 'blocked'],
     },
     {
@@ -194,11 +226,11 @@ ${QUESTION('execute-deep')}`,
       skill: 'superpowers:systematic-debugging',
       prompt: `执行已加载的 systematic-debugging，使用官方 subagent-driven-development/implementer-prompt.md，以当前计划、失败证据和工作树填写参数。
 先对照 baseline.json 判断根因，仅修复本次变更引入的重要问题。既有失败或缺失基础设施记录证据并返回 blocked。
-将修复前变更保存在 fix-before.diff；官方 progress.md 记录修复和针对性验证，最终回复提供官方修复报告。针对性检查通过后返回 fixed，宿主负责重新验证；保持冻结检查和约束。
+在当前计划的官方 progress.md 记录修复和针对性验证，最终回复提供官方 implementer 修复报告，宿主将报告保存到同一工作目录。针对性检查通过后返回 fixed，宿主负责重新验证及生成修复增量；保持冻结检查和约束。验证未启动时按宿主错误诊断处理，不要求不存在的成功凭据。
 验证输出：
 {{nodes.verify.output}}
 审查发现（未审查时为空）：
-{{nodes.review.summary}}
+读取宿主提供的当前官方审查报告；尚未审查时仅使用验证失败诊断。
 ${QUESTION('fix')}`,
       verdicts: ['fixed', 'blocked', 'question'],
     },
@@ -208,9 +240,7 @@ ${QUESTION('fix')}`,
       name: '整理验证证据与裁决',
       skill: 'superpowers:verification-before-completion',
       prompt: `执行已加载的 verification-before-completion，核对 verify.json、verified.json、官方进度账本及宿主裁决 和已批准的独立审查。
-最终回复给出需求与证据对应关系、变更文件、实际命令及结果、裁决、遗留限制和证据路径；复用既有报告。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。
-已批准的独立审查：
-{{nodes.review.summary}}`,
+最终回复给出需求与证据对应关系、变更文件、实际命令及结果、裁决、遗留限制和证据路径；读取宿主提供的已批准审查报告并复用。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。`,
       verdicts: ['ready', 'blocked'],
     },
     {
@@ -239,7 +269,18 @@ ${QUESTION('fix')}`,
       id: 'notification-failed',
       type: 'end',
       name: 'MR 已创建，群通知失败',
-      status: 'success',
+      status: 'failed',
+    },
+    {
+      id: 'notify-review-failed',
+      type: 'notify.wecom',
+      name: '通知审核人设置失败（保留 MR）',
+    },
+    {
+      id: 'review-request-failed',
+      type: 'end',
+      name: 'MR 已创建，审核人设置失败',
+      status: 'failed',
     },
     {
       id: 'notify-publication-failed',
@@ -321,7 +362,7 @@ ${QUESTION('fix')}`,
     },
     {
       from: 'fast-plan.fast',
-      to: 'execute-fast',
+      to: 'validation-scope',
     },
     {
       from: 'fast-plan.standard',
@@ -353,12 +394,18 @@ ${QUESTION('fix')}`,
     },
     {
       from: 'plan.standard',
-      to: 'execute-standard',
+      to: 'validation-scope',
     },
     {
       from: 'plan.deep',
-      to: 'execution-route',
+      to: 'validation-scope',
     },
+    { from: 'validation-scope.pass', to: 'scope-fast' },
+    { from: 'validation-scope.fail', to: 'blocked-report' },
+    { from: 'scope-fast.true', to: 'execute-fast' },
+    { from: 'scope-fast.false', to: 'scope-standard' },
+    { from: 'scope-standard.true', to: 'execute-standard' },
+    { from: 'scope-standard.false', to: 'execution-route' },
     {
       from: 'execution-route.pass',
       to: 'execution-sdd',
@@ -518,7 +565,8 @@ ${QUESTION('fix')}`,
     { from: 'publish-mr.created', to: 'request-review' },
     { from: 'publish-mr.failed', to: 'notify-publication-failed' },
     { from: 'request-review.done', to: 'notify-wecom' },
-    { from: 'request-review.failed', to: 'notify-wecom' },
+    { from: 'request-review.failed', to: 'notify-review-failed' },
+    ...(['done', 'skipped', 'failed'] as const).map(port => ({ from: `notify-review-failed.${port}`, to: 'review-request-failed' })),
     ...(['done', 'skipped', 'failed'] as const).flatMap(port => [
       { from: `notify-blocked.${port}`, to: 'stopped' },
       { from: `notify-publication-failed.${port}`, to: 'publication-failed' },

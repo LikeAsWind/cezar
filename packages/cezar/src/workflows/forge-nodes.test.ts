@@ -23,6 +23,12 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 const node = (value: Parameters<RunManager['runSystemNode']>[2], resuming = false) => manager['runSystemNode']('run', {} as Parameters<RunManager['runSystemNode']>[1], value, outputs, 'task', () => undefined, undefined, resuming);
+it('preserves reviewer assignment failure for recovery and downstream notifications', async () => {
+  record.pullRequestUrl = url;
+  fixture.update.mockResolvedValue({ ok: false, error: 'Reviewer unavailable' });
+  expect(await node({ id: 'request-review', type: 'github.pr-update', reviewers: ['reviewer'] })).toBe('failed');
+  expect(outputs.get('request-review')).toEqual({ error: 'Reviewer unavailable' });
+});
 it('routes all five persisted github node names through provider operations, including recovered MR URLs', async () => {
   expect(await node({ id: 'pr', type: 'github.draft-pr' })).toBe('created');
   expect(outputs.get('pr')).toEqual({ url, number: 7 });

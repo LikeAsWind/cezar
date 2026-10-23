@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 
 export const artifactDirectory = 'docs/superpowers';
-export const artifactNames = ['run.json', 'probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json', 'route.json', 'validation-plan.json', 'baseline.json', 'design.md', 'plan.md', 'execution.json', 'verify.json', 'verified.json', 'branch.diff', 'fix-before.diff'];
+export const artifactNames = ['run.json', 'probe.md', 'context-map.jsonl', 'environment.json', 'routing-input.json', 'route.json', 'validation-plan.json', 'baseline.json', 'design.md', 'plan.md', 'execution.json', 'verify.json', 'verified.json', 'branch.diff', 'fix.diff'];
 const validId = id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id);
 const localDate = date => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 function inside(root, path) {

@@ -160,7 +160,8 @@ it('keeps stage prompts focused and marks reviewed tasks in the plan', async () 
   expect(design?.type === 'agent' && design.prompt).not.toContain('依官方三类问题原则');
   for (const node of UNATTENDED_TEMPLATE.nodes) {
     if (node.type === 'agent' && node.id.startsWith('execute-')) {
-      expect(node.prompt).toContain('Task 审核通过后');
+      expect(node.prompt).toContain('native 按官方 task-done');
+      expect(node.prompt).toContain('SDD 在逐任务审查通过');
       expect(node.prompt).toContain('plan.md');
       expect(node.prompt).toContain('[x]');
     }
@@ -177,7 +178,7 @@ it('publishes only after seal and requests the configured GitLab reviewer after 
     { from: 'publish-mr.created', to: 'request-review' },
     { from: 'publish-mr.failed', to: 'notify-publication-failed' },
     { from: 'request-review.done', to: 'notify-wecom' },
-    { from: 'request-review.failed', to: 'notify-wecom' },
+    { from: 'request-review.failed', to: 'notify-review-failed' },
     { from: 'notify-wecom.done', to: 'done' },
     { from: 'notify-wecom.failed', to: 'notification-failed' },
   ]));

@@ -8,8 +8,14 @@ export function unattendedRecoveryPoint(graph: WorkflowGraph, state: RunRecord['
   const taken = state?.taken ?? [];
   for (let index = taken.length - 1; index >= 0; index--) {
     const [from, target] = taken[index]!.split('->');
+    const failedNode = from!.split('.')[0]!;
+    if (/\.(?:failed|fail)->/.test(taken[index]!) && ['publish-mr', 'request-review', 'notify-wecom'].includes(failedNode)) return executable(failedNode) ? failedNode : undefined;
     if (target !== 'blocked-report') continue;
     const node = from!.split('.')[0]!;
+    if (node === 'validation-scope') {
+      const planner = taken.slice(0, index).reverse().find(edge => /^(?:fast-plan|plan)\.[\w-]+->validation-scope$/.test(edge))?.split('.')[0];
+      return executable(planner) ? planner : undefined;
+    }
     if (node === 'adjudicator' || node === 'clarification-round') {
       const caller = taken.slice(0, index).reverse().find(edge => /^[\w-]+\.question->clarification-round$/.test(edge))?.split('.')[0];
       return executable(caller) ? caller : undefined;

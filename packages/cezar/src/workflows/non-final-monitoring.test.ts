@@ -1,9 +1,10 @@
-import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile, type ChildProcess } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
@@ -11,6 +12,21 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
+const fixtureProcesses = vi.hoisted(() => new Set<ChildProcess>());
+
+// Windows cannot execute the bundled .mjs dry-run fixture directly.
+vi.mock('node:child_process', async original => {
+  const actual = await original<typeof import('node:child_process')>();
+  return { ...actual, spawn: (...args: Parameters<typeof actual.spawn>) => {
+    if (process.platform === 'win32' && typeof args[0] === 'string' && args[0].endsWith('.mjs')) {
+      const child = actual.spawn(process.execPath, [args[0], ...(Array.isArray(args[1]) ? args[1] : [])], args[2]);
+      fixtureProcesses.add(child);
+      child.once('exit', () => fixtureProcesses.delete(child));
+      return child;
+    }
+    return actual.spawn(...args);
+  } };
+});
 
 describe('CEZ:MONITORING on a non-final workflow step (#1076)', () => {
   let repoRoot: string;
@@ -40,13 +56,19 @@ describe('CEZ:MONITORING on a non-final workflow step (#1076)', () => {
     currentId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (currentId) manager.cancel(currentId);
     manager.dispose();
+    // Disposal intentionally leaves sessions open; the fixture owns their processes.
+    await Promise.all([...fixtureProcesses].map(child => new Promise<void>(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once('exit', () => resolve());
+      child.kill();
+    })));
     if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
     else process.env.CEZ_DRY_RUN = savedDryRun;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    await rm(repoRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   const waitFor = async (id: string, predicate: (record: RunRecord | undefined) => boolean) => {

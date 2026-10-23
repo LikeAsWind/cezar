@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
+import type { AgentEvent, AgentRunResult, AgentRunSpec, ContentBlock, SessionOptions } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
 import { DEFAULT_ALLOWED_TOOLS, type WorkflowDef } from './types.ts';
@@ -13,7 +13,7 @@ const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 
 /** Every spec a (mocked) runner's `startSession` receives, in spawn order. */
-const captured = vi.hoisted(() => ({ specs: [] as AgentRunSpec[] }));
+const captured = vi.hoisted(() => ({ specs: [] as AgentRunSpec[], followups: [] as string[] }));
 
 // The seam under test is what `runContinuation` puts INTO the spec, so the runner is a
 // capture stub: the spec→argv mapping below it is `claude-cli-runner.test.ts`'s business
@@ -22,8 +22,28 @@ vi.mock('../core/runner-factory.ts', () => ({
   createRunner: () => ({
     backend: 'claude' as const,
     run: async () => ({ text: '', toolCalls: [], tokensUsed: 0 }),
-    startSession: (spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void) => {
+    startSession: (spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void, opts?: SessionOptions) => {
       captured.specs.push(spec);
+      if (spec.userPrompt.includes('monitoring-continue-fixture')) {
+        let open = true;
+        let resolve!: (result: AgentRunResult) => void;
+        const result = new Promise<AgentRunResult>(done => { resolve = done; });
+        const end = () => { open = false; resolve({ text: 'Collected', toolCalls: [], tokensUsed: 0 }); };
+        setTimeout(() => {
+          opts?.onBackgroundTasks?.(['bg-builder']);
+          onEvent?.({ type: 'text', text: 'Waiting for builder check.\nCEZ:MONITORING' });
+          onEvent?.({ type: 'turn-end' });
+        }, 0);
+        return { result, get open() { return open; }, end, interrupt: end, sendMessage: (blocks: ContentBlock[]) => {
+          captured.followups.push(blocks.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'));
+          setTimeout(() => {
+            opts?.onBackgroundTasks?.([]);
+            onEvent?.({ type: 'text', text: 'Builder check collected.\nCEZ:DONE' });
+            onEvent?.({ type: 'turn-end' });
+          }, 0);
+          return open;
+        } };
+      }
       // A real backend mints the session id on the wire and the engine persists it on the step;
       // `continueRun` refuses a run whose steps carry none ('no agent session to resume'), so a
       // stub that never emits one cannot be driven `startRun` → Continue. Emitted on a macrotask
@@ -91,6 +111,7 @@ describe('a resumed session keeps its workflow step tools', () => {
 
   beforeEach(async () => {
     captured.specs.length = 0;
+    captured.followups.length = 0;
     repoRoot = mkdtempSync(join(tmpdir(), 'cez-continue-tools-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
@@ -201,6 +222,28 @@ describe('a resumed session keeps its workflow step tools', () => {
       .toSatisfy((status) => ['done', 'failed', 'cancelled'].includes(String(status)));
     await settled(record.id);
   });
+
+  it('carries unfinished background work into Continue and fails if the process exits without collecting it', async () => {
+    const id = terminalRun({ def: SINGLE_DEF, steps: [{ id: 'work', sessionId: 'sess-1', backend: 'claude' }] });
+    store.updateStep(id, 'work', { pendingBackgroundTaskIds: ['bg-uncollected'] });
+    expect(manager!.continueRun(id, { text: 'recover unfinished work', runner: 'claude' })).toEqual({ ok: true });
+    const spec = await specAt(0);
+    expect(spec.pendingBackgroundTaskIds).toEqual(['bg-uncollected']);
+    expect(spec.userPrompt).toContain('bg-uncollected');
+    await settled(id);
+    expect(store.getRun(id)?.status).toBe('failed');
+    expect(store.getRun(id)?.error).toContain('uncollected background');
+  });
+
+  it('collects background results when Continue returns MONITORING', async () => {
+    const id = terminalRun({ def: SINGLE_DEF, steps: [{ id: 'work', sessionId: 'sess-1', backend: 'claude' }] });
+    expect(manager!.continueRun(id, { text: 'monitoring-continue-fixture', runner: 'claude' })).toEqual({ ok: true });
+    try {
+      await expect.poll(() => captured.followups[0], { timeout: 5000 }).toContain('bg-builder');
+      await settled(id);
+      expect(store.getRun(id)?.status).not.toBe('failed');
+    } finally { manager!.cancel(id); }
+  }, 30_000);
 
   it("Continue rebuilds the session with the OWNING step's allowedTools and bashAllowlist, verbatim", async () => {
     // The resumed session belongs to `implement`, NOT the definition's last agent step —
