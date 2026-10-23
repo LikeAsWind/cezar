@@ -13,6 +13,14 @@
 
 ## Verification notes
 
+## Legacy baseline recovery follow-up
+
+The original handoff guard did not run when Continue resumed an existing task directly at baseline. Add the same guard before the baseline check executes, restoring the original probe session for one targeted repair and preserving loop budgets. Share the existing persisted repair reservation with the handoff guard. Valid environments proceed directly to baseline.
+
+Regression: recover from baseline with a toolchain missing its execution binding. Successful repair must resume the original probe session before baseline; unsuccessful repair must prevent baseline. Both cases fail without the additional gate (zero probe invocations), and the repaired path preserves the existing final-retry budget.
+
+Follow-up verification: all 60 tests in the six workflow suites pass, service source typecheck passes, and `git diff --check` passes.
+
 - All 58 tests in the six focused workflow suites pass with one worker; `git diff --check` passes.
 - Replacing `run.ts` with the main version makes both new workflow regression cases fail: only one probe invocation occurs instead of a resumed repair. Restore the fix to pass.
 - Service source typecheck passes. Full test typecheck reports twelve existing contract-parity errors; the same errors reproduce with the main version of `run.ts`.
