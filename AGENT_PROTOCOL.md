@@ -110,6 +110,33 @@ which seeds from `exitCode`/`signalCode` and listens for `exit`.
   normalized `UiEvent` stream emitted alongside the v1 `AgentEvent`s passed to
   `onEvent`. A runner that omits `onUiEvent` support degrades to v1-only — but a
   first-class backend MUST wire it (see §7).
+- `onBackgroundTasks?: (ids: readonly string[]) => void` reports known task ids
+  with uncollected results. Claude derives these from native task/tool metadata,
+  never assistant prose. Terminal TaskOutput results or a successful explicit
+  stop discharge a task; a completion notification alone does not. Backends
+  without native task evidence omit this optional capability.
+  `task_started` is only a progress announcement: foreground Bash commands also
+  emit it. Only a tool result containing `backgroundTaskId`, or an asynchronous
+  Agent/Task result, establishes background work requiring separate collection.
+
+A `turn-end` is a model boundary, not proof that a workflow node finished.
+For graph nodes requiring a verdict, RunManager keeps the live session open
+and asks it to collect pending background command/sub-agent results before
+handoff. These continuations share the original session deadline and cancellation
+path and are capped by `MAX_AUTO_CONTINUES`. Missing verdicts must not trigger
+process teardown followed by a new resumed process: background tasks belong to
+the old process. Empty turns preserve the last useful node summary; exhausting
+the continuation bound fails explicitly without inventing a success verdict.
+Two consecutive turns with neither text nor tool activity fail as an empty-response
+error after one live recovery attempt; tool-only work and context compaction do not
+count as empty replies.
+
+Known outstanding ids live on the existing step record as
+`pendingBackgroundTaskIds` and seed `AgentRunSpec.pendingBackgroundTaskIds` on
+recovery. A new process is not evidence that the old work completed. Success
+verdicts are withheld until known results are collected; an explicit `blocked`
+handoff may stop with unresolved ids retained for diagnosis. Unknown or lost
+tasks must be reported as blockers, never silently converted to passed tests.
 
 ### `AgentRunSpec`
 
@@ -549,3 +576,48 @@ breaking change requiring the documented deprecation path.
 ### Host launch snapshots
 
 Before each workflow `startSession` attempt (including Continue), cezar appends an `agent-launch` event with the redacted, bounded `StepInput` snapshot. It records the launch-time node ID, node name and selected role skill alongside supplied prompts, model/backend/session identity, tool configuration, timeout, directories and image count. It excludes process environment, private MCP definitions/credentials and image bytes. This is host launch input, not the backend's undisclosed default system prompt or a complete runtime tool inventory. The main transcript renders one collapsed card per attempt; progressive history counts these events as standalone items. Old recordings remain unchanged. Agent-native subagents remain represented by their existing tool calls and provided inputs.
+
+### Claude transport recovery
+
+After Claude surfaces a transient inference error (408, transient 429, 500, 502,
+503, 504, 529, connection failure or request timeout), the adapter may resume
+the same persisted conversation up to three times after the initial attempt.
+It uses exponential backoff (1/2/4 seconds plus jitter), honors surfaced
+numeric Retry-After delays, and includes CLI-internal retries, process shutdown
+and backoff in the original session deadline. Auth, quota/billing, tool failures,
+process crashes and host timeouts are not retried. This is host recovery around
+Claude's CLI, not a replacement for Codex's native request/stream retries.
+
+Intermediate failures produce notes instead of terminal error/turn-end/done
+events. Only recovery exhaustion publishes the terminal error. Normalized UI
+identity state and token totals span replacement processes; background-task IDs,
+account environment, cwd, permissions and the original model remain unchanged.
+Follow-ups received during recovery are included in the resumed input, and
+`SessionOptions.onProcessReplaced` updates process tracking while retaining peaks.
+Cancellation stops both active execution and pending backoff. Recovery consumes
+no workflow loop or adjudication budget and does not replay the original task.
+
+### Live adjudication handoff
+
+A managed workflow's `question` verdict parks the caller's open session while
+the graph invokes its adjudicator. This is a turn handoff, not session completion.
+The host validates the question and origin, then returns only the matching answer,
+new user updates and verdict contract to that same caller via `sendMessage`.
+The caller retains its original deadline, model, tool configuration and process-owned
+background state. Process sampling counts both the active adjudicator tree and
+the parked caller tree once. Service restart uses the persisted session recovery
+path; normal handoffs do not replay initialization prompts.
+
+Blocked or failed adjudication, cancellation and graph termination close the parked
+caller and settle its waiting step. Unexpected caller exit fails the handoff and
+interrupts the active adjudicator. Manager disposal clears handoff timers and fences
+stale completions without ending sessions (the existing disposal policy).
+`workflow-clarification` events are standalone history items, so pending/answering/
+answered or failed Q/A cards survive progressive history replay on both the
+transcript and graph-node panels.
+
+Native background results take precedence over passive `CEZ:MONITORING` parking.
+Both workflow execution and Continue prompt the existing session to collect those
+results with blocking task tools, under the original deadline and continuation
+limit. Host-dispatched workflow children retain their normal wake mechanism;
+a monitoring marker without native pending tasks keeps its existing behavior.

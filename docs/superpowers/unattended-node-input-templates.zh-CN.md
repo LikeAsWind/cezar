@@ -1,33 +1,15 @@
-# 当前无人值守工作流：完整输入提示词清单
+# 当前无人值守工作流：节点输入与交接
 
-依据当前源码导出，适用于重启后的新任务。不是历史运行的逐字启动记录。{{...}} 是宿主运行时填入的值，无需用户填写。
+依据当前模板生成，适用于使用此模板的新任务；历史任务仍绑定自己的快照。共 38 个节点、103 条连线。官方 skill 原文保持不变，下面只列宿主任务输入。
 
-## 统计
+## 交接原则
 
-12 个代理节点、6 个命令检查节点、2 个宿主 Git 操作节点、3 个企业微信通知节点、10 个条件/循环/起止节点，共 33 个节点。
-
-下表按 JavaScript 字符串 length 统计静态节点任务字符数；探测采用宿主专用输入的占位符版本。字符数不包含角色正文、动态路径、宿主上下文或额外系统规则，不等于 token 数。
-
-| 节点 | 中文名称 | 角色 | 静态任务字符数 |
-| --- | --- | --- | ---: |
-| probe | 需求与项目环境探测 | cezar:project-probe | 689 |
-| fast-plan | 轻量计划 | superpowers:writing-plans | 313 |
-| design | 设计与需求消歧 | superpowers:brainstorming | 344 |
-| adjudicator | 按需需求与技术裁决 | cezar:adjudicator | 245 |
-| plan | 完整实现计划 | superpowers:writing-plans | 476 |
-| execute-fast | 轻量 native 执行 | superpowers:executing-plans | 402 |
-| execute-standard | 标准 native 执行 | superpowers:executing-plans | 404 |
-| execute-deep-native | 复杂任务 native 执行（保留高风险约束） | superpowers:executing-plans | 356 |
-| execute-deep | 复杂 SDD 逐任务实现与审查 | superpowers:subagent-driven-development | 394 |
-| review | 独立全分支审查或限定复查 | superpowers:code-reviewer | 436 |
-| fix | 修复本次变更引入的问题 | superpowers:systematic-debugging | 445 |
-| deliver | 整理验证证据与裁决 | superpowers:verification-before-completion | 212 |
-
-## 系统输入与启动参数
-
-系统输入组合所选角色原文、相关无人值守规则、启用时的派发/自动化规则、用户或项目额外 system prompt，以及交接/待办规则。角色原文在各节点处链接，不重复粘贴官方 skill。
-
-模型、工作目录、工具权限、MCP、会话编号和超时属于启动参数。探测总时限 30 分钟，两个 deep 执行节点 90 分钟，其余采用宿主默认规则。
+- 官方 sdd-workspace 通过 plan-path 定位唯一计划目录，progress.md 是执行事实来源；native 与 SDD 可以从同一账本继续。
+- 输入按“用途：路径”传递。设计和计划的待生成文件不会被当作缺失输入。
+- planning 后由 validation-scope 核对覆盖，追加的新检查必须先有基线；原有检查和版本不可更改。
+- 验证失败也保存当前差异与诊断，并使旧成功凭据失效。审查和交付绑定当前代码树及验证凭据。
+- 限定复查使用官方 re-review 模板，获得旧发现、返修报告、修复前后代码树及 fix.diff；首次审查保持全分支。
+- 用户补充从已有会话事件传递；裁决仅接收当前问题和对应阶段证据。发布、审核人设置及通知失败各自恢复。
 
 ## 需求与项目环境探测（probe）
 
@@ -45,7 +27,7 @@
 ```text
 执行已加载的 cezar:project-probe，完成需求影响面、源码地图和必要环境探测。不要进入设计或实现。
 
-原始需求：读取 CEZ_HANDOFF_FILE 的 ## Goal。
+原始需求：使用 Read 读取交接文件 {{handoffPath}} 的 ## Goal，无需查询环境变量。
 任务身份：读取 {{runJsonPath}}，确认当前任务与工作树一致。
 
 仅维护本阶段四份产物：
@@ -59,6 +41,7 @@
 
 根据项目证据选择对应工具链；只核对选定版本，不逐一尝试所有已安装版本。版本查询仅使用宿主允许的命令：
 {{versionQueryPrefix}} '<installed executable name or absolute path>' '<--version or -version or -v>' '<absolute Java home or empty string>'
+自定义验证脚本在命令的 coverage 中列明覆盖的仓库相对文件或模块；根目录 cwd 不代表覆盖整个项目。
 
 遵守宿主工具边界，不执行编译、测试、安装或源码修改。相互独立的读取与搜索可并行，控制单次返回量，避免上下文过载；存在依赖的操作顺序执行，报告串行写入。恢复时复用已有产物，仅补充缺失或过期证据。
 
@@ -69,545 +52,493 @@ CEZ:VERDICT ready
 CEZ:VERDICT blocked
 ```
 
+
+## start（start）
+
+类型：`start`。工作流入口。
+
+出口：next → 需求与项目环境探测。
+
+## 项目编译与测试基线（baseline）
+
+宿主执行：`cezar workflow-action baseline`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 按探测证据选择复杂度；fail → 记录阻塞并结束。
+
+## 按探测证据选择复杂度（route）
+
+宿主执行：`cezar workflow-action route`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 简单任务直接规划，其余进入设计；fail → 记录阻塞并结束。
+
+## 简单任务直接规划，其余进入设计（route-fast）
+
+类型：`if`。条件：{"kind":"output","ref":"route.output","op":"equals","value":"fast"}。
+
+出口：true → 轻量计划；false → 设计与需求消歧。
+
 ## 轻量计划（fast-plan）
 
-角色：[superpowers:writing-plans](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/writing-plans/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-设计或清晰的小任务原始需求是计划依据。计划使用注入的 plan.md 路径；执行方式已由工作流选择，无需询问人工。冻结验证约束纳入计划。
-```
-
-用户输入模板：
+角色：`superpowers:writing-plans`
 
 ```text
 执行已加载的 writing-plans，按原始需求编写最小完整计划，保存 plan.md。原始需求作为本分支的规格；复用 probe.md 和源码地图中的证据。
 按官方格式自查，并将项目约束与实际验证入口纳入计划。核对 routing-input.json 与计划影响面，运行 cezar workflow-action route，返回实际 fast/standard/deep；不以升档代替重试。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: fast-plan 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+范围扩大时，以冻结 validation-plan.json 为底稿，在 environment.json 仅追加新模块检查及对应基线；宿主核对覆盖并执行新增基线。不得删除或改写旧检查、版本与预期输出。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: fast-plan 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT fast
-CEZ:VERDICT standard
-CEZ:VERDICT deep
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-需求背景与影响面：{{artifactPaths.probe.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-复杂度判断依据：{{artifactPaths.routing-input.json}}
-当前复杂度档位：{{artifactPaths.route.json}}
-实现计划（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.plan.md}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+需求背景与影响面：docs/superpowers/probe/{{日期-英文主题}}-probe.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+复杂度判断依据：docs/superpowers/probe/{{日期-英文主题}}-routing-input.json
+当前复杂度档位：.ai/cezar/runs/example-run/route.json
+本节点输出：
+实现计划（本节点输出；尚未生成，直接创建，不预先读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+工具链与验证入口草稿（本节点输出，仅范围扩大时按冻结计划追加检查与基线，不改旧约束；尚未生成，直接创建，不预先读取）：docs/superpowers/probe/{{日期-英文主题}}-environment.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <fast | standard | deep | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
-
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+出口：fast → 核对验证覆盖与新增模块基线；standard → 最多两次升档；deep → 最多两次升档；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
 ## 设计与需求消歧（design）
 
-角色：[superpowers:brainstorming](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/brainstorming/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-Independent builder review replaces interactive design approval：这是机器审核。需要需求授权的问题逐个交给独立裁决者，返回后核对答复；证据不足保持 blocked。
-```
-
-用户输入模板：
+角色：`superpowers:brainstorming`
 
 ```text
 执行已加载的 brainstorming，结合原始需求和 probe.md 完成澄清与设计，保存 design.md。
-恢复时复用已完成的 builder check 及反馈。
-必要问题解决并完成 builder check 后返回 ready。遵守 validation-plan.json 的目标版本约束。范围变化时更新 routing-input.json 并运行 cezar workflow-action route，不降档。最终回复说明设计进度和未完成检查。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: design 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+恢复时复用已有设计、已完成的 builder check 及反馈。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT ready
-CEZ:VERDICT question
-CEZ:VERDICT blocked
+设计阶段按以下原则收口：
+- 项目事实、依赖库行为由本节点定向核实。影响方案成立的关键假设，不留给实现者确认。
+- 已授权范围内的技术细节可自行决定，在设计中说明依据和取舍。
+- 涉及需求歧义、外部可观察的行为变化且授权不明确，或证据冲突导致无法决定时，返回 question，交给裁决者。
+- 实现阶段可承担编码细节、测试落地与运行验证；不能承担决定方案是否成立的前提核实。
 
+必要问题已解决、关键前提有证据支持，且完成 builder check 并处理反馈后，才返回 ready。
+存在尚未解决的关键问题时，提出具体问题；无法继续且没有可裁决的问题时返回 blocked。
+最终回复简述设计结论、关键依据及留给实现阶段的验证事项。
+
+遵守 validation-plan.json 的目标版本约束。
+范围变化时更新 routing-input.json，并运行 cezar workflow-action route，不降档。
+
+需要裁决时，在最终回复中给出一个完整问题、稳定编号（如 Q-001）、独立一行 origin: design，以及证据路径，返回 question。
+恢复时核对宿主注入的裁决，更新设计后继续。
+
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-需求背景与影响面：{{artifactPaths.probe.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-复杂度判断依据：{{artifactPaths.routing-input.json}}
-设计方案（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.design.md}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+需求背景与影响面：docs/superpowers/probe/{{日期-英文主题}}-probe.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+复杂度判断依据：docs/superpowers/probe/{{日期-英文主题}}-routing-input.json
+本节点输出：
+设计方案（本节点输出；尚未生成，直接创建，不预先读取）：docs/superpowers/specs/{{日期-英文主题}}-design.md
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <ready | question | blocked>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：ready → 完整实现计划；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+## 最多八轮按需裁决（clarification-round）
+
+类型：`loop`。最多 8 次，恢复不重置次数。
+
+出口：repeat → 按需需求与技术裁决；exhausted → 记录阻塞并结束。
 
 ## 按需需求与技术裁决（adjudicator）
 
-角色：[cezar:adjudicator](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/skills/adjudicator/SKILL.md>)
+角色：`cezar:adjudicator`
 
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-读取宿主注入的当前问题及引用证据，在最终回复中完整返回同 Q 编号和 origin 的答复。证据或需求授权不足则 blocked。
-```
-
-用户输入模板：
+下列初始化输入仅用于首次调用或无法恢复原会话时。后续正常恢复同一个裁决会话，只发送本轮问题。后台系统配置保持一致，避免上下文压缩后丢失角色规则；它不作为每轮用户输入重复插入。
 
 ```text
 执行已加载的 adjudicator，仅回答宿主注入的当前问题，最终回复完整给出 Q 编号、独立一行 origin、回答、依据及不确定性，由宿主持久化并显示在会话和图节点输出中。
 按 origin 返回调用者：design 返回 answered；fast-plan、plan、execute-fast、execute-standard、execute-deep、execute-deep-native、fix 返回对应 origin。origin 无效或证据、授权不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT answered
-CEZ:VERDICT fast-plan
-CEZ:VERDICT plan
-CEZ:VERDICT execute-fast
-CEZ:VERDICT execute-standard
-CEZ:VERDICT execute-deep
-CEZ:VERDICT execute-deep-native
-CEZ:VERDICT fix
-CEZ:VERDICT blocked
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-需求背景与影响面：{{artifactPaths.probe.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束（环境问题时读取）：{{artifactPaths.validation-plan.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+需求背景与影响面：docs/superpowers/probe/{{日期-英文主题}}-probe.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束（环境问题时读取）：.ai/cezar/runs/example-run/validation-plan.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <answered | fast-plan | plan | execute-fast | execute-standard | execute-deep | execute-deep-native | fix | blocked>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：answered → 设计与需求消歧；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；fast-plan → 轻量计划；plan → 完整实现计划；execute-fast → 轻量 native 执行；execute-standard → 标准 native 执行；execute-deep → 复杂 SDD 逐任务实现与审查；execute-deep-native → 复杂任务 native 执行（保留高风险约束）；fix → 修复本次变更引入的问题。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：当前问题、来源、状态及历史裁决
+后续问题的用户输入示例：
+
+```text
+当前问题：Q-002
+origin: design
+返回节点：design
+
+Q-002：验收标准是否要求合入前复现触发路径？
+{{本次完整问题与证据}}
+
+答复保留 Q-002 和独立一行 origin: design；最后一行输出 CEZ:VERDICT answered，无法裁决时输出 CEZ:VERDICT blocked。
+```
+
+原调用节点提出问题后保持会话打开、等待裁决。宿主将匹配的问题答复和该节点的结束标记直接送回原会话，不重发初始化输入；服务重启后才使用持久化会话恢复：
+
+```text
+裁决结果（Q-002，返回 design）：
+{{裁决者对 Q-002 的完整答复}}
+
+{{design 节点的结束标记要求}}
+```
+
+本轮新增的用户补充、附件和派发回报仍随对应输入传递。完整历史保留在会话与澄清记录中，不反复包成 JSON 注入。
+
+等待裁决仍计入原节点时限和资源占用。裁决阻塞、失败或取消时关闭等待的原会话，并结束其等待状态；原会话意外退出时停止裁决并明确报错。服务退出会停止定时派发，不在旧管理器中启动新代理。前端会话及来源节点、裁决节点均展示提问助手、裁决助手、问题编号与状态，刷新后从事件历史重放。
 
 ## 完整实现计划（plan）
 
-角色：[superpowers:writing-plans](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/writing-plans/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-设计或清晰的小任务原始需求是计划依据。计划使用注入的 plan.md 路径；执行方式已由工作流选择，无需询问人工。冻结验证约束纳入计划。
-```
-
-用户输入模板：
+角色：`superpowers:writing-plans`
 
 ```text
 执行已加载的 writing-plans，以 design.md 为依据保存完整 plan.md，按官方格式自查，纳入项目约束和实际验证入口。
 根据计划影响面更新 routing-input.json，运行 cezar workflow-action route，保留至少 standard，返回 standard 或 deep，不降档。
+范围扩大时，以冻结 validation-plan.json 为底稿，在 environment.json 仅追加新模块检查及对应基线；宿主核对覆盖并执行新增基线。不得删除或改写旧检查、版本与预期输出。
 返回 deep 前，在最终回复中单独一行输出 CEZ:EXECUTION 后跟 JSON：{"schemaVersion":1,"tasksIndependent":true/false/null,"subagents":{"available":true/false/null,"tool":"实际工具名或 null","evidence":"实际观察或缺失说明"}}。宿主保存证据并选择执行器。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: plan 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: plan 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT standard
-CEZ:VERDICT deep
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-设计方案：{{artifactPaths.design.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-复杂度判断依据：{{artifactPaths.routing-input.json}}
-当前复杂度档位：{{artifactPaths.route.json}}
-实现计划（本节点输出；首次创建，不预先读取；已存在时读取并继续完善）：{{artifactPaths.plan.md}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+设计方案：docs/superpowers/specs/{{日期-英文主题}}-design.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+复杂度判断依据：docs/superpowers/probe/{{日期-英文主题}}-routing-input.json
+当前复杂度档位：.ai/cezar/runs/example-run/route.json
+本节点输出：
+实现计划（本节点输出；尚未生成，直接创建，不预先读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+工具链与验证入口草稿（本节点输出，仅范围扩大时按冻结计划追加检查与基线，不改旧约束；尚未生成，直接创建，不预先读取）：docs/superpowers/probe/{{日期-英文主题}}-environment.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <standard | deep | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：standard → 核对验证覆盖与新增模块基线；deep → 核对验证覆盖与新增模块基线；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+## 核对验证覆盖与新增模块基线（validation-scope）
+
+宿主执行：`cezar workflow-action scope`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 验证后选择轻量执行；fail → 记录阻塞并结束。
+
+## 验证后选择轻量执行（scope-fast）
+
+类型：`if`。条件：{"kind":"output","ref":"validation-scope.output","op":"equals","value":"fast"}。
+
+出口：true → 轻量 native 执行；false → 验证后选择标准或复杂执行。
+
+## 验证后选择标准或复杂执行（scope-standard）
+
+类型：`if`。条件：{"kind":"output","ref":"validation-scope.output","op":"equals","value":"standard"}。
+
+出口：true → 标准 native 执行；false → 按任务依赖与能力选择执行器。
 
 ## 轻量 native 执行（execute-fast）
 
-角色：[superpowers:executing-plans](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/executing-plans/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-使用当前工作树和冻结工具链；恢复时复用官方 progress.md 及宿主检查点。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。
-```
-
-用户输入模板：
+角色：`superpowers:executing-plans`
 
 ```text
 执行已加载的 executing-plans，完成 plan.md 中 fast 档任务。
 范围超出当前档时更新源码地图和 routing-input.json，运行 cezar workflow-action route，返回 standard/deep 并保留已完成工作。
-每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
+使用官方 sdd-workspace 为当前 plan.md 定位唯一工作目录；progress.md、brief 和报告都保存在该目录，不新建宿主进度副本。native 按官方 task-done 的测试完成契约将步骤标为 [x]；SDD 在逐任务审查通过并写入完成账本后勾选，未完成不得勾选。合并派发时，在账本用 Task N: report: 文件名 标明各任务共用的报告，不复制报告。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。保留工作目录供后续验证、独立审查与裁决读取。
 完成所有 Task 后返回 complete。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: execute-fast 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: execute-fast 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT complete
-CEZ:VERDICT standard
-CEZ:VERDICT deep
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-实现计划（执行前读取）：{{artifactPaths.plan.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-复杂度判断依据：{{artifactPaths.routing-input.json}}
-当前复杂度档位：{{artifactPaths.route.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划（执行前读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+复杂度判断依据：docs/superpowers/probe/{{日期-英文主题}}-routing-input.json
+当前复杂度档位：.ai/cezar/runs/example-run/route.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <complete | standard | deep | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
-
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+出口：complete → 目标项目完整交付验证；standard → 最多两次升档；deep → 最多两次升档；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
 ## 标准 native 执行（execute-standard）
 
-角色：[superpowers:executing-plans](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/executing-plans/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-使用当前工作树和冻结工具链；恢复时复用官方 progress.md 及宿主检查点。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。
-```
-
-用户输入模板：
+角色：`superpowers:executing-plans`
 
 ```text
 执行已加载的 executing-plans，完成 plan.md 中 standard 档任务。
 范围升至 deep 时更新源码地图和 routing-input.json，运行 cezar workflow-action route，返回 deep 并保留已完成工作。
-每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
+使用官方 sdd-workspace 为当前 plan.md 定位唯一工作目录；progress.md、brief 和报告都保存在该目录，不新建宿主进度副本。native 按官方 task-done 的测试完成契约将步骤标为 [x]；SDD 在逐任务审查通过并写入完成账本后勾选，未完成不得勾选。合并派发时，在账本用 Task N: report: 文件名 标明各任务共用的报告，不复制报告。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。保留工作目录供后续验证、独立审查与裁决读取。
 完成所有 Task 后返回 complete。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: execute-standard 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: execute-standard 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT complete
-CEZ:VERDICT deep
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-实现计划（执行前读取）：{{artifactPaths.plan.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-复杂度判断依据：{{artifactPaths.routing-input.json}}
-当前复杂度档位：{{artifactPaths.route.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划（执行前读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+复杂度判断依据：docs/superpowers/probe/{{日期-英文主题}}-routing-input.json
+当前复杂度档位：.ai/cezar/runs/example-run/route.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <complete | deep | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：complete → 目标项目完整交付验证；deep → 最多两次升档；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+## 按任务依赖与能力选择执行器（execution-route）
+
+宿主执行：`cezar workflow-action execution`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 独立任务且具备派发能力；fail → 记录阻塞并结束。
+
+## 独立任务且具备派发能力（execution-sdd）
+
+类型：`if`。条件：{"kind":"output","ref":"execution-route.output","op":"equals","value":"sdd"}。
+
+出口：true → 复杂 SDD 逐任务实现与审查；false → 复杂任务 native 执行（保留高风险约束）。
 
 ## 复杂任务 native 执行（保留高风险约束）（execute-deep-native）
 
-角色：[superpowers:executing-plans](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/executing-plans/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-使用当前工作树和冻结工具链；恢复时复用官方 progress.md 及宿主检查点。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。
-```
-
-用户输入模板：
+角色：`superpowers:executing-plans`
 
 ```text
 执行已加载的 executing-plans，完成 plan.md 中 deep 档任务；读取 execution.json 中 native 选择原因，保留高风险约束。
-每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
+使用官方 sdd-workspace 为当前 plan.md 定位唯一工作目录；progress.md、brief 和报告都保存在该目录，不新建宿主进度副本。native 按官方 task-done 的测试完成契约将步骤标为 [x]；SDD 在逐任务审查通过并写入完成账本后勾选，未完成不得勾选。合并派发时，在账本用 Task N: report: 文件名 标明各任务共用的报告，不复制报告。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。保留工作目录供后续验证、独立审查与裁决读取。
 完成所有 Task 后返回 complete。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: execute-deep-native 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: execute-deep-native 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT complete
-CEZ:VERDICT question
-CEZ:VERDICT blocked
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-实现计划（执行前读取）：{{artifactPaths.plan.md}}
-执行器选择及原因：{{artifactPaths.execution.json}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划（执行前读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+执行器选择及原因：.ai/cezar/runs/example-run/execution.json
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <complete | question | blocked>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
-
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+出口：complete → 目标项目完整交付验证；question → 最多八轮按需裁决；blocked → 记录阻塞并结束；failed → 记录阻塞并结束。
 
 ## 复杂 SDD 逐任务实现与审查（execute-deep）
 
-角色：[superpowers:subagent-driven-development](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/subagent-driven-development/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-使用官方逐任务派发与审查流程、原生报告和 ledger。Task 审查包括未提交变更。完成任务后停在最终全分支审查之前，由 cezar 验证并独立审查。需求阻塞可交裁决者。
-```
-
-用户输入模板：
+角色：`superpowers:subagent-driven-development`
 
 ```text
 执行已加载的 subagent-driven-development，完成 plan.md 中 deep 档任务，使用官方 implementer、task-reviewer 和 re-review 模板及原生工作目录。
 记录实际派发能力、模型和审查报告路径。
-每个 Task 审核通过后，将 plan.md 中对应任务标记为 [x]；未审核或审核未通过不得勾选。测试证据及审查报告仍记录在 progress.md 和原生报告中。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。
+使用官方 sdd-workspace 为当前 plan.md 定位唯一工作目录；progress.md、brief 和报告都保存在该目录，不新建宿主进度副本。native 按官方 task-done 的测试完成契约将步骤标为 [x]；SDD 在逐任务审查通过并写入完成账本后勾选，未完成不得勾选。合并派发时，在账本用 Task N: report: 文件名 标明各任务共用的报告，不复制报告。构建输出不另存全量日志，最终回复报告命令、版本、退出码、测试数量和必要失败诊断。保留工作目录供后续验证、独立审查与裁决读取。
 完成所有 Task 后返回 complete。
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: execute-deep 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: execute-deep 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT complete
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-实现计划（执行前读取）：{{artifactPaths.plan.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划（执行前读取）：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <complete | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：complete → 目标项目完整交付验证；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+## 最多两次升档（upgrade）
+
+类型：`loop`。最多 2 次，恢复不重置次数。
+
+出口：repeat → 设计与需求消歧；exhausted → 记录阻塞并结束。
+
+## 目标项目完整交付验证（verify）
+
+宿主执行：`cezar workflow-action verify`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 独立全分支审查或限定复查；fail → 一次最终返修。
 
 ## 独立全分支审查或限定复查（review）
 
-角色：[superpowers:code-reviewer](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/requesting-code-review/code-reviewer.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-当前节点就是最终独立审查席位，只读并在回复中交付报告。完整 diff 包括未提交和新增文件；已有完整审查后的复查遵守官方 re-review 范围。
-```
-
-用户输入模板：
+角色：`superpowers:code-reviewer`
 
 ```text
 执行已加载的 code-reviewer，担任独立、只读的最终分支审查。核对需求、设计、计划、当前 branch.diff 及 verify.json/verified.json 的验证证据。
 首次审查使用官方模板：DESCRIPTION 来自任务，PLAN_OR_REQUIREMENTS 使用相关产物路径，BASE_SHA 来自 run.json，HEAD_SHA 来自当前 HEAD；branch.diff 补足未提交及新增文件。
-仅在已有完整审查时，使用官方 subagent-driven-development/re-review-prompt.md，结合既有发现、修复报告及 fix-before.diff，限定复查修复引入的问题。验证失败后的首次审查仍覆盖全分支。
+仅在宿主提供限定复查参数时，使用官方 subagent-driven-development/re-review-prompt.md，读取 FINDINGS、REPORT_FILE 与 DIFF_FILE，按 FIX_BASE_SHA/HEAD_SHA 范围复查。两者是包含未提交文件的 Git 代码树快照。验证失败后的首次审查仍覆盖全分支。先核对官方账本和既有测试证据，临时程序文件不存在不能推断从未执行。
 最终回复说明未评判范围；无实质阻塞返回 approve，需要修复返回 changes，证据不足返回 blocked。
-既有审查（首次为空）：
-{{nodes.review.summary}}
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT approve
-CEZ:VERDICT changes
-CEZ:VERDICT blocked
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-设计方案：{{artifactPaths.design.md}}
-实现计划：{{artifactPaths.plan.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-当前验证结果与失败原因：{{artifactPaths.verify.json}}
-验证对应的变更凭据：{{artifactPaths.verified.json}}
-本次任务完整代码差异：{{artifactPaths.branch.diff}}
-修复前代码差异（可选输入，仅复查且文件存在时读取）：{{artifactPaths.fix-before.diff}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+设计方案（可选输入，未生成，无需读取）：docs/superpowers/specs/{{日期-英文主题}}-design.md
+实现计划：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+当前验证结果与失败原因：.ai/cezar/runs/example-run/verify.json
+验证对应的变更凭据：.ai/cezar/runs/example-run/verified.json
+本次任务完整代码差异：.ai/cezar/runs/example-run/branch.diff
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <approve | changes | blocked>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：approve → 整理验证证据与裁决；changes → 一次最终返修；blocked → 记录阻塞并结束；failed → 记录阻塞并结束。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：已回答的历史裁决
+## 一次最终返修（final-retry）
+
+类型：`loop`。最多 1 次，恢复不重置次数。
+
+出口：repeat → 修复本次变更引入的问题；exhausted → 记录阻塞并结束。
 
 ## 修复本次变更引入的问题（fix）
 
-角色：[superpowers:systematic-debugging](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/systematic-debugging/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-只修复本任务引入的问题，依据实际失败和基线诊断；环境缺失或既有失败记录 blocked。保持冻结验证和目标版本约束。
-```
-
-用户输入模板：
+角色：`superpowers:systematic-debugging`
 
 ```text
 执行已加载的 systematic-debugging，使用官方 subagent-driven-development/implementer-prompt.md，以当前计划、失败证据和工作树填写参数。
 先对照 baseline.json 判断根因，仅修复本次变更引入的重要问题。既有失败或缺失基础设施记录证据并返回 blocked。
-将修复前变更保存在 fix-before.diff；官方 progress.md 记录修复和针对性验证，最终回复提供官方修复报告。针对性检查通过后返回 fixed，宿主负责重新验证；保持冻结检查和约束。
+在当前计划的官方 progress.md 记录修复和针对性验证，最终回复提供官方 implementer 修复报告，宿主将报告保存到同一工作目录。针对性检查通过后返回 fixed，宿主负责重新验证及生成修复增量；保持冻结检查和约束。验证未启动时按宿主错误诊断处理，不要求不存在的成功凭据。
 验证输出：
 {{nodes.verify.output}}
 审查发现（未审查时为空）：
-{{nodes.review.summary}}
-需要裁决时，在最终回复中给出一个完整阻塞问题、稳定 Q 编号、独立一行 origin: fix 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
+读取宿主提供的当前官方审查报告；尚未审查时仅使用验证失败诊断。
+需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: fix 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT fixed
-CEZ:VERDICT blocked
-CEZ:VERDICT question
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-实现计划：{{artifactPaths.plan.md}}
-源码定位地图：{{artifactPaths.context-map.jsonl}}
-修改前的检查结果：{{artifactPaths.baseline.json}}
-当前验证结果与失败原因：{{artifactPaths.verify.json}}
-编译测试命令与版本约束：{{artifactPaths.validation-plan.json}}
-本次任务完整代码差异：{{artifactPaths.branch.diff}}
-修复前代码差异（本节点输出；修改前保存，已存在时复用，不覆盖）：{{artifactPaths.fix-before.diff}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+源码定位地图：docs/superpowers/probe/{{日期-英文主题}}-context-map.jsonl
+修改前的检查结果：.ai/cezar/runs/example-run/baseline.json
+当前验证结果与失败原因（可选输入，未生成，无需读取）：.ai/cezar/runs/example-run/verify.json
+编译测试命令与版本约束：.ai/cezar/runs/example-run/validation-plan.json
+本次任务完整代码差异（可选输入，未生成，无需读取）：.ai/cezar/runs/example-run/branch.diff
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。先读源码地图，再定向读取相关源码；仅补查缺失或过期证据。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <fixed | blocked | question>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
-
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：来源为本节点的历史裁决，包括待恢复的阻塞结论
+出口：fixed → 目标项目完整交付验证；blocked → 记录阻塞并结束；failed → 记录阻塞并结束；question → 最多八轮按需裁决。
 
 ## 整理验证证据与裁决（deliver）
 
-角色：[superpowers:verification-before-completion](<C:/Program Files/Development/AI_Projects/cezar/packages/cezar/src/workflows/assets/superpowers/vendor/superpowers/skills/verification-before-completion/SKILL.md>)
-
-角色相关宿主规则：
-
-```text
-使用当前任务的工作树，读取项目 AGENTS.md；产物短名对应宿主注入路径。原始需求来自 CEZ_HANDOFF_FILE 的 Goal。仅执行当前节点，以其 CEZ:VERDICT 交接；节点回复由宿主保存。推送和创建 MR 由宿主收尾节点执行；合并和工作树删除留给人工。
-本节点核对宿主最新验证和独立审查，不代替失败检查宣布成功；交付后保留工作树进入人工 review。
-```
-
-用户输入模板：
+角色：`superpowers:verification-before-completion`
 
 ```text
 执行已加载的 verification-before-completion，核对 verify.json、verified.json、官方进度账本及宿主裁决 和已批准的独立审查。
-最终回复给出需求与证据对应关系、变更文件、实际命令及结果、裁决、遗留限制和证据路径；复用既有报告。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。
-已批准的独立审查：
-{{nodes.review.summary}}
+最终回复给出需求与证据对应关系、变更文件、实际命令及结果、裁决、遗留限制和证据路径；读取宿主提供的已批准审查报告并复用。证据一致返回 ready，否则 blocked。本节点不修改源码或执行提交。
 
-完成后，最终回复最后一行仅输出以下标记之一（此处为英文协议指令的中文展示）：
-CEZ:VERDICT ready
-CEZ:VERDICT blocked
-
+原始需求：使用 Read 读取交接文件 {{工作树}}\.ai\cezar\runs\example-run\handoff.md 的 ## Goal，无需查询环境变量。
 任务身份：读取 run.json，确认任务与工作树一致。
-相关文件：
-任务与工作树信息：{{artifactPaths.run.json}}
-当前验证结果与失败原因：{{artifactPaths.verify.json}}
-验证对应的变更凭据：{{artifactPaths.verified.json}}
+输入文件：
+任务与工作树信息：.ai/cezar/runs/example-run/run.json
+实现计划：docs/superpowers/plans/{{日期-英文主题}}-plan.md
+当前验证结果与失败原因：.ai/cezar/runs/example-run/verify.json
+验证对应的变更凭据：.ai/cezar/runs/example-run/verified.json
 必需输入缺失时报告具体缺口，不搜索其他任务产物；待生成输出和未生成的可选输入不属于输入缺失。
 
-{{stageContext}}
+最终回复末行：CEZ:VERDICT <ready | blocked>
 ```
 
-stageContext 仅在有实际内容时注入；不重复任务身份和路径，不传空裁决列表：
+出口：ready → 核对验证后代码未变；blocked → 记录阻塞并结束；failed → 记录阻塞并结束。
 
-- checkpoint：重新进入本节点且已有记录时，注入其已保存输出
-- clarification：已回答的历史裁决
+## 核对验证后代码未变（seal）
 
-## 全部节点顺序与命令输入
+宿主执行：`cezar workflow-action seal`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
 
-| 节点 | 中文名称 | 类型 | 执行输入 | 输出 |
-| --- | --- | --- | --- | --- |
-| start | start | start | 启动任务 | next |
-| probe | 需求与项目环境探测 | agent | cezar:project-probe | ready / blocked |
-| baseline | 项目编译与测试基线 | check | cezar workflow-action baseline | pass / fail、退出码与宿主结果 |
-| route | 按探测证据选择复杂度 | check | cezar workflow-action route | pass / fail、退出码与宿主结果 |
-| route-fast | 简单任务直接规划，其余进入设计 | if | route.output equals fast | true / false |
-| fast-plan | 轻量计划 | agent | superpowers:writing-plans | fast / standard / deep / blocked / question |
-| design | 设计与需求消歧 | agent | superpowers:brainstorming | ready / question / blocked |
-| clarification-round | 最多八轮按需裁决 | loop | 已有循环次数；最多 8 次 | repeat / exhausted |
-| adjudicator | 按需需求与技术裁决 | agent | cezar:adjudicator | answered / fast-plan / plan / execute-fast / execute-standard / execute-deep / execute-deep-native / fix / blocked |
-| plan | 完整实现计划 | agent | superpowers:writing-plans | standard / deep / blocked / question |
-| execute-fast | 轻量 native 执行 | agent | superpowers:executing-plans | complete / standard / deep / blocked / question |
-| execute-standard | 标准 native 执行 | agent | superpowers:executing-plans | complete / deep / blocked / question |
-| execution-route | 按任务依赖与能力选择执行器 | check | cezar workflow-action execution | pass / fail、退出码与宿主结果 |
-| execution-sdd | 独立任务且具备派发能力 | if | execution-route.output equals sdd | true / false |
-| execute-deep-native | 复杂任务 native 执行（保留高风险约束） | agent | superpowers:executing-plans | complete / question / blocked |
-| execute-deep | 复杂 SDD 逐任务实现与审查 | agent | superpowers:subagent-driven-development | complete / blocked / question |
-| upgrade | 最多两次升档 | loop | 已有循环次数；最多 2 次 | repeat / exhausted |
-| verify | 目标项目完整交付验证 | check | cezar workflow-action verify | pass / fail、退出码与宿主结果 |
-| review | 独立全分支审查或限定复查 | agent | superpowers:code-reviewer | approve / changes / blocked |
-| final-retry | 一次最终返修 | loop | 已有循环次数；最多 1 次 | repeat / exhausted |
-| fix | 修复本次变更引入的问题 | agent | superpowers:systematic-debugging | fixed / blocked / question |
-| deliver | 整理验证证据与裁决 | agent | superpowers:verification-before-completion | ready / blocked |
-| seal | 核对验证后代码未变 | check | cezar workflow-action seal | pass / fail、退出码与宿主结果 |
-| blocked-report | 记录阻塞并结束 | check | cezar workflow-action blocked | pass / fail、退出码与宿主结果 |
-| publish-mr | 推送分支并创建 Draft MR | github.draft-pr | 当前任务工作树、分支、基准分支与交付摘要 | created：MR 链接 / failed |
-| request-review | 请求 guohongwei 审核（GitLab 通知） | github.pr-update | 当前任务 MR、reviewers: guohongwei | done / failed |
-| publication-failed | 提交审核失败（保留已完成工作） | end | 推送、创建 MR 或请求审核失败 | failed |
-| notify-wecom | 企业微信群通知并 @ 审核人 | notify.wecom | 当前项目通知连接、任务标题与 MR 链接 | done / skipped / failed |
-| notification-failed | MR 已创建，群通知失败 | end | 保留 MR 与已完成工作 | success |
-| done | MR 已创建并请求审核 | end | MR 链接及审核请求已提交 | success |
-| stopped | 阻塞或返修耗尽 | end | 流程到达终点 | failed |
+出口：pass → 推送分支并创建 Draft MR；fail → 记录阻塞并结束。
 
-## 条件附加输入
+## 推送分支并创建 Draft MR（publish-mr）
 
-实际存在时才附加：用户追加指令、任务附件路径、子任务报告/收件信息、本节点失败证据，以及账号或会话变化后的恢复说明。nodes 引用替换为相应节点的实际输出。
+类型：`github.draft-pr`。工作流入口。
 
-## 澄清查看位置
+出口：created → 请求 guohongwei 审核（GitLab 通知）；failed → 通知推送或创建 MR 失败。
 
-会话：每轮提问和裁决者的完整回复。图：对应节点最近一轮的完整输出。宿主持久保存历史；不生成独立问答 Markdown 或自定义 ledger。
+## 请求 guohongwei 审核（GitLab 通知）（request-review）
 
-## 源码核对入口
+类型：`github.pr-update`。工作流入口。
 
-- 节点任务与流程：packages/cezar/src/workflows/templates/unattended.ts。
-- 探测专用输入、相关路径和上下文：packages/cezar/src/workflows/unattended-probe.ts。
-- 角色原文与宿主交接规则拼装：packages/cezar/src/workflows/superpowers-bundle.ts。
-- 返回标记协议：packages/cezar/src/workflows/graph.ts 的 verdictInstruction。
-- 实际启动参数与通用系统输入拼装：packages/cezar/src/workflows/run.ts 的 runAgentStep。
+出口：done → 企业微信群通知并 @ 审核人；failed → 通知审核人设置失败（保留 MR）。
 
-该文档是中文展开清单，便于审阅，不是任意一次启动的逐字日志。具体运行时的完整 system prompt、user prompt、工具及参数以任务会话中的代理启动记录为准；不会把启动记录反过来作为额外输入再发给模型。
+## 企业微信群通知并 @ 审核人（notify-wecom）
 
-## GitLab 审核通知
+类型：`notify.wecom`。工作流入口。
 
-seal 通过后由宿主自动提交剩余变更、推送任务分支并创建 Draft MR，再指定 guohongwei 为审核人。已有 MR 复用；不自动合并、不删除工作树。推送/创建/请求审核失败时保留已完成工作和已有 MR 链接，在提交审核失败终点记录错误。邮件由 GitLab 发送，受实例邮件配置和审核人通知设置控制；接口成功仅表示审核请求成功，不代表邮件已送达。不增加 SMTP、邮件产物或代理节点。
+出口：done → MR 已创建，自动交接完成；skipped → MR 已创建，自动交接完成；failed → MR 已创建，群通知失败。
 
-企业微信群通知：在“项目设置 → 企业微信通知”配置机器人与 @ 成员。审核请求提交后由 notify-wecom 推送 MR 链接；通知关闭或 dry-run 时跳过，群通知失败单独显示，不重跑开发或重新创建 MR。Webhook 仅保存在宿主凭据文件，不进入代理输入。
+## MR 已创建，群通知失败（notification-failed）
 
-阻塞分支：blocked-report → notify-blocked → stopped；推送/MR 失败分支：publish-mr.failed → notify-publication-failed → publication-failed。两者通知完成、跳过或失败均保留任务失败状态。通知正文使用 {{title}} 和 {{failure}}，原因来自本次失败节点的错误、阻塞摘要或检查输出，先脱敏并按企业微信文本上限截断。
+类型：`end`。终态：failed。
 
-宿主按文件实际存在状态区分输入与输出。设计、轻量规划、完整规划和返修的待生成文件列在“本节点输出”；审查时 design.md（简单链路可能无设计）与 fix-before.diff（首次审查无返修快照）为可选输入，不存在时无需读取。
+出口：结束。
 
-裁决者会话：首次新建；后续问题通过 session.continue 延续自身会话。账号/后端不兼容或会话缺失时新建并注入持久化问答历史；正常续聊仅补充当前问题，历史记录仍由宿主保留。
+## 通知审核人设置失败（保留 MR）（notify-review-failed）
+
+类型：`notify.wecom`。工作流入口。
+
+出口：done → MR 已创建，审核人设置失败；skipped → MR 已创建，审核人设置失败；failed → MR 已创建，审核人设置失败。
+
+## MR 已创建，审核人设置失败（review-request-failed）
+
+类型：`end`。终态：failed。
+
+出口：结束。
+
+## 通知推送或创建 MR 失败（notify-publication-failed）
+
+类型：`notify.wecom`。工作流入口。
+
+出口：done → 提交审核失败（保留已完成工作）；skipped → 提交审核失败（保留已完成工作）；failed → 提交审核失败（保留已完成工作）。
+
+## 通知工作流阻塞（notify-blocked）
+
+类型：`notify.wecom`。工作流入口。
+
+出口：done → 阻塞或返修耗尽；skipped → 阻塞或返修耗尽；failed → 阻塞或返修耗尽。
+
+## 提交审核失败（保留已完成工作）（publication-failed）
+
+类型：`end`。终态：failed。
+
+出口：结束。
+
+## 记录阻塞并结束（blocked-report）
+
+宿主执行：`cezar workflow-action blocked`。退出码 0 走 pass，否则走 fail；错误与结果保存在节点会话。
+
+出口：pass → 通知工作流阻塞；fail → 通知工作流阻塞。
+
+## MR 已创建，自动交接完成（done）
+
+类型：`end`。终态：success。
+
+出口：结束。
+
+## 阻塞或返修耗尽（stopped）
+
+类型：`end`。终态：failed。
+
+出口：结束。
