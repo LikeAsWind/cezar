@@ -3,12 +3,14 @@ const publish = vi.hoisted(() => vi.fn());
 vi.mock('../server/forge/operations.ts', async original => ({ ...await original<typeof import('../server/forge/operations.ts')>(), createForgePr: publish }));
 const send = vi.hoisted(() => vi.fn());
 vi.mock('../notifications/wecom.ts', () => ({ sendWecomNotification: send }));
+vi.mock('../workspace/config.ts', async original => ({ ...await original<typeof import('../workspace/config.ts')>(),
+  loadWorkspaceConfig: async () => ({ projects: [{ id: 'project-a', name: '搜索排序服务' }, { id: 'project-b', name: '销售控制服务' }] }) }));
 import { RunManager } from './run.ts';
 const record = { title: 'Fix buffer return', pullRequestUrl: 'https://gitlab.example/g/r/-/merge_requests/7' };
 beforeEach(() => send.mockReset());
-function invoke(body?: string, taken: string[] = [], publication = false, error?: string) {
+function invoke(body?: string, taken: string[] = [], publication = false, error?: string, projectId = 'project-a') {
   const manager = Object.create(RunManager.prototype) as RunManager;
-  Object.assign(manager, { projectId: 'project-a', repoRoot: 'C:/mock-project', dataDir: 'C:/mock-project/.ai/cezar', store: { getRun: () => ({ ...record, ...(publication ? { pullRequestUrl: undefined } : {}), steps: error ? [{ id: 'design', name: '设计与需求消歧', error }] : [], graphState: { taken } }), redactRunText: (_id: string, text: string) => text } });
+  Object.assign(manager, { projectId, repoRoot: 'C:/mock-project', dataDir: 'C:/mock-project/.ai/cezar', store: { getRun: () => ({ ...record, ...(publication ? { pullRequestUrl: undefined } : {}), steps: error ? [{ id: 'design', name: '设计与需求消歧', error }] : [], graphState: { taken } }), redactRunText: (_id: string, text: string) => text } });
   const outputs = new Map<string, Record<string, string | number>>();
   const note = vi.fn(), persist = vi.fn();
   const method = manager['runSystemNode'].bind(manager);
@@ -22,6 +24,11 @@ it('includes the MR link and task title, persists acceptance and never puts cred
   expect(send).toHaveBeenCalledWith('project-a', expect.stringContaining(record.title));
   expect(node.outputs.get('notify')).toEqual({ status: 'sent' });
   expect(node.persist).toHaveBeenCalledOnce();
+});
+it.each([['project-a', '搜索排序服务'], ['project-b', '销售控制服务']])('uses the current project name in the review notification for %s', async (id, name) => {
+  send.mockResolvedValue(true);
+  await invoke(undefined, [], false, undefined, id).run();
+  expect(send).toHaveBeenCalledWith(id, expect.stringMatching(new RegExp(`^${name} 研发任务审核\\n`)));
 });
 it('uses skipped for a disabled connection and failed for a rejection without retrying', async () => {
   send.mockResolvedValueOnce(false);

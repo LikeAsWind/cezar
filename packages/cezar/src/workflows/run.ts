@@ -137,7 +137,7 @@ import { resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
 import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { SecretStore } from '../workspace/secrets.ts';
-import { PROJECT_ID_RE } from '../workspace/config.ts';
+import { loadWorkspaceConfig, PROJECT_ID_RE } from '../workspace/config.ts';
 import { prunePrHeadRefs } from '../automations/pr-head.ts';
 import { MIN_SECRET_LEN } from '../core/secret-redaction.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
@@ -5605,9 +5605,10 @@ export class RunManager {
         const evidence = origin ? outputs.get(origin) : undefined;
         const failedStep = run?.steps.find(step => step.id === origin);
         const reason = origin ? `${failedStep?.name ?? origin}：${evidence?.error || evidence?.output || failedStep?.error || evidence?.summary || (failureEdge?.[2] === 'exhausted' ? '重试或裁决次数已耗尽' : '未提供详细原因，请查看任务运行记录')}` : '未提供详细原因，请查看任务运行记录';
+        const projectName = !node.body && this.projectId ? (await loadWorkspaceConfig()).projects?.find(project => project.id === this.projectId)?.name : undefined;
         let content = node.body ? render(node.body)
           .replaceAll('{{title}}', title).replaceAll('{{failure}}', reason) : [
-          'cezar 研发任务审核',
+          `${projectName ?? basename(this.repoRoot)} 研发任务审核`,
           `任务：${(run?.titleSummary ?? run?.title ?? task).slice(0, 240)}`,
           ...(run?.pullRequestUrl ? [`MR：${run.pullRequestUrl}`] : []),
           ...(outputs.get('request-review')?.error ? [`审核人设置失败：${outputs.get('request-review')!.error}`] : []),
