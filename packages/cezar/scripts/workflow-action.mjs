@@ -142,7 +142,7 @@ export async function validationPlan(root, environment) {
     if (toolchain.execution && !plan.environmentChecks.some(check => check.toolchain === toolchain.name)) throw new Error('selected toolchain requires a version check using the same binding');
   }
   for (const command of [...plan.setup, ...plan.environmentChecks, ...plan.baseline, ...plan.verify]) {
-    if (command.toolchain && !plan.toolchains.some(tool => tool.name === command.toolchain && tool.execution)) throw new Error('command references an unavailable executable toolchain');
+    if (command.toolchain && !plan.toolchains.some(tool => tool.name === command.toolchain && tool.execution)) throw new Error(`command references an unavailable executable toolchain: ${command.toolchain}; declare the toolchain and its execution binding`);
     await inWorktree(root, resolve(root, command.source));
     if (!(await stat(join(root, command.source))).isFile()) throw new Error('validation command needs an existing source file');
     const program = basename(command.file.replaceAll('\\', '/')).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();

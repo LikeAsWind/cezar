@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { prepareUnattendedProbe, unattendedToolchainEnv } from './unattended-probe.ts';
 import { ensureBundleSnapshot } from '../superpowers-update.ts';
@@ -13,11 +14,11 @@ import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
 import { artifactPaths } from '../../scripts/workflow/artifacts.mjs';
 
-const captures = vi.hoisted(() => ({ specs: [] as AgentRunSpec[] }));
+const captures = vi.hoisted(() => ({ specs: [] as AgentRunSpec[], onLaunch: undefined as ((spec: AgentRunSpec) => string) | undefined }));
 vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
   backend: 'claude', interrupt: async () => {}, startSession: (spec: AgentRunSpec, event?: (event: AgentEvent) => void) => {
     captures.specs.push(spec);
-    const text = `CEZ:VERDICT ${spec.probePolicy ? 'blocked' : 'reported'}`;
+    const text = captures.onLaunch?.(spec) ?? `CEZ:VERDICT ${spec.probePolicy ? 'blocked' : 'reported'}`;
     return { open: false, interrupt() {}, end() {}, sendMessage: () => false,
       result: new Promise(resolve => setTimeout(() => { event?.({ type: 'text', text }); event?.({ type: 'turn-end' }); resolve({ text, tokensUsed: 0, toolCalls: [] }); }, 0)) };
   },
@@ -155,3 +156,63 @@ it.each([false, true])('passes an explicit agent timeout on launch (Continue=%s)
     await expect.poll(() => ['done', 'review', 'failed'].includes(store.getRun(run.id)?.status ?? ''), { timeout: 15_000 }).toBe(true);
   } finally { manager.dispose(); store.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 30_000);
+
+it.each([true, false])('validates probe before baseline and resumes once for repair (repair succeeds=%s)', async repaired => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-probe-handoff-'));
+  let manager: RunManager | undefined;
+  let store: RunStore | undefined;
+  try {
+    const git = (...args: string[]) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    git('init');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-m', 'initial');
+    git('worktree', 'add', 'task', '-b', 'probe-handoff');
+    const cwd = join(root, 'task'), data = join(cwd, '.ai/cezar');
+    await writeFile(join(cwd, 'README.md'), 'Build fixture');
+    const snapshot = await ensureBundleSnapshot();
+    const workflow = unattendedWorkflows(snapshot.root)[0]!;
+    store = RunStore.open(data);
+    manager = new RunManager(store, cwd);
+    const run = store.createRun({ title: 'Probe handoff', workflow: workflow.name, task: 'Investigate fixture', steps: workflow.steps.map(step => ({ id: step.id, name: step.id, kind: step.command ? 'check' : 'agent' })) });
+    store.updateRun(run.id, { status: 'failed', worktree: false, workflowDef: workflow, graphState: { cursor: 'probe', taken: [], loops: {} } });
+    await mkdir(join(data, 'runs', run.id), { recursive: true });
+    await writeFile(runFilePath(data, run.id, '.superpowers.json'), JSON.stringify({ schemaVersion: 1, ref: snapshot.ref }));
+    vi.spyOn(manager as unknown as { agentEnvForStep: () => Promise<{ env: Record<string, string>; profileId: string }> }, 'agentEnvForStep').mockResolvedValue({ env: {}, profileId: 'fixture' });
+    const checks: string[] = [];
+    vi.spyOn(manager as unknown as { runCheckStep: (...args: unknown[]) => Promise<{ ok: boolean; output: string; exitCode: number }> }, 'runCheckStep').mockImplementation(async (...args) => {
+      checks.push((args[2] as { id: string }).id);
+      return { ok: false, output: 'fixture stop', exitCode: 1 };
+    });
+    captures.specs = [];
+    captures.onLaunch = spec => {
+      if (!spec.probePolicy) return 'CEZ:VERDICT blocked';
+      const probes = captures.specs.filter(item => item.probePolicy);
+      const paths = artifactPaths(cwd, run.id, join(data, 'runs', run.id));
+      const command = { file: 'npm', args: ['test'], cwd: '.', source: 'README.md', kind: 'test', toolchain: 'fixture-toolchain' };
+      writeFileSync(paths.file('environment.json'), JSON.stringify({ schemaVersion: 1,
+        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'], ...(repaired && probes.length === 2 ? { execution: {} } : {}) }],
+        environmentChecks: [{ ...command, args: ['--version'], kind: 'check', expectedOutput: ['fixture'] }], baseline: [command], verify: [command] }));
+      writeFileSync(paths.file('probe.md'), 'Located fixture build');
+      writeFileSync(paths.file('context-map.jsonl'), JSON.stringify({ schemaVersion: 1, stage: 'probe', path: 'README.md', summary: 'Build', relevance: 'Validation', symbols: [], dependsOn: [], confidence: 'high' }));
+      writeFileSync(paths.file('routing-input.json'), JSON.stringify({ likelyChangeFiles: [], highRisk: false, crossModule: false, requirementsClear: true }));
+      return 'CEZ:VERDICT ready';
+    };
+    expect(manager.continueRun(run.id, { text: 'Resume probe.' })).toEqual({ ok: true });
+    await expect.poll(() => store!.getRun(run.id)?.status, { timeout: 60_000 }).toBe('failed');
+    const probes = captures.specs.filter(spec => spec.probePolicy);
+    expect(probes).toHaveLength(2);
+    expect(probes[1]?.resume).toBe(true);
+    expect(probes[1]?.sessionId).toBe(probes[0]?.sessionId);
+    expect(probes[1]?.probePolicy).toEqual(probes[0]?.probePolicy);
+    expect(probes[1]?.userPrompt).toContain('宿主环境交接校验失败');
+    expect(probes[1]?.userPrompt).toContain('fixture-toolchain');
+    expect(checks.includes('baseline')).toBe(repaired);
+    expect(store.getRun(run.id)?.graphState?.outputs?.probe?.verdict).toBe(repaired ? 'ready' : 'blocked');
+  } finally {
+    captures.onLaunch = undefined;
+    manager?.dispose(); store?.flush();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}, 90_000);

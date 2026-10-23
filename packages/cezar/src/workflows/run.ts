@@ -62,6 +62,7 @@ import { pinSuperpowersRun } from './superpowers-pin.ts';
 import { adjudicationTurnInput, clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
 import { unattendedRecoveryPoint } from './unattended-recovery.ts';
 import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext, unattendedUserUpdates } from './unattended-probe.ts';
+import { guardProbeEnvironment } from './probe-environment.ts';
 import { WORKFLOW_ACTION_SCRIPT, workflowActionOf } from './workflow-actions.ts';
 import { startSessionWithInput } from './step-input.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
@@ -5002,6 +5003,24 @@ export class RunManager {
         );
         startImages = undefined;
         startAttachments = [];
+        if (managedUnattended && node.skill === 'cezar:project-probe' && !failure &&
+          !state.cancelled && !state.askPark && this.active.get(runId) === state && parseVerdict(lastTurn.text, verdicts) === 'ready') {
+          const environmentError = await guardProbeEnvironment(this.dataDir, runId, state.cwd, async prompt => {
+            if (state.cancelled || this.active.get(runId) !== state) return false;
+            emit({ type: 'note', stepId: node.id, message: prompt });
+            lastTurn.text = '';
+            failure = await this.runAgentStep(
+              runId, state, rendered, input, skills, null, isTerminalAgent(graph, node.id), emit,
+              undefined, taskBackend, extraSystemPrompt, undefined, [],
+              { resumeSessionId: this.graphResumeSession(runId, node, backend, emit, true), lastTurn, verdicts, probeRepair: prompt },
+            );
+            return !failure && !state.cancelled && !state.askPark && this.active.get(runId) === state && parseVerdict(lastTurn.text, verdicts) === 'ready';
+          });
+          if (environmentError && !state.cancelled && this.active.get(runId) === state) {
+            emit({ type: 'note', stepId: node.id, message: environmentError });
+            lastTurn.text = `${stripVerdictMarker(lastTurn.text.trim())}\n\n${environmentError}\nCEZ:VERDICT blocked`;
+          }
+        }
         failure ??= state.parkedAgent?.failure ?? null;
         checkFailure = null;
         if (state.cancelled || this.active.get(runId) !== state) return null;
@@ -5939,7 +5958,7 @@ export class RunManager {
     attachments: PersistedAttachment[] = [],
     /** Graph-workflow hooks (spec 2026-09-30-workflow-node-editor): reopen an earlier session
      *  instead of minting one, and hand back the last turn's text for verdict parsing. */
-    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string; verdicts?: readonly string[]; adjudicationReturn?: boolean },
+    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string; verdicts?: readonly string[]; adjudicationReturn?: boolean; probeRepair?: string },
   ): Promise<string | null> {
     const parked = state.parkedAgent;
     if (graphHooks?.adjudicationReturn && parked?.stepId === step.id) {
@@ -6391,6 +6410,7 @@ export class RunManager {
         // or the template's duplicate boundary instructions. Keep actual attachments/updates.
         userPrompt = [
           probe.instructions,
+          ...(graphHooks?.probeRepair ? [graphHooks.probeRepair] : []),
           ...treeBlocks,
           ...(checkFailure ? [`上次检查失败证据（仅用于探测，不在本阶段修复）：\n${checkFailure}`] : []),
           ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
