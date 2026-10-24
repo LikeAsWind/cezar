@@ -513,7 +513,7 @@ schemaVersion 为 1。
 }
 }
 
-execution 必须写在对应的 toolchains 项内；文字说明、版本查询成功和命令中的 toolchain 名称不能替代 execution.javaHome。宿主在 ready 交接前复用 baseline 的代码校验，不执行构建或测试。若校验失败，宿主最多恢复本会话一次并返回具体错误；只修正映射的探测产物，保留已有证据，不猜测工具路径。无法补全则返回 blocked。
+execution 必须写在对应的 toolchains 项内；文字说明、版本查询成功和命令中的 toolchain 名称不能替代 execution.javaHome。ready 后由工作流的独立校验节点复用 baseline 的代码校验，不执行构建或测试。若校验失败，工作流通过最多一次的补全循环恢复探测会话并提供具体错误；只修正映射的探测产物，保留已有证据，不猜测工具路径。无法补全则返回 blocked。
 
 Java/Maven/Gradle 命令必须绑定明确的 javaHome。
 

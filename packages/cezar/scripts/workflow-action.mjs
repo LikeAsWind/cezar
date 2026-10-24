@@ -429,7 +429,7 @@ function diagnostics(output) {
 }
 
 export async function main(action, title = 'task') {
-  if (!['init', 'route', 'execution', 'baseline', 'scope', 'verify', 'seal', 'blocked'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
+  if (!['init', 'route', 'execution', 'environment', 'baseline', 'scope', 'verify', 'seal', 'blocked'].includes(action)) throw new Error(`unknown workflow action: ${action}`);
   const root = process.cwd();
   const runId = ['init', 'route'].includes(action)
     ? process.env.CEZ_TASK_ID || process.env.CEZ_RUN_ID
@@ -454,6 +454,11 @@ export async function main(action, title = 'task') {
     return;
   }
   const paths = artifactPaths(root, runId);
+  if (action === 'environment') {
+    await validationPlan(root, await json(paths.file('environment.json')));
+    console.log('Probe environment validated; no build or test command executed.');
+    return;
+  }
   if (action === 'blocked') {
     const handoff = process.env.CEZ_HANDOFF_FILE;
     if (handoff && basename(handoff) === 'handoff.md' && basename(dirname(handoff)) === runId) {

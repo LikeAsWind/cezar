@@ -1,3 +1,4 @@
+import { workflowExecutionView } from '../workflows/workflow-runtime.ts';
 import { wecomNotificationRoutes } from './wecom-notifications.ts';
 import { runFilePath } from '../runs/files.ts';
 import {
@@ -4313,9 +4314,9 @@ export function createApp(deps: ServerDeps) {
     })
 
     .get('/runs/:id', (c) => {
-      const { store } = c.get('project');
+      const { store, dataDir } = c.get('project');
       const run = store.getRun(c.req.param('id'));
-      return run ? c.json(withUsage(run)) : c.json({ error: 'not found' }, 404);
+      return run ? c.json(withUsage(workflowExecutionView(dataDir, run))) : c.json({ error: 'not found' }, 404);
     })
 
     .get(

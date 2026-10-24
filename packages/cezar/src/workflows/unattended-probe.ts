@@ -69,7 +69,7 @@ export function artifactLabel(name: string, stage?: string): string {
   return label;
 }
 
-export function artifactInstructions(cwd: string, runId: string, stage?: string, dataDir?: string): string {
+export function artifactInstructions(cwd: string, runId: string, stage?: string, dataDir?: string, resolveStage?: (nodeId: string) => string): string {
   let paths;
   try { paths = artifactPaths(cwd, runId, dataDir ? join(dataDir, 'runs', runId) : undefined); }
   catch (error) {
@@ -79,7 +79,7 @@ export function artifactInstructions(cwd: string, runId: string, stage?: string,
   let names = stage ? ['run.json', ...(stageArtifacts[stage] ?? [])] : artifactNames;
   if (stage === 'adjudicator' && dataDir) {
     const pending = JSON.parse(readFileSync(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8'));
-    const relevant = stageArtifacts[pending.origin] ?? stageArtifacts.adjudicator!;
+    const relevant = stageArtifacts[resolveStage?.(pending.origin) ?? pending.origin] ?? stageArtifacts.adjudicator!;
     names = [...new Set([...names, ...relevant.filter(name => existsSync(paths.file(name)))])];
   }
   const isOutput = (name: string) => name === 'design.md' && stage === 'design'
@@ -105,7 +105,7 @@ ${inputs.map(describe).join('\n')}${outputs.length ? `\n本节点输出：\n${ou
 }
 
 /** Feed existing discovery and progress to the next role, rather than only naming files. */
-export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string, resumingSession = false, deliveredUserUpdates?: string[]): Promise<string> {
+export async function unattendedContext(cwd: string, runId: string, run?: Pick<RunRecord, 'branch' | 'steps' | 'graphState' | 'queuedMessages'>, stage?: string, dataDir?: string, resumingSession = false, deliveredUserUpdates?: string[], nodeId = stage): Promise<string> {
   const paths = artifactPaths(cwd, runId, dataDir ? join(dataDir, 'runs', runId) : undefined);
   const identity = JSON.parse(await readFile(paths.file('run.json'), 'utf8'));
   if (identity.runId !== runId || identity.root !== await realpath(cwd)) throw new Error('Shared context belongs to another run or worktree');
@@ -135,13 +135,13 @@ export async function unattendedContext(cwd: string, runId: string, run?: Pick<R
     ...(!stage ? { map, omittedMapEntries: rows.length - map.length } : {}),
     ...(!stage ? { toolchains: environment.toolchains ?? [], environmentBlockers: environment.blocked ?? [], baseline: validation(baselineText) } : {}),
     ...(!stage ? { verification: validation(verifyText) } : {}),
-    ...(stage && !['review', 'deliver'].includes(stage) && !(stage === 'adjudicator' && resumingSession) && run?.graphState?.outputs?.[stage] ? { checkpoint: run.graphState.outputs[stage] } : {}) };
+    ...(stage && nodeId && !['review', 'deliver'].includes(stage) && !(stage === 'adjudicator' && resumingSession) && run?.graphState?.outputs?.[nodeId] ? { checkpoint: run.graphState.outputs[nodeId] } : {}) };
   let questions;
   if (dataDir) {
     try { questions = JSON.parse(await readFile(runFilePath(dataDir, runId, '.unattended-question.json'), 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
-  const decisions = questions?.history?.filter((entry: { origin: string; status: string }) => (entry.status === 'answered' && (stage === 'review' || stage === 'deliver') || entry.origin === stage)) ?? [];
+  const decisions = questions?.history?.filter((entry: { origin: string; status: string }) => (entry.status === 'answered' && (stage === 'review' || stage === 'deliver') || entry.origin === nodeId)) ?? [];
   const clarification = stage === 'adjudicator'
     ? resumingSession && questions ? { ...questions, history: [] } : questions
     : decisions;

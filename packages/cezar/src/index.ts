@@ -48,7 +48,7 @@ Usage:
   cezar task <create|report|list>  dispatch or report from inside a running task (CEZ_DISPATCH=0 turns it off)
   cezar automation <add|create|check|run|list|…>  create and manage automations (GitHub polls, schedules) on a running cockpit
   cezar runs list           list a running cockpit's tasks from a shell (CEZ_API_URL=http://127.0.0.1:4321)
-  cezar workflow-action <init|route|execution|baseline|scope|verify|seal|blocked>
+  cezar workflow-action <init|route|execution|environment|baseline|scope|verify|seal|blocked>
                             execute a host workflow operation in the current task worktree
   cezar init                scaffold .ai/cezar/ (example workflow + skill)
   cezar projects            list the projects this cockpit serves
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   }
   if (process.argv[2] === 'workflow-action') {
     const { main } = await import('../scripts/workflow-action.mjs');
-    if (process.argv.length !== 4) throw new Error('usage: cezar workflow-action <init|route|execution|baseline|scope|verify|seal|blocked>');
+    if (process.argv.length !== 4) throw new Error('usage: cezar workflow-action <init|route|execution|environment|baseline|scope|verify|seal|blocked>');
     await main(process.argv[3]);
     return;
   }
