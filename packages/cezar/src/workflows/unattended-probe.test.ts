@@ -13,6 +13,9 @@ import { unattendedWorkflows } from './superpowers-bundle.ts';
 import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
 import { artifactPaths } from '../../scripts/workflow/artifacts.mjs';
+import { validationPlan } from '../../scripts/workflow-action.mjs';
+import { workflowActionOf } from './workflow-actions.ts';
+import { graphToSteps } from './graph.ts';
 
 const captures = vi.hoisted(() => ({ specs: [] as AgentRunSpec[], onLaunch: undefined as ((spec: AgentRunSpec) => string) | undefined }));
 vi.mock('../core/runner-factory.ts', () => ({ createRunner: () => ({
@@ -158,9 +161,10 @@ it.each([false, true])('passes an explicit agent timeout on launch (Continue=%s)
 }, 30_000);
 
 it.each([
-  { repaired: true, baseline: false }, { repaired: false, baseline: false },
-  { repaired: true, baseline: true }, { repaired: false, baseline: true },
-])('validates probe before baseline and resumes once for repair ($repaired, baseline recovery=$baseline)', async ({ repaired, baseline }) => {
+  { repaired: true, baseline: false, valid: false }, { repaired: false, baseline: false, valid: false },
+  { repaired: true, baseline: true, valid: false }, { repaired: false, baseline: true, valid: false },
+  { repaired: true, baseline: true, valid: true },
+])('validates probe before baseline and resumes once for repair ($repaired, baseline recovery=$baseline, valid=$valid)', async ({ repaired, baseline, valid }) => {
   const root = await mkdtemp(join(tmpdir(), 'cez-probe-handoff-'));
   let manager: RunManager | undefined;
   let store: RunStore | undefined;
@@ -176,6 +180,12 @@ it.each([
     await writeFile(join(cwd, 'README.md'), 'Build fixture');
     const snapshot = await ensureBundleSnapshot();
     const workflow = unattendedWorkflows(snapshot.root)[0]!;
+    if (baseline) {
+      const added = new Set(['environment-check', 'probe-retry', 'probe-repair']);
+      workflow.graph = { ...workflow.graph!, nodes: workflow.graph!.nodes.filter(node => !added.has(node.id)),
+        edges: [...workflow.graph!.edges.filter(edge => !added.has(edge.from.split('.')[0]!) && !added.has(edge.to)), { from: 'probe.ready', to: 'baseline' }] };
+      workflow.steps = graphToSteps(workflow.graph);
+    }
     store = RunStore.open(data);
     manager = new RunManager(store, cwd);
     const run = store.createRun({ title: 'Probe handoff', workflow: workflow.name, task: 'Investigate fixture', steps: workflow.steps.map(step => ({ id: step.id, name: step.id, kind: step.command ? 'check' : 'agent' })) });
@@ -185,7 +195,15 @@ it.each([
     vi.spyOn(manager as unknown as { agentEnvForStep: () => Promise<{ env: Record<string, string>; profileId: string }> }, 'agentEnvForStep').mockResolvedValue({ env: {}, profileId: 'fixture' });
     const checks: string[] = [];
     vi.spyOn(manager as unknown as { runCheckStep: (...args: unknown[]) => Promise<{ ok: boolean; output: string; exitCode: number }> }, 'runCheckStep').mockImplementation(async (...args) => {
-      checks.push((args[2] as { id: string }).id);
+      const step = args[2] as { id: string; command?: string };
+      checks.push(step.id);
+      if (workflowActionOf(step.command ?? '') === 'environment') {
+        const { readFile } = await import('node:fs/promises');
+        try {
+          await validationPlan(cwd, JSON.parse(await readFile(artifactPaths(cwd, run.id, join(data, 'runs', run.id)).file('environment.json'), 'utf8')));
+          return { ok: true, output: 'environment validated', exitCode: 0 };
+        } catch (error) { return { ok: false, output: String(error), exitCode: 1 }; }
+      }
       return { ok: false, output: 'fixture stop', exitCode: 1 };
     });
     captures.specs = [];
@@ -207,13 +225,19 @@ it.each([
       const paths = artifactPaths(cwd, run.id, join(data, 'runs', run.id));
       const command = { file: 'npm', args: ['test'], cwd: '.', source: 'README.md', kind: 'test', toolchain: 'fixture-toolchain' };
       await writeFile(paths.file('environment.json'), JSON.stringify({ schemaVersion: 1,
-        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'] }],
+        toolchains: [{ name: 'fixture-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['README.md'], ...(valid ? { execution: {} } : {}) }],
         environmentChecks: [{ ...command, args: ['--version'], kind: 'check', expectedOutput: ['fixture'] }], baseline: [command], verify: [command] }));
       store.updateStep(run.id, 'probe', { sessionId: 'original-probe-session', backend: 'claude', profileId: 'fixture', status: 'done' });
     }
     expect(manager.continueRun(run.id, { text: 'Resume probe.' })).toEqual({ ok: true });
     await expect.poll(() => store!.getRun(run.id)?.status, { timeout: 60_000 }).toBe('failed');
     const probes = captures.specs.filter(spec => spec.probePolicy);
+    if (valid) {
+      expect(probes).toHaveLength(0);
+      expect(checks).toContain('baseline');
+      expect(store.getRun(run.id)?.graphState?.loops['probe-retry']).toBeUndefined();
+      return;
+    }
     expect(probes).toHaveLength(baseline ? 1 : 2);
     const repair = probes.at(-1)!;
     expect(repair.resume).toBe(true);
@@ -222,7 +246,10 @@ it.each([
     expect(repair.userPrompt).toContain('宿主环境交接校验失败');
     expect(repair.userPrompt).toContain('fixture-toolchain');
     expect(checks.includes('baseline')).toBe(repaired);
-    expect(store.getRun(run.id)?.graphState?.outputs?.probe?.verdict).toBe(repaired ? 'ready' : 'blocked');
+    expect(store.getRun(run.id)?.graphState?.outputs?.['probe-repair']?.verdict).toBe('ready');
+    expect(store.getRun(run.id)?.graphState?.loops['probe-retry']).toBe(repaired ? 1 : 2);
+    expect(store.getRun(run.id)?.graphState?.taken).toContain('environment-check.fail->probe-retry');
+    if (!repaired) expect(store.getRun(run.id)?.graphState?.taken).toContain('probe-retry.exhausted->blocked-report');
     expect(store.getRun(run.id)?.graphState?.loops['final-retry']).toBe(1);
   } finally {
     captures.onLaunch = undefined;

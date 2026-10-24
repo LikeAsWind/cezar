@@ -59,10 +59,7 @@ import {
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { pinSuperpowersRun } from './superpowers-pin.ts';
-import { adjudicationTurnInput, clarificationForEvent, guardUnattendedCheck, guardUnattendedVerdict, isUnattendedGraph } from './unattended-guards.ts';
-import { unattendedRecoveryPoint } from './unattended-recovery.ts';
-import { prepareUnattendedProbe, unattendedToolchainEnv, artifactInstructions, unattendedContext, unattendedUserUpdates } from './unattended-probe.ts';
-import { guardProbeEnvironment } from './probe-environment.ts';
+import { workflowRuntimeFor, type WorkflowRuntime, type WorkflowAgentLaunch } from './workflow-runtime.ts';
 import { WORKFLOW_ACTION_SCRIPT, workflowActionOf } from './workflow-actions.ts';
 import { startSessionWithInput } from './step-input.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
@@ -3701,9 +3698,10 @@ export class RunManager {
     }
     if (run.status === 'failed' && run.workflowDef?.graph) {
       try {
-        if (isUnattendedGraph(this.dataDir, runId, run.workflowDef.graph)) {
-          const cursor = unattendedRecoveryPoint(run.workflowDef.graph, run.graphState);
-          if (!cursor) return { ok: false, error: 'No valid unattended workflow recovery point; start a new task instead of bypassing verification' };
+        const runtime = workflowRuntimeFor(this.dataDir, runId, run.workflowDef.graph);
+        if (runtime) {
+          const cursor = runtime.recoveryPoint(run.graphState);
+          if (!cursor) return { ok: false, error: 'No valid workflow recovery point; start a new task instead of bypassing verification' };
           const prompt = opts.text?.trim() || 'Continue from the recorded blocker using the existing evidence.';
           const saved = this.persistPastedAttachments(runId, opts.images ?? []);
           const queuedMessages = [...(run.queuedMessages ?? []), { id: randomUUID(), text: prompt, createdAt: new Date().toISOString(), ...(saved.length ? { images: saved.map(image => image.url) } : {}) }];
@@ -3718,7 +3716,7 @@ export class RunManager {
           this.store.appendEvent(runId, { type: 'user-message', messageId: queuedMessages.at(-1)!.id, text: prompt, imageCount: opts.images?.length ?? 0, images: saved.map(image => image.url) });
           this.pendingJobs.set(runId, { workflow: run.workflowDef, input: { task: run.task, runner, model, agentProfile, systemPrompt: run.systemPrompt, worktree: run.worktree, autonomous: run.autonomous, generateFollowups: run.generateFollowups, dispatch: run.dispatch } });
           this.queue.push(runId);
-          this.store.appendEvent(runId, { type: 'lifecycle', message: `resuming the pinned unattended workflow at "${cursor}"; existing loop budgets retained` });
+          this.store.appendEvent(runId, { type: 'lifecycle', message: `resuming the pinned workflow at "${cursor}"; existing loop budgets retained` });
           void this.pump();
           return { ok: true };
         }
@@ -4307,10 +4305,12 @@ export class RunManager {
       ? `${portableContext}\n\n---\n\n## New user instruction\n${openingPrompt}`
       : openingPrompt;
     let continuationEnv = continueProfile.env;
-    if (record?.workflowDef?.graph && isUnattendedGraph(this.dataDir, runId, record.workflowDef.graph)) {
+    const continuationRuntime = workflowRuntimeFor(this.dataDir, runId, record?.workflowDef?.graph);
+    if (record && continuationRuntime) {
       try {
-        continuationEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, continuationEnv);
-        contextualOpeningPrompt += `\n\n${artifactInstructions(state.cwd, runId, record.graphState?.cursor, this.dataDir)}\n\n${await unattendedContext(state.cwd, runId, this.store.getRun(runId), record.graphState?.cursor, this.dataDir, false, unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)))}`;
+        const prepared = await continuationRuntime.prepareContinuation(state.cwd, record, this.store.readEvents(runId), contextualOpeningPrompt, continuationEnv);
+        continuationEnv = prepared.env;
+        contextualOpeningPrompt = prepared.prompt;
       } catch (error) {
         this.failOwnedContinuation(runId, effectiveOwnerToken, error instanceof Error ? error.message : String(error));
         return;
@@ -4562,7 +4562,7 @@ export class RunManager {
           recordedRun?.branch ??
           (await this.awaitGeneratedBranch(runId, config.branchNaming,
             (message) => emit({ type: 'note', message }),
-            workflow.steps.some(step => step.skill === 'cezar:project-probe'),
+            workflowRuntimeFor(this.dataDir, runId, workflow.graph)?.needsTaskTitle ?? false,
           ));
         // The wait can last the namer's whole timeout; a Cancel during it must not fork.
         if (state.cancelled) {
@@ -4853,13 +4853,18 @@ export class RunManager {
     },
   ): Promise<string | null> {
     const { input, skills, emit, taskBackend, extraSystemPrompt } = ctx;
-    const managedUnattended = await isUnattendedGraph(this.dataDir, runId, graph);
+    const runtime = workflowRuntimeFor(this.dataDir, runId, graph);
+    graph = runtime?.executionGraph() ?? graph;
+    const savedResume = ctx.resume ? { ...ctx.resume,
+      cursor: runtime?.recoveryPoint(ctx.resume) ?? ctx.resume.cursor,
+      loops: runtime?.recoveryLoops(ctx.resume.loops ?? {}) ?? ctx.resume.loops,
+    } : undefined;
     let { startImages, startAttachments } = ctx;
     // Resume only onto a node this graph still has; anything else starts the walk afresh.
-    const resumeNode = ctx.resume?.cursor
-      ? graph.nodes.find((n): n is ExecutableNode => n.id === ctx.resume?.cursor && isExecutableNode(n))
+    const resumeNode = savedResume?.cursor
+      ? graph.nodes.find((n): n is ExecutableNode => n.id === savedResume.cursor && isExecutableNode(n))
       : undefined;
-    const resume = resumeNode ? ctx.resume : undefined;
+    const resume = resumeNode ? savedResume : undefined;
     const loopCounts = new Map<string, number>(Object.entries(resume?.loops ?? {}));
     const outputs = new Map<string, Record<string, string | number>>(Object.entries(resume?.outputs ?? {}));
     let checkFailure: string | null = null;
@@ -4917,6 +4922,7 @@ export class RunManager {
     while (step.kind === 'node') {
       if (state.cancelled || this.active.get(runId) !== state) return null;
       const node = step.node;
+      if (node.type === 'agent' || node.type === 'check') this.store.addStep(runId, { id: node.id, name: node.name ?? node.id, kind: node.type });
       const resuming = resumeNode?.id === node.id && cursor === undefined;
       cursor = node.id;
       persistWalk();
@@ -4971,10 +4977,8 @@ export class RunManager {
         const failed = isFailurePort(port);
         this.finishStep(runId, node.id, failed ? 'failed' : 'done', failed ? `ended on "${port}"` : undefined, emit);
       } else if (node.type === 'agent') {
-        if (managedUnattended && node.skill === 'cezar:adjudicator') {
-          const clarification = await clarificationForEvent(this.dataDir, runId, graph, true);
-          if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification });
-        }
+        const openingClarification = await runtime?.clarification(node.id, 'start');
+        if (openingClarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: openingClarification });
         const stepIdx = workflow.steps.findIndex((s) => s.id === node.id);
         const rendered = nodeToStep(node);
         if (rendered.prompt) rendered.prompt = renderNodeRefs(rendered.prompt, outputs);
@@ -4982,7 +4986,7 @@ export class RunManager {
         if (verdicts.length) rendered.prompt = `${rendered.prompt ?? '{{task}}'}\n\n${verdictInstruction(verdicts)}`;
         const backend = node.runner ?? taskBackend;
         const lastTurn = { text: '' };
-        const adjudicationReturn = managedUnattended && taken[taken.length - 1] === `adjudicator.${node.id === 'design' ? 'answered' : node.id}->${node.id}`;
+        const adjudicationReturn = runtime?.returningCaller(node.id, taken) ?? false;
         let failure = await this.runAgentStep(
           runId,
           state,
@@ -4997,30 +5001,12 @@ export class RunManager {
           extraSystemPrompt,
           stepIdx >= 0 ? chainStepNote(workflow.steps, stepIdx) : undefined,
           startAttachments,
-          { ...(resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn, emit, managedUnattended) : {
+          { ...(resuming ? this.resumeInterruptedAgent(runId, node, backend, rendered, lastTurn, emit, runtime) : {
             resumeSessionId: this.graphResumeSession(runId, node, backend, emit,
               adjudicationReturn), lastTurn, verdicts }), adjudicationReturn },
         );
         startImages = undefined;
         startAttachments = [];
-        if (managedUnattended && node.skill === 'cezar:project-probe' && !failure &&
-          !state.cancelled && !state.askPark && this.active.get(runId) === state && parseVerdict(lastTurn.text, verdicts) === 'ready') {
-          const environmentError = await guardProbeEnvironment(this.dataDir, runId, state.cwd, async prompt => {
-            if (state.cancelled || this.active.get(runId) !== state) return false;
-            emit({ type: 'note', stepId: node.id, message: prompt });
-            lastTurn.text = '';
-            failure = await this.runAgentStep(
-              runId, state, rendered, input, skills, null, isTerminalAgent(graph, node.id), emit,
-              undefined, taskBackend, extraSystemPrompt, undefined, [],
-              { resumeSessionId: this.graphResumeSession(runId, node, backend, emit, true), lastTurn, verdicts, probeRepair: prompt },
-            );
-            return !failure && !state.cancelled && !state.askPark && this.active.get(runId) === state && parseVerdict(lastTurn.text, verdicts) === 'ready';
-          });
-          if (environmentError && !state.cancelled && this.active.get(runId) === state) {
-            emit({ type: 'note', stepId: node.id, message: environmentError });
-            lastTurn.text = `${stripVerdictMarker(lastTurn.text.trim())}\n\n${environmentError}\nCEZ:VERDICT blocked`;
-          }
-        }
         failure ??= state.parkedAgent?.failure ?? null;
         checkFailure = null;
         if (state.cancelled || this.active.get(runId) !== state) return null;
@@ -5043,25 +5029,23 @@ export class RunManager {
           // Reopening here would lose process-owned background tasks and reset the deadline.
         }
         let handoffFailure: string | undefined;
-        if (managedUnattended && !failure && verdict) {
-          try { await guardUnattendedVerdict(this.dataDir, runId, state.cwd, node.id, verdict, graph.nodes.some(candidate => candidate.type === 'check' && (workflowActionOf(candidate.command) === 'execution' || candidate.id === 'execution-route')), graph, this.store.redactRunText(runId, lastTurn.text));
-            if (verdict === 'question' || node.skill === 'cezar:adjudicator') {
-              const clarification = await clarificationForEvent(this.dataDir, runId, graph);
-              if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification });
-            }
-          }
-          catch (error) { handoffFailure = error instanceof Error ? error.message : String(error); }
+        if (runtime && !failure && verdict) {
+          try {
+            await runtime.validateVerdict(state.cwd, node.id, verdict, this.store.redactRunText(runId, lastTurn.text));
+            const clarification = await runtime.clarification(node.id, 'verdict', verdict);
+            if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification });
+          } catch (error) { handoffFailure = error instanceof Error ? error.message : String(error); }
         }
         const stepRec = this.store.getRun(runId)?.steps.find((s) => s.id === node.id);
         outputs.set(node.id, {
-          summary: managedUnattended ? stripVerdictMarker(lastTurn.text.trim()) : stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
+          summary: runtime?.preserveSummary ? stripVerdictMarker(lastTurn.text.trim()) : stripVerdictMarker(lastTurn.text.trim()).slice(-NODE_SUMMARY_CAP),
           ...(failure || handoffFailure ? { error: this.store.redactRunText(runId, failure ?? handoffFailure!) } : {}),
           verdict: verdict ?? '',
           costUsd: stepRec?.costUsd ?? 0,
         });
         if (failure || handoffFailure) {
-          if (managedUnattended && node.skill === 'cezar:adjudicator') {
-            const clarification = await clarificationForEvent(this.dataDir, runId, graph);
+          if (runtime) {
+            const clarification = await runtime.clarification(node.id, 'failure');
             if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: { ...clarification, status: 'failed', answer: this.store.redactRunText(runId, failure ?? handoffFailure!) } });
           }
           if (handoffFailure) checkFailure = handoffFailure;
@@ -5070,8 +5054,8 @@ export class RunManager {
           port = 'failed';
         } else if (verdicts.length && !verdict) {
           const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}${stepRec?.pendingBackgroundTaskIds?.length ? `; uncollected background tasks: ${stepRec.pendingBackgroundTaskIds.join(', ')}` : ''}`;
-          if (managedUnattended && node.skill === 'cezar:adjudicator') {
-            const clarification = await clarificationForEvent(this.dataDir, runId, graph);
+          if (runtime) {
+            const clarification = await runtime.clarification(node.id, 'failure');
             if (clarification) emit({ type: 'workflow-clarification', stepId: node.id, clarification: { ...clarification, status: 'failed', answer: error } });
           }
           this.finishStep(runId, node.id, 'failed', error, emit);
@@ -5088,37 +5072,6 @@ export class RunManager {
       } else {
         const rendered = nodeToStep(node);
         if (rendered.command) rendered.command = renderNodeRefs(rendered.command, outputs);
-        let environmentError: string | undefined;
-        if (managedUnattended && workflowActionOf(rendered.command ?? '') === 'baseline') {
-          const probeNode = graph.nodes.find(candidate => candidate.type === 'agent' && candidate.skill === 'cezar:project-probe');
-          const lastTurn = { text: '' };
-          let repaired = false;
-          environmentError = await guardProbeEnvironment(this.dataDir, runId, state.cwd, async prompt => {
-            if (probeNode?.type !== 'agent' || state.cancelled || this.active.get(runId) !== state) return false;
-            repaired = true;
-            emit({ type: 'note', stepId: probeNode.id, message: prompt });
-            this.store.updateStep(runId, probeNode.id, { status: 'running', finishedAt: undefined });
-            const backend = probeNode.runner ?? taskBackend;
-            const verdicts = probeNode.verdicts ?? ['ready', 'blocked'];
-            const failure = await this.runAgentStep(
-              runId, state, nodeToStep(probeNode), input, skills, null, false, emit,
-              undefined, taskBackend, extraSystemPrompt, undefined, [],
-              { resumeSessionId: this.graphResumeSession(runId, probeNode, backend, emit, true), lastTurn, verdicts, probeRepair: prompt },
-            );
-            if (failure) lastTurn.text += `\n${failure}`;
-            if (failure || state.cancelled || state.askPark || this.active.get(runId) !== state || parseVerdict(lastTurn.text, verdicts) !== 'ready') return false;
-            try {
-              await guardUnattendedVerdict(this.dataDir, runId, state.cwd, probeNode.id, 'ready', false, graph, lastTurn.text);
-              return true;
-            } catch (error) { lastTurn.text += `\n${error instanceof Error ? error.message : String(error)}`; return false; }
-          });
-          if (state.cancelled || this.active.get(runId) !== state) return null;
-          if (probeNode && (repaired || environmentError)) {
-            outputs.set(probeNode.id, { summary: `${stripVerdictMarker(lastTurn.text.trim())}\n${environmentError ?? ''}`.trim(), verdict: environmentError ? 'blocked' : 'ready' });
-            this.finishStep(runId, probeNode.id, 'done', undefined, emit);
-          }
-          this.store.updateRun(runId, { currentStepId: node.id });
-        }
         // Check commands are allowed to generate tracked output, but that output
         // is verification residue rather than agent work. Save the agent's state
         // before the command, then keep the command's changed paths excluded from
@@ -5138,10 +5091,9 @@ export class RunManager {
         let checkResult: { ok: boolean; output: string; exitCode: number };
         state.checkInProgress = true;
         try {
-          if (environmentError) throw new Error(environmentError);
-          await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'before');
+          await runtime?.check(state.cwd, rendered.command ?? '', 'before');
           checkResult = await this.runCheckStep(runId, state, rendered, emit);
-          if (checkResult.ok) await guardUnattendedCheck(this.dataDir, runId, state.cwd, rendered.command ?? '', 'after');
+          if (checkResult.ok) await runtime?.check(state.cwd, rendered.command ?? '', 'after');
         } catch (error) {
           checkResult = { ok: false, exitCode: 1, output: error instanceof Error ? error.message : String(error) };
           emit({ type: 'check-output', stepId: node.id, text: checkResult.output, exitCode: 1 });
@@ -5186,7 +5138,7 @@ export class RunManager {
       if (step.kind === 'node') this.store.updateStep(runId, step.node.id, { status: 'pending' });
     }
 
-    cursor = managedUnattended && step.status === 'failed' ? unattendedRecoveryPoint(graph, { loops: Object.fromEntries(loopCounts), taken }) : undefined;
+    cursor = step.status === 'failed' ? runtime?.recoveryPoint({ loops: Object.fromEntries(loopCounts), taken }) : undefined;
     persistWalk();
     if (step.status === 'success') return null;
     if (step.endNode) return `workflow ended at "${step.endNode}"`;
@@ -5231,19 +5183,16 @@ export class RunManager {
     rendered: WorkflowStepDef,
     lastTurn: { text: string },
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
-    managedUnattended = false,
+    runtime?: WorkflowRuntime,
   ): { resumeSessionId?: string; lastTurn: { text: string }; freshPrompt?: string; verdicts?: readonly string[] } {
-    const own = managedUnattended ? this.graphResumeSession(runId, node, backend, emit, true) : this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
-    const builderRecovery = managedUnattended && node.id === 'design'
-      ? '\n\nbuilder check 恢复：先复用与当前设计一致的完整检查结果。只有 TaskOutput 明确确认旧任务编号不存在或已失效，且没有可复用结果时，才按已加载 brainstorming 的 builder check 要求，使用原检查提示词启动一个全新上下文的通用子代理检查当前设计；最多重新启动一次。仍在运行、等待超时或接口失败不属于编号失效，不重复启动。收取新检查的完整结果并处理反馈后再继续；再次失败则明确报告阻塞。仅重做检查，不重跑探测、基线或重复起草设计。'
-      : '';
+    const own = runtime ? this.graphResumeSession(runId, node, backend, emit, true) : this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.sessionId;
+    const instructions = runtime?.resumeInstructions(node.id, node.verdicts);
     if (!own || !RESUMABLE_BACKENDS.has(backend)) {
-      if (builderRecovery) rendered.prompt = `${rendered.prompt ?? ''}${builderRecovery}`;
+      if (instructions?.suffix) rendered.prompt = `${rendered.prompt ?? ''}${instructions.suffix}`;
       return { lastTurn, verdicts: node.verdicts };
     }
     const freshPrompt = rendered.prompt;
-    rendered.prompt = managedUnattended ? `${RESTART_CONTINUATION_PROMPT}\n\nUse the queued user continuation already supplied in this session; do not create a duplicate resume-message file. Continue this node, not a standalone follow-up. ${node.verdicts?.length ? verdictInstruction(node.verdicts) : ''}` : RESTART_CONTINUATION_PROMPT;
-    rendered.prompt += builderRecovery;
+    rendered.prompt = RESTART_CONTINUATION_PROMPT + (instructions ? `\n\n${instructions.continuation}${instructions.suffix}` : '');
     return { resumeSessionId: own, lastTurn, verdicts: node.verdicts, ...(freshPrompt ? { freshPrompt } : {}) };
   }
 
@@ -5990,7 +5939,7 @@ export class RunManager {
     attachments: PersistedAttachment[] = [],
     /** Graph-workflow hooks (spec 2026-09-30-workflow-node-editor): reopen an earlier session
      *  instead of minting one, and hand back the last turn's text for verdict parsing. */
-    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string; verdicts?: readonly string[]; adjudicationReturn?: boolean; probeRepair?: string },
+    graphHooks?: { resumeSessionId?: string; lastTurn?: { text: string }; freshPrompt?: string; verdicts?: readonly string[]; adjudicationReturn?: boolean },
   ): Promise<string | null> {
     const parked = state.parkedAgent;
     if (graphHooks?.adjudicationReturn && parked?.stepId === step.id) {
@@ -5999,14 +5948,14 @@ export class RunManager {
       try {
         const record = this.store.getRun(runId);
         const previous = record?.steps.find(candidate => candidate.id === step.id)?.input;
-        const updates = unattendedUserUpdates({ queuedMessages: record?.queuedMessages?.filter(message => !previous || message.createdAt > previous.capturedAt) }, this.store.readEvents(runId).filter(event => !previous || event.ts > previous.capturedAt));
-        const prompt = [
-          this.flushPendingReports(runId), this.flushInbox(runId),
-          await adjudicationTurnInput(this.dataDir, runId, graph, step.id, true),
-          ...(graphHooks.verdicts?.length ? [verdictInstruction(graphHooks.verdicts)] : []),
-          ...(updates.length ? [`本轮用户补充：\n${updates.join('\n\n')}`] : []),
-          ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
-        ].filter(Boolean).join('\n\n');
+        const runtime = workflowRuntimeFor(this.dataDir, runId, graph);
+        if (!runtime) return 'Missing workflow caller policy';
+        const prepared = await runtime.prepareAgent({ cwd: state.cwd, step, backend: step.runner ?? taskBackend,
+          run: record, events: this.store.readEvents(runId), prompt: '', env: {},
+          treeBlocks: [this.flushPendingReports(runId), this.flushInbox(runId)].filter((block): block is string => Boolean(block)),
+          attachmentText: attachments.length ? pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary)) : undefined,
+          resuming: true, returningCaller: true, verdicts: graphHooks.verdicts });
+        const prompt = prepared.prompt;
         if (state.cancelled || this.active.get(runId) !== state) return null;
         if (previous) this.store.updateStep(runId, step.id, { input: { ...previous, capturedAt: new Date().toISOString(), userPrompt: prompt } });
         emit({ type: 'note', stepId: step.id, message: '裁决答复送回原会话，继续执行。' });
@@ -6055,8 +6004,8 @@ export class RunManager {
     // matches; a leading `/name` that is not a known skill passes through byte-for-byte.
     userPrompt = expandRegistrySlashSkillText(userPrompt, state.skills ?? []);
     const stageGraph = this.store.getRun(runId)?.workflowDef?.graph;
-    const managedStage = stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph);
-    if (chainNote && !managedStage) userPrompt = `${chainNote}\n\n---\n\n${userPrompt}`;
+    const stageRuntime = workflowRuntimeFor(this.dataDir, runId, stageGraph);
+    if (chainNote && !stageRuntime) userPrompt = `${chainNote}\n\n---\n\n${userPrompt}`;
     // A commander recovered after a restart opens its first session holding whatever its children
     // reported while it was gone (spec Q7). Prepended and cleared here, after the slash expansion
     // so a leading `/skill` still matched, and before the failure/attachment suffixes.
@@ -6065,9 +6014,8 @@ export class RunManager {
     const treeBlocks = [treeReports, treeInbox].filter((block): block is string => Boolean(block));
     if (treeBlocks.length) userPrompt = `${treeBlocks.join('\n\n')}\n\n---\n\n${userPrompt}`;
     if (checkFailure) {
-      userPrompt += managedStage
-        ? `\n\n本节点上次检查失败证据（按当前节点职责处理）：\n${checkFailure}`
-        : `\n\nA verification command failed after the previous attempt. Fix the cause. Failing output:\n\n${checkFailure}`;
+      userPrompt += stageRuntime?.failureContext(checkFailure)
+        ?? `\n\nA verification command failed after the previous attempt. Fix the cause. Failing output:\n\n${checkFailure}`;
     }
     if (images?.length) {
       emit({
@@ -6230,7 +6178,7 @@ export class RunManager {
         finalAssistantMessage = '';
         turnText = '';
         for (const note of askNotes) emit({ type: 'note', stepId: step.id, ...note });
-        if (turnVerdict === 'question' && !pendingHandoff && sessionOpen && managedStage && graphHooks?.lastTurn && !state.parkedAgent) {
+        if (stageRuntime?.parksCaller(step, turnVerdict) && !pendingHandoff && sessionOpen && graphHooks?.lastTurn && !state.parkedAgent) {
           parkedForAdjudication = true;
           this.clearIdleTimer(state);
           const usageInvocation = state.usageInvocation;
@@ -6432,24 +6380,6 @@ export class RunManager {
     };
 
     const stepBackend = step.runner ?? taskBackend;
-    let probe: Awaited<ReturnType<typeof prepareUnattendedProbe>> | undefined;
-    if (step.skill === 'cezar:project-probe' && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
-      try {
-        probe = await prepareUnattendedProbe(this.dataDir, runId, state.cwd, stepBackend,
-          stageGraph.nodes.some(node => node.type === 'check' && workflowActionOf(node.command) === 'verify'),
-          this.store.getRun(runId)?.titleSummary?.trim() || this.store.getRun(runId)?.task || this.store.getRun(runId)?.title || 'task');
-        // This stage receives one compact host input, not the generic chain/DONE preamble
-        // or the template's duplicate boundary instructions. Keep actual attachments/updates.
-        userPrompt = [
-          probe.instructions,
-          ...(graphHooks?.probeRepair ? [graphHooks.probeRepair] : []),
-          ...treeBlocks,
-          ...(checkFailure ? [`上次检查失败证据（仅用于探测，不在本阶段修复）：\n${checkFailure}`] : []),
-          ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
-          ...unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)),
-        ].join('\n\n');
-      } catch (error) { return error instanceof Error ? error.message : String(error); }
-    }
     // Normalise the selected model to canonical `provider/model` and back to the
     // backend's own wire form via the ONE shared mapper (#405). Fail-loud: an
     // unresolvable model (e.g. a bare id on opencode) returns the step error
@@ -6504,35 +6434,16 @@ export class RunManager {
     const runner = createRunner(stepBackend);
     const stepMcp = await this.privateMcpForLaunch(stepBackend, onEvent);
     let launchEnv = stepProfile.env;
-    let omitConversationalSystemPrompt = false;
-    if (!probe && stageGraph && isUnattendedGraph(this.dataDir, runId, stageGraph)) {
+    let launch: WorkflowAgentLaunch | undefined;
+    if (stageRuntime) {
       try {
-        launchEnv = await unattendedToolchainEnv(this.dataDir, runId, state.cwd, launchEnv);
-        const judge = step.skill === 'cezar:adjudicator';
-        const adjudicationDelta = Boolean(graphHooks?.resumeSessionId && (judge || graphHooks.adjudicationReturn));
-        // Codex carries this field in its user message; Claude and pi use a
-        // real system channel that must remain configured across compaction.
-        omitConversationalSystemPrompt = adjudicationDelta && stepBackend === 'codex';
-        if (adjudicationDelta) {
-          const previousLaunch = stepRecord?.input?.capturedAt;
-          const record = this.store.getRun(runId);
-          const updates = unattendedUserUpdates({ queuedMessages: record?.queuedMessages?.filter(message => !previousLaunch || message.createdAt > previousLaunch) }, this.store.readEvents(runId).filter(event => !previousLaunch || event.ts > previousLaunch));
-          userPrompt = [
-            ...treeBlocks,
-            await adjudicationTurnInput(this.dataDir, runId, stageGraph, step.id, !judge),
-            ...(!judge && graphHooks?.verdicts?.length ? [verdictInstruction(graphHooks.verdicts)] : []),
-            ...(updates.length ? [`本轮用户补充：\n${updates.join('\n\n')}`] : []),
-            ...(attachments.length ? [pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary))] : []),
-          ].join('\n\n');
-        } else {
-          userPrompt += `\n\n${artifactInstructions(state.cwd, runId, step.id, this.dataDir)}`;
-          userPrompt += `\n\n${judge
-            ? await adjudicationTurnInput(this.dataDir, runId, stageGraph, step.id, false, true)
-            : await unattendedContext(state.cwd, runId, this.store.getRun(runId), step.id, this.dataDir, Boolean(graphHooks?.resumeSessionId), unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)))}`;
-          if (judge) userPrompt += `\n\n${unattendedUserUpdates(this.store.getRun(runId), this.store.readEvents(runId)).join('\n\n')}`;
-        }
-      }
-      catch (error) { return error instanceof Error ? error.message : String(error); }
+        launch = await stageRuntime.prepareAgent({ cwd: state.cwd, step, backend: stepBackend,
+          run: this.store.getRun(runId), events: this.store.readEvents(runId), prompt: userPrompt, env: launchEnv,
+          treeBlocks, attachmentText: attachments.length ? pastedAttachmentsText(attachments, this.attachmentLibraryHint(attachments, state.grantedAttachmentLibrary)) : undefined,
+          checkFailure, resuming: graphHooks?.resumeSessionId !== undefined, returningCaller: graphHooks?.adjudicationReturn ?? false, verdicts: graphHooks?.verdicts });
+        launchEnv = launch.env;
+        userPrompt = launch.prompt;
+      } catch (error) { return error instanceof Error ? error.message : String(error); }
     }
     state.currentStepId = step.id;
     this.beginUsageInvocation(runId, state, step.id);
@@ -6545,7 +6456,7 @@ export class RunManager {
           // — how a task creates a GitHub automation), then the run's extra
           // prompt (POST override or config default, which may amend any of them), then the
           // handoff/todos contract — every agent step.
-          systemPrompt: omitConversationalSystemPrompt ? undefined : composeSystemPrompt(
+          systemPrompt: launch?.omitSystemPrompt ? undefined : composeSystemPrompt(
             systemPrompt,
             dispatchPromptPart(state.dispatchPrompt, extraSystemPrompt),
             state.automationsPrompt,
@@ -6566,7 +6477,7 @@ export class RunManager {
             stepProfile.env,
           ),
           env: launchEnv,
-          mcpServers: probe ? undefined : stepMcp,
+          mcpServers: launch?.suppressMcp ? undefined : stepMcp,
           model: backendModel,
           sessionId,
           resume: graphHooks?.resumeSessionId !== undefined,
@@ -6582,8 +6493,8 @@ export class RunManager {
           // strand the run — both close the session, and a park whose session
           // closed unanswered settles as `failed` with a Continue button (see
           // the `askPark` branch in `execute`), never as a run stuck `waiting`.
-          timeoutMs: probe?.timeoutMs ?? step.timeoutMs ?? (interactive ? 0 : undefined),
-          ...(probe ? { probePolicy: probe.policy } : {}),
+          timeoutMs: step.timeoutMs ?? (interactive ? 0 : undefined),
+          ...launch?.spec,
         },
         onEvent,
         {

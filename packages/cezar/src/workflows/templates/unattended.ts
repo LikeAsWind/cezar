@@ -1,4 +1,5 @@
 import type { WorkflowGraphFile } from '../graph.ts';
+import { environmentNodes, environmentEdges } from '../unattended-environment.ts';
 
 // Only host handoff conventions belong here; execution procedures stay in upstream skills.
 const QUESTION = (origin: string) => `需要裁决时，在最终回复中给出一个完整阻塞问题、稳定问题编号（如 Q-001）、独立一行 origin: ${origin} 和证据路径，返回 question。宿主保存并传给裁决者；恢复时核对注入的裁决再继续，证据不足则 blocked。`;
@@ -23,6 +24,7 @@ export const UNATTENDED_TEMPLATE: WorkflowGraphFile = {
       prompt: '执行已加载的 cezar:project-probe，完成需求影响面、源码地图和必要环境探测。不要进入设计或实现。',
       verdicts: ['ready', 'blocked'],
     },
+    ...environmentNodes,
     {
       id: 'baseline',
       type: 'check',
@@ -326,8 +328,9 @@ ${QUESTION('fix')}`,
     },
     {
       from: 'probe.ready',
-      to: 'baseline',
+      to: 'environment-check',
     },
+    ...environmentEdges,
     {
       from: 'probe.blocked',
       to: 'blocked-report',

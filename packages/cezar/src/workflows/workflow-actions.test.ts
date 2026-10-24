@@ -14,6 +14,36 @@ import { loadWorkflows } from './load.ts';
 import { UNATTENDED_TEMPLATE } from './templates/unattended.ts';
 import { stringify } from 'yaml';
 
+it('validates environment bindings through the real host action without running project commands', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cez-environment-action-'));
+  const exec = promisify(execFile);
+  try {
+    const git = (...args: string[]) => exec('git', args, { cwd: root, windowsHide: true });
+    await git('init');
+    await writeFile(join(root, 'manifest.txt'), 'fixture validation');
+    await writeFile(join(root, 'check.cjs'), "require('node:fs').writeFileSync('executed.txt', 'executed');");
+    await git('add', '.');
+    await git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'fixture');
+    await git('worktree', 'add', 'task', '-b', 'environment-test');
+    const cwd = join(root, 'task');
+    const cli = (action: string) => exec(process.execPath, [WORKFLOW_ACTION_SCRIPT, action], { cwd, windowsHide: true,
+      env: { ...process.env, CEZ_RUN_ID: 'environment-run', CEZ_TASK_ID: 'environment-run', CEZ_HANDOFF_FILE: '' } });
+    await cli('init');
+    const { artifactPaths } = await import('../../scripts/workflow/artifacts.mjs');
+    const files = artifactPaths(cwd, 'environment-run');
+    const command = { file: process.execPath, args: ['check.cjs'], source: 'manifest.txt', kind: 'test', toolchain: 'selected-toolchain' };
+    const tool = { name: 'selected-toolchain', targetVersion: null, buildVersion: null, runtimeVersion: null, sources: ['manifest.txt'] };
+    const plan = { schemaVersion: 1, toolchains: [tool], baseline: [command], verify: [command],
+      environmentChecks: [{ ...command, args: ['--version'], kind: 'check', expectedOutput: [process.versions.node] }] };
+    await writeFile(files.file('environment.json'), JSON.stringify(plan));
+    await expect(cli('environment')).rejects.toThrow('selected-toolchain');
+    await writeFile(files.file('environment.json'), JSON.stringify({ ...plan, toolchains: [{ ...tool, execution: {} }] }));
+    expect((await cli('environment')).stdout).toContain('Probe environment validated');
+    await expect(readFile(join(cwd, 'executed.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(files.file('baseline.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 100 }); }
+}, 30_000);
+
 it('loads the new template using host actions without a bundle runtime dependency', () => {
   const workflow = unattendedWorkflows(BUILTIN_SUPERPOWERS_BUNDLE)[0]!;
   for (const action of ['baseline', 'route', 'execution', 'verify', 'seal', 'blocked'] as const) {

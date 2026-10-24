@@ -12,11 +12,12 @@ import { workflowActionOf } from './workflow-actions.ts';
 import { artifactPath } from '../../scripts/workflow/artifacts.mjs';
 import { officialWorkspace, requireCompletedPlan } from './unattended-ledger.ts';
 import { assertValidationExtension, captureTree, routeDecision } from '../../scripts/workflow-action.mjs';
+import { unattendedStage } from './unattended-roles.ts';
 
 const trustedSchema = z.object({ schemaVersion: z.literal(1), runId: z.string(), root: z.string(), plan: z.string(), verified: z.string().optional(),
   review: z.object({ tree: z.string(), approved: z.boolean(), receipt: z.string() }).optional() });
 const pinSchema = z.object({ schemaVersion: z.literal(1), ref: superpowersBundleRefSchema });
-function managedAction(dataDir: string, runId: string, command: string): string | undefined {
+export function managedAction(dataDir: string, runId: string, command: string): string | undefined {
   if (!/^[a-zA-Z0-9_-]+$/.test(runId)) throw new Error('Invalid run id');
   const hostAction = workflowActionOf(command);
   if (hostAction && ['baseline', 'scope', 'execution', 'verify', 'seal'].includes(hostAction)) return hostAction;
@@ -113,16 +114,7 @@ export async function adjudicationTurnInput(dataDir: string, runId: string, grap
 /** Called only for graphs referencing the managed runtime, before accepting an agent verdict. */
 export async function guardUnattendedVerdict(dataDir: string, runId: string, cwd: string, nodeId: string, verdict: string, executionStrategy = false, graph?: WorkflowGraph, response = ''): Promise<void> {
   if (!/^[a-zA-Z0-9_-]+$/.test(runId)) throw new Error('Invalid run id');
-  const node = graph?.nodes.find(candidate => candidate.id === nodeId);
-  const roleStages: Record<string, string> = {
-    'cezar:project-probe': 'probe', 'cezar:adjudicator': 'adjudicator',
-    'superpowers:brainstorming': 'design', 'superpowers:writing-plans': 'plan',
-    'superpowers:executing-plans': 'execute-native', 'superpowers:subagent-driven-development': 'execute-sdd',
-    'superpowers:systematic-debugging': 'fix', 'superpowers:verification-before-completion': 'deliver', 'superpowers:code-reviewer': 'review',
-  };
-  const stage = node?.type === 'agent' && node.skill
-    ? node.skill === 'superpowers:writing-plans' && node.verdicts?.includes('fast') ? 'fast-plan' : roleStages[node.skill] ?? nodeId
-    : nodeId;
+  const stage = unattendedStage(graph, nodeId);
   const validCallers = graph ? graph.nodes.filter(candidate => candidate.type === 'agent' && candidate.verdicts?.includes('question')).map(candidate => candidate.id) : callers;
   const artifact = async (name: string) => {
     const text = await readFile(artifactPath(cwd, runId, name, join(dataDir, 'runs', runId)), 'utf8');
